@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f7f7;
+  --foreground: #111111;
+
+  --otg-primary: #39ff14;
+  --otg-primary-dark: #28cc0f;
+  --otg-black: #111111;
+  --otg-dark: #1b1b1b;
+  --otg-gray-dark: #2c2c2c;
+  --otg-gray: #666666;
+  --otg-gray-light: #e5e5e5;
+  --otg-white: #ffffff;
+  --otg-silver: #c0c0c0;
+
+  --otg-radius: 16px;
+  --otg-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* shared page layout */
+.otg-page {
+  @apply min-h-screen px-4 py-12;
+  background: linear-gradient(to bottom, #f7f7f7, #eceff3);
+}
+
+.otg-container {
+  @apply mx-auto w-full max-w-6xl;
+}
+
+.otg-card {
+  background: var(--otg-white);
+  border: 1px solid var(--otg-gray-light);
+  border-radius: var(--otg-radius);
+  box-shadow: var(--otg-shadow);
+}
+
+.otg-card-dark {
+  background: var(--otg-black);
+  color: var(--otg-white);
+  border-bottom: 3px solid var(--otg-primary);
+  border-radius: var(--otg-radius);
+  box-shadow: var(--otg-shadow);
+}
+
+/* text */
+.otg-eyebrow {
+  @apply text-sm font-semibold uppercase tracking-[0.2em];
+  color: #64748b;
+}
+
+.otg-page-title {
+  @apply mt-2 text-3xl font-bold uppercase;
+  color: var(--otg-black);
+}
+
+.otg-section-title {
+  @apply text-2xl font-bold uppercase;
+  color: var(--otg-black);
+}
+
+.otg-card-title {
+  @apply text-lg font-semibold uppercase;
+  color: var(--otg-black);
+}
+
+.otg-body {
+  @apply text-sm;
+  color: #475569;
+}
+
+.otg-muted {
+  @apply text-sm;
+  color: var(--otg-gray);
+}
+
+.otg-label {
+  @apply text-sm font-medium;
+  color: #1f2937;
+}
+
+.otg-brand-accent {
+  color: var(--otg-primary);
+}
+
+/* buttons */
+.otg-btn {
+  @apply inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-extrabold uppercase transition;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.otg-btn-primary {
+  background: var(--otg-primary);
+  color: var(--otg-black);
+}
+
+.otg-btn-primary:hover {
+  background: var(--otg-primary-dark);
+  transform: translateY(-2px);
+}
+
+.otg-btn-secondary {
+  background: var(--otg-white);
+  color: var(--otg-black);
+  border: 1px solid #d1d5db;
+}
+
+.otg-btn-secondary:hover {
+  background: #f8fafc;
+}
+
+.otg-btn-outline-dark {
+  background: transparent;
+  color: var(--otg-white);
+  border: 2px solid var(--otg-primary);
+}
+
+.otg-btn-outline-dark:hover {
+  background: var(--otg-primary);
+  color: var(--otg-black);
+}
+
+/* forms */
+.otg-input,
+.otg-select,
+.otg-textarea {
+  @apply w-full rounded-xl px-4 py-3 text-slate-900 outline-none;
+  border: 1px solid #cccccc;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+.otg-input:focus,
+.otg-select:focus,
+.otg-textarea:focus {
+  border-color: var(--otg-primary);
+  box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.15);
+}
+
+.otg-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* dropdown content fix */
+.otg-select-content {
+  border: 1px solid var(--otg-gray-light);
+  background: var(--otg-white);
+  color: var(--otg-black);
+  box-shadow: var(--otg-shadow);
+  border-radius: 12px;
+}
+
+/* pills / badges */
+.otg-pill {
+  @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.otg-brand-title-black {
+  @apply text-3xl font-bold uppercase tracking-[0.015em] text-black;
+}
+
+.otg-brand-title-white {
+  @apply text-3xl font-bold uppercase tracking-[0.015em] text-white;
+}
