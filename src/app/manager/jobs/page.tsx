@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Search, Filter } from "lucide-react";
 
-// Types
+// Types matching your DB schema
 interface Job {
   id: string;
   status: string;
@@ -39,8 +39,10 @@ interface Job {
     license_plate: string;
     vin: string;
   } | null;
-  // We will store the email separately or look it up
-  tech_email?: string | null; 
+  assigned_tech: {
+    id: string;
+    email: string;
+  } | null;
 }
 
 export default function ManagerJobsPage() {
@@ -51,7 +53,7 @@ export default function ManagerJobsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [techFilter, setTechFilter] = useState<string>("all");
-  const [technicians, setTechnicians] = useState<{ id: string; email: string }[]>([]);
+  const [technicians, setTechnicians] = useState<any[]>([]);
 
   // 1. Auth Check
   useEffect(() => {
@@ -73,16 +75,16 @@ export default function ManagerJobsPage() {
       }
 
       setAuthorized(true);
-      fetchJobsAndTechs();
+      fetchJobs();
     };
     checkAccess();
   }, []);
 
-  // 2. Fetch Jobs AND Technicians
-  const fetchJobsAndTechs = async () => {
+  // 2. Fetch Jobs & Technicians
+  const fetchJobs = async () => {
     setLoading(true);
     try {
-      // A. Fetch Jobs (NO auth.users join)
+      // Fetch Jobs with joins
       const { data: jobsData, error: jobsError } = await supabase
         .from("jobs")
         .select(`
@@ -92,46 +94,44 @@ export default function ManagerJobsPage() {
         `)
         .order("created_at", { ascending: false });
 
-      if (jobsError) {
-        console.error("Jobs Error:", jobsError);
-        throw jobsError;
-      }
+      if (jobsError) throw jobsError;
 
-      // B. Fetch Technicians (Separate Query)
-      const { data: techRoles } = await supabase
+      // Enrich jobs with technician info
+      const enrichedJobs = await Promise.all(
+        (jobsData || []).map(async (job) => {
+          let assigned_tech = null;
+          if (job.assigned_tech_user_id) {
+            const { data: techUser } = await supabase
+              .from("auth.users")
+              .select("id, email")
+              .eq("id", job.assigned_tech_user_id)
+              .single();
+            assigned_tech = techUser;
+          }
+          return { ...job, assigned_tech };
+        })
+      );
+
+      // Fetch Technicians for filter dropdown
+      const { data: techData } = await supabase
         .from("user_roles")
         .select("user_id")
         .eq("role", "technician");
 
-      let techUsers: { id: string; email: string }[] = [];
-      if (techRoles && techRoles.length > 0) {
-        const techIds = techRoles.map(t => t.user_id);
-        const { data: techData } = await supabase
+      if (techData) {
+        const techIds = techData.map(t => t.user_id);
+        const { data: techUsers } = await supabase
           .from("auth.users")
           .select("id, email")
           .in("id", techIds);
-        
-        if (techData) {
-          techUsers = techData;
-          setTechnicians(techData);
-        }
+        setTechnicians(techUsers || []);
       }
 
-      // C. Map emails to jobs
-      const jobsWithEmails = jobsData.map(job => {
-        const tech = techUsers.find(t => t.id === job.assigned_tech_user_id);
-        return {
-          ...job,
-          tech_email: tech?.email || null
-        };
-      });
-
-      setJobs(jobsWithEmails);
-      setFilteredJobs(jobsWithEmails);
-
+      setJobs(enrichedJobs || []);
+      setFilteredJobs(enrichedJobs || []);
     } catch (error: any) {
       console.error("Error fetching jobs:", error);
-      alert(`Failed to load jobs: ${error.message || "Check console"}`);
+      alert("Failed to load jobs.");
     } finally {
       setLoading(false);
     }
@@ -141,14 +141,17 @@ export default function ManagerJobsPage() {
   useEffect(() => {
     let result = jobs;
 
+    // Status Filter
     if (statusFilter !== "all") {
       result = result.filter(job => job.status === statusFilter);
     }
 
+    // Tech Filter
     if (techFilter !== "all") {
       result = result.filter(job => job.assigned_tech_user_id === techFilter);
     }
 
+    // Search Filter (Customer Name, Plate, VIN, Job ID)
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(job => {
@@ -291,8 +294,8 @@ export default function ManagerJobsPage() {
                     </div>
                     <div>
                       <span className="font-medium text-slate-700">Assigned To:</span>{" "}
-                      {job.tech_email ? (
-                        <span className="text-blue-600">{job.tech_email}</span>
+                      {job.assigned_tech?.email ? (
+                        <span className="text-blue-600">{job.assigned_tech.email}</span>
                       ) : (
                         <span className="text-orange-600 italic">Unassigned</span>
                       )}
