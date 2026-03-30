@@ -273,7 +273,7 @@ export default function ManagerJobsPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg font-semibold text-slate-900">
-                        #{job.id.slice(0, 8)} • {job.customer?.first_name} {job.customer?.last_name}
+                        #{job.business_job_number || job.id.slice(0, 8)} • {job.customer?.first_name} {job.customer?.last_name}
                       </CardTitle>
                       <p className="text-sm text-slate-600 mt-1">
                         {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model} 
