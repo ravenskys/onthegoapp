@@ -19,6 +19,7 @@ interface Job {
   requested_date: string | null;
   scheduled_start: string | null;
   scheduled_end: string | null;
+  business_job_number: string | null;
   assigned_tech_user_id: string | null;
   created_by_user_id: string | null;
   notes: string | null;
