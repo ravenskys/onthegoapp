@@ -155,7 +155,7 @@ export default function ManagerJobsPage() {
         const customerName = `${job.customer?.first_name || ""} ${job.customer?.last_name || ""}`.toLowerCase();
         const plate = (job.vehicle?.license_plate || "").toLowerCase();
         const vin = (job.vehicle?.vin || "").toLowerCase();
-        const jobId = job.id.toLowerCase();
+        const jobId = (job.business_job_number || job.id).toLowerCase();
         return customerName.includes(term) || plate.includes(term) || vin.includes(term) || jobId.includes(term);
       });
     }
@@ -270,7 +270,7 @@ export default function ManagerJobsPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg font-semibold text-slate-900">
-                        #{job.id.slice(0, 8)} • {job.customer?.first_name} {job.customer?.last_name}
+                        #{job.business_job_number || job.id.slice(0, 8)} • {job.customer?.first_name} {job.customer?.last_name}
                       </CardTitle>
                       <p className="text-sm text-slate-600 mt-1">
                         {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model} 

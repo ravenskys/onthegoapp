@@ -16,6 +16,8 @@ import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, Fil
 // Types
 interface Job {
   id: string;
+  business_job_number: string | null;
+  service_number: number | null;
   status: string;
   priority: string;
   service_type: string;
@@ -36,6 +38,21 @@ interface JobService {
   estimated_hours: number | null;
   estimated_price: number | null;
   sort_order: number;
+}
+
+interface CatalogService {
+  id: string;
+  service_code: string | null;
+  service_name: string;
+  service_description: string | null;
+  default_duration_minutes: number | null;
+  default_price: number | null;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  account_number: string | null;
 }
 
 interface JobPart {
@@ -71,15 +88,31 @@ export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.jobId as string;
-
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const [selectedCatalogServiceId, setSelectedCatalogServiceId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [services, setServices] = useState<JobService[]>([]);
   const [parts, setParts] = useState<JobPart[]>([]);
+  const [newPartName, setNewPartName] = useState("");
+  const [newPartNumber, setNewPartNumber] = useState("");
+  const [newPartQuantity, setNewPartQuantity] = useState("1");
+  const [newPartUnitCost, setNewPartUnitCost] = useState("");
+  const [newPartUnitPrice, setNewPartUnitPrice] = useState("");
+  const [newPartSupplier, setNewPartSupplier] = useState("");
+  const [newPartNotes, setNewPartNotes] = useState("");
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<
+    Array<{
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+    }>
+    >([]);
   const [activeTab, setActiveTab] = useState("overview");
 
   // Form States
@@ -145,14 +178,61 @@ export default function JobDetailPage() {
         .order("created_at", { ascending: false });
       setNotes(notesData || []);
 
-      // 6. Fetch Technicians for dropdown
-      const { data: techRoles } = await supabase.from("user_roles").select("user_id").eq("role", "technician");
-      if (techRoles) {
-        const techIds = techRoles.map(t => t.user_id);
-        const { data: { users: techUsers } } = await supabase.auth.admin.listUsers();
-        const filteredTechs = techUsers?.filter(u => techIds.includes(u.id)) || [];
-        setTechnicians(filteredTechs);
+            // 6. Fetch Technicians for dropdown
+      const { data: techRoles, error: techRolesError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "technician");
+
+      if (techRolesError) throw techRolesError;
+
+      if (techRoles && techRoles.length > 0) {
+        const techIds = techRoles.map((t) => t.user_id);
+
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name, email")
+          .in("id", techIds);
+
+        if (profileError) throw profileError;
+
+        const technicianList = (profileData ?? []).sort((a, b) => {
+          const aName =
+            `${a.first_name ?? ""} ${a.last_name ?? ""}`.trim() || a.email || "";
+          const bName =
+            `${b.first_name ?? ""} ${b.last_name ?? ""}`.trim() || b.email || "";
+          return aName.localeCompare(bName);
+        });
+
+        setTechnicians(technicianList);
+      } else {
+        setTechnicians([]);
       }
+
+            // 7. Fetch active service catalog
+        const { data: catalogData, error: catalogError } = await supabase
+            .from("service_catalog")
+            .select(
+            "id, service_code, service_name, service_description, default_duration_minutes, default_price"
+            )
+            .eq("is_active", true)
+            .order("sort_order", { ascending: true })
+            .order("service_name", { ascending: true });
+
+        if (catalogError) throw catalogError;
+
+        setCatalogServices(catalogData ?? []);
+
+              // 8. Fetch active suppliers
+        const { data: supplierData, error: supplierError } = await supabase
+            .from("suppliers")
+            .select("id, name, account_number")
+            .eq("is_active", true)
+            .order("name", { ascending: true });
+
+        if (supplierError) throw supplierError;
+
+        setSuppliers(supplierData ?? []);
 
     } catch (error: any) {
       console.error("Error fetching job:", error);
@@ -161,6 +241,111 @@ export default function JobDetailPage() {
       setLoading(false);
     }
   };
+
+        const handleAddCatalogService = async () => {
+        if (!selectedCatalogServiceId) {
+            alert("Please select a service.");
+            return;
+        }
+
+        const catalogService = catalogServices.find(
+            (svc) => svc.id === selectedCatalogServiceId
+        );
+
+        if (!catalogService) {
+            alert("Selected service not found.");
+            return;
+        }
+
+        setSaving(true);
+
+        try {
+            const nextSortOrder =
+            services.length > 0
+                ? Math.max(...services.map((svc) => svc.sort_order || 0)) + 1
+                : 0;
+
+            const estimatedHours =
+            typeof catalogService.default_duration_minutes === "number"
+                ? Number((catalogService.default_duration_minutes / 60).toFixed(2))
+                : null;
+
+            const { data: insertedService, error } = await supabase
+            .from("job_services")
+            .insert({
+                job_id: jobId,
+                service_code: catalogService.service_code,
+                service_name: catalogService.service_name,
+                service_description: catalogService.service_description,
+                estimated_hours: estimatedHours,
+                estimated_price: catalogService.default_price,
+                sort_order: nextSortOrder,
+            })
+            .select(
+                "id, service_name, service_description, estimated_hours, estimated_price, sort_order"
+            )
+            .single();
+
+            if (error) throw error;
+
+            setServices((prev) => [...prev, insertedService]);
+            setSelectedCatalogServiceId("");
+        } catch (error: any) {
+            console.error(error);
+            alert(`Failed to add service: ${error.message || "Unknown error"}`);
+        } finally {
+            setSaving(false);
+        }
+        };
+
+        const handleAddPart = async () => {
+        if (!newPartName.trim()) {
+            alert("Please enter a part name.");
+            return;
+        }
+
+        const quantity = Number(newPartQuantity);
+        if (!quantity || quantity <= 0) {
+            alert("Please enter a valid quantity.");
+            return;
+        }
+
+        setSaving(true);
+
+        try {
+            const { data: insertedPart, error } = await supabase
+            .from("job_parts")
+            .insert({
+                job_id: jobId,
+                part_name: newPartName.trim(),
+                part_number: newPartNumber.trim() || null,
+                quantity,
+                unit_cost: newPartUnitCost ? Number(newPartUnitCost) : null,
+                unit_price: newPartUnitPrice ? Number(newPartUnitPrice) : null,
+                supplier: newPartSupplier || null,
+                notes: newPartNotes.trim() || null,
+            })
+            .select("id, part_name, part_number, quantity, unit_cost, unit_price, supplier")
+            .single();
+
+            if (error) throw error;
+
+            setParts((prev) => [...prev, insertedPart]);
+
+            setNewPartName("");
+            setNewPartNumber("");
+            setNewPartQuantity("1");
+            setNewPartUnitCost("");
+            setNewPartUnitPrice("");
+            setNewPartSupplier("");
+            setNewPartNotes("");
+        } catch (error: any) {
+            console.error(error);
+            alert(`Failed to add part: ${error.message || "Unknown error"}`);
+        } finally {
+            setSaving(false);
+        }
+        };
 
   const handleSaveJobDetails = async () => {
     setSaving(true);
@@ -225,7 +410,9 @@ export default function JobDetailPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Job #{job.id.slice(0, 8)}</h1>
+              <h1 className="text-3xl font-bold text-slate-900">
+                    Job #{job.business_job_number || job.id.slice(0, 8)}
+                    </h1>
               <p className="text-slate-600">
                 {job.customer?.first_name} {job.customer?.last_name} • {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model}
               </p>
@@ -242,11 +429,11 @@ export default function JobDetailPage() {
 
         {/* Overview Tab (Always Visible at Top) */}
         <Card>
-          <CardHeader>
-            <CardTitle>Job Overview</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            
+            <CardHeader>
+                <CardTitle>Job Overview</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+                            
             {/* Status & Priority */}
             <div className="space-y-2">
               <Label>Status</Label>
@@ -280,15 +467,27 @@ export default function JobDetailPage() {
             {/* Technician Assignment */}
             <div className="space-y-2">
               <Label>Assigned Technician</Label>
-              <Select value={assignedTechId || "unassigned"} onValueChange={(val) => setAssignedTechId(val === "unassigned" ? null : val)}>
+<Select
+  value={assignedTechId || "unassigned"}
+  onValueChange={(val) => setAssignedTechId(val === "unassigned" ? null : val)}
+>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Technician" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {technicians.map((tech) => (
-                    <SelectItem key={tech.id} value={tech.id}>{tech.email}</SelectItem>
-                  ))}
+                 {technicians.map((tech) => {
+                    const techName =
+                        `${tech.first_name ?? ""} ${tech.last_name ?? ""}`.trim() ||
+                        tech.email ||
+                        "Unnamed technician";
+
+                    return (
+                        <SelectItem key={tech.id} value={tech.id}>
+                        {techName}
+                        </SelectItem>
+                    );
+                    })}
                 </SelectContent>
               </Select>
             </div>
@@ -321,14 +520,102 @@ export default function JobDetailPage() {
             <TabsTrigger value="billing">Billing</TabsTrigger>
           </TabsList>
 
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Visit Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Service Type
+                    </div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {job?.service_type || "—"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Requested Date
+                    </div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {job?.requested_date
+                        ? new Date(job.requested_date).toLocaleDateString()
+                        : "—"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Assigned Technician
+                    </div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {(() => {
+                        const tech = technicians.find((t) => t.id === assignedTechId);
+                        if (!tech) return "Unassigned";
+                        return (
+                          `${tech.first_name ?? ""} ${tech.last_name ?? ""}`.trim() ||
+                          tech.email ||
+                          "Unnamed technician"
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Service Description
+                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+                      {job?.service_description || "—"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Notes
+                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+                      {job?.notes || "—"}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Services Tab */}
           <TabsContent value="services" className="mt-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Services Performed</CardTitle>
-                <Button size="sm" onClick={() => alert("Add Service Modal would open here")}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Service
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Select
+                        value={selectedCatalogServiceId}
+                        onValueChange={setSelectedCatalogServiceId}
+                    >
+                        <SelectTrigger className="w-full sm:w-[320px]">
+                        <SelectValue placeholder="Select service from catalog" />
+                        </SelectTrigger>
+                        <SelectContent>
+                        {catalogServices.map((service) => (
+                            <SelectItem key={service.id} value={service.id}>
+                            {service.service_name}
+                            </SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Button size="sm" onClick={handleAddCatalogService} disabled={saving}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Service
+                    </Button>
+                    </div>
               </CardHeader>
               <CardContent>
                 {services.length === 0 ? (
@@ -361,9 +648,71 @@ export default function JobDetailPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Parts Used</CardTitle>
-                <Button size="sm" onClick={() => alert("Add Part Modal would open here")}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Part
-                </Button>
+                <div className="grid w-full gap-3 md:grid-cols-2 lg:grid-cols-4">
+                    <Input
+                        placeholder="Part name"
+                        value={newPartName}
+                        onChange={(e) => setNewPartName(e.target.value)}
+                    />
+
+                    <Input
+                        placeholder="Part number"
+                        value={newPartNumber}
+                        onChange={(e) => setNewPartNumber(e.target.value)}
+                    />
+
+                    <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Qty"
+                        value={newPartQuantity}
+                        onChange={(e) => setNewPartQuantity(e.target.value)}
+                    />
+
+                    <Select value={newPartSupplier} onValueChange={setNewPartSupplier}>
+                        <SelectTrigger>
+                        <SelectValue placeholder="Source / Supplier" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {suppliers.map((supplier) => (
+                                <SelectItem key={supplier.id} value={supplier.name}>
+                                {supplier.name}
+                                </SelectItem>
+                            ))}
+                            </SelectContent>
+                    </Select>
+
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Unit cost"
+                        value={newPartUnitCost}
+                        onChange={(e) => setNewPartUnitCost(e.target.value)}
+                    />
+
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Unit price"
+                        value={newPartUnitPrice}
+                        onChange={(e) => setNewPartUnitPrice(e.target.value)}
+                    />
+
+                    <Input
+                        placeholder="Notes"
+                        value={newPartNotes}
+                        onChange={(e) => setNewPartNotes(e.target.value)}
+                        className="lg:col-span-2"
+                    />
+
+                    <Button size="sm" onClick={handleAddPart} disabled={saving}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Part
+                    </Button>
+                    </div>
               </CardHeader>
               <CardContent>
                 {parts.length === 0 ? (
@@ -371,22 +720,38 @@ export default function JobDetailPage() {
                 ) : (
                   <div className="space-y-3">
                     {parts.map((part) => (
-                      <div key={part.id} className="flex items-center justify-between p-4 border rounded-lg bg-slate-50">
+                        <div
+                        key={part.id}
+                        className="flex items-center justify-between rounded-lg border bg-slate-50 p-4"
+                        >
                         <div>
-                          <p className="font-semibold">{part.part_name}</p>
-                          {part.part_number && <p className="text-sm text-slate-600">SKU: {part.part_number}</p>}
-                          <div className="flex gap-4 mt-2 text-sm text-slate-500">
+                            <p className="font-semibold">{part.part_name}</p>
+
+                            {part.part_number && (
+                            <p className="text-sm text-slate-600">Part #: {part.part_number}</p>
+                            )}
+
+                            {part.supplier && (
+                            <p className="text-sm text-slate-600">Source: {part.supplier}</p>
+                            )}
+
+                            <div className="mt-2 flex gap-4 text-sm text-slate-500">
                             <span>Qty: {part.quantity}</span>
                             <span>Cost: ${part.unit_cost?.toFixed(2) || "-"}</span>
                             <span>Price: ${part.unit_price?.toFixed(2) || "-"}</span>
-                          </div>
+                            </div>
                         </div>
-                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
+
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:text-red-700"
+                        >
+                            <Trash2 className="h-4 w-4" />
                         </Button>
-                      </div>
+                        </div>
                     ))}
-                  </div>
+                    </div>
                 )}
               </CardContent>
             </Card>
