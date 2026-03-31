@@ -16,6 +16,7 @@ import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, Fil
 // Types
 interface Job {
   id: string;
+  estimate_id: string | null;
   business_job_number: string | null;
   service_number: number | null;
   status: string;
@@ -94,6 +95,11 @@ export default function JobDetailPage() {
   const [saving, setSaving] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [services, setServices] = useState<JobService[]>([]);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editServiceName, setEditServiceName] = useState("");
+  const [editServiceDescription, setEditServiceDescription] = useState("");
+  const [editServiceEstimatedHours, setEditServiceEstimatedHours] = useState("");
+  const [editServiceEstimatedPrice, setEditServiceEstimatedPrice] = useState("");
   const [parts, setParts] = useState<JobPart[]>([]);
   const [newPartName, setNewPartName] = useState("");
   const [newPartNumber, setNewPartNumber] = useState("");
@@ -102,6 +108,16 @@ export default function JobDetailPage() {
   const [newPartUnitPrice, setNewPartUnitPrice] = useState("");
   const [newPartSupplier, setNewPartSupplier] = useState("");
   const [newPartNotes, setNewPartNotes] = useState("");
+  const [editingPartId, setEditingPartId] = useState<string | null>(null);
+  const [editPartName, setEditPartName] = useState("");
+  const [editPartNumber, setEditPartNumber] = useState("");
+  const [editPartQuantity, setEditPartQuantity] = useState("1");
+  const [editPartUnitCost, setEditPartUnitCost] = useState("");
+  const [editPartUnitPrice, setEditPartUnitPrice] = useState("");
+  const [editPartSupplier, setEditPartSupplier] = useState("");
+  const [editPartNotes, setEditPartNotes] = useState("");
+  const [estimateId, setEstimateId] = useState<string | null>(null);
+  const [estimateTotal, setEstimateTotal] = useState<number | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -122,6 +138,18 @@ export default function JobDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("internal");
 
+  const servicesSubtotal = services.reduce(
+    (sum, service) => sum + (service.estimated_price ?? 0),
+    0
+  );
+
+  const partsSubtotal = parts.reduce(
+    (sum, part) => sum + ((part.unit_price ?? 0) * (part.quantity ?? 0)),
+    0
+  );
+
+  const jobSubtotal = servicesSubtotal + partsSubtotal;
+
   useEffect(() => {
     if (!jobId) return;
     fetchJobData();
@@ -141,11 +169,12 @@ export default function JobDetailPage() {
         .eq("id", jobId)
         .single();
 
-      if (jobError) throw jobError;
-      setJob(jobData);
-      setStatus(jobData.status);
-      setPriority(jobData.priority);
-      setAssignedTechId(jobData.assigned_tech_user_id);
+        if (jobError) throw jobError;
+        setJob(jobData);
+        setEstimateId(jobData.estimate_id ?? null);
+        setStatus(jobData.status);
+        setPriority(jobData.priority);
+        setAssignedTechId(jobData.assigned_tech_user_id);
 
       // 2. Fetch Services
       const { data: servicesData } = await supabase
@@ -299,10 +328,10 @@ export default function JobDetailPage() {
         };
 
         const handleAddPart = async () => {
-        if (!newPartName.trim()) {
+          if (!newPartName.trim()) {
             alert("Please enter a part name.");
             return;
-        }
+          }
 
         const quantity = Number(newPartQuantity);
         if (!quantity || quantity <= 0) {
@@ -347,47 +376,339 @@ export default function JobDetailPage() {
         }
         };
 
-  const handleSaveJobDetails = async () => {
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          status,
-          priority,
-          assigned_tech_user_id: assignedTechId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
+        const handleDeletePart = async (partId: string) => {
+          const confirmed = window.confirm("Delete this part from the job?");
+          if (!confirmed) return;
 
-      if (error) throw error;
-      alert("Job details updated!");
-      fetchJobData(); // Refresh
-    } catch (error: any) {
-      console.error("Error updating job:", error);
-      alert("Failed to update job.");
-    } finally {
-      setSaving(false);
-    }
-  };
+          setSaving(true);
 
-  const handleAddNote = async () => {
-    if (!newNote.trim()) return;
-    try {
-      const { error } = await supabase.from("job_notes").insert({
-        job_id: jobId,
-        note: newNote,
-        note_type: noteType,
-        created_by_user_id: (await supabase.auth.getUser()).data.user?.id,
-      });
-      if (error) throw error;
-      setNewNote("");
-      fetchJobData();
-    } catch (error: any) {
-      console.error("Error adding note:", error);
-      alert("Failed to add note.");
-    }
-  };
+          try {
+            const { error } = await supabase
+              .from("job_parts")
+              .delete()
+              .eq("id", partId);
+
+            if (error) throw error;
+
+            setParts((prev) => prev.filter((part) => part.id !== partId));
+          } catch (error: any) {
+            console.error(error);
+            alert(`Failed to delete part: ${error.message || "Unknown error"}`);
+          } finally {
+            setSaving(false);
+          }
+        };
+
+      const handleDeleteService = async (serviceId: string) => {
+        const confirmed = window.confirm("Delete this service from the job?");
+        if (!confirmed) return;
+
+        setSaving(true);
+
+        try {
+          const { error } = await supabase
+            .from("job_services")
+            .delete()
+            .eq("id", serviceId);
+
+          if (error) throw error;
+
+          setServices((prev) => prev.filter((service) => service.id !== serviceId));
+        } catch (error: any) {
+          console.error(error);
+          alert(`Failed to delete service: ${error.message || "Unknown error"}`);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleStartEditService = (service: JobService) => {
+        setEditingServiceId(service.id);
+        setEditServiceName(service.service_name || "");
+        setEditServiceDescription(service.service_description || "");
+        setEditServiceEstimatedHours(
+          typeof service.estimated_hours === "number"
+            ? String(service.estimated_hours)
+            : ""
+        );
+        setEditServiceEstimatedPrice(
+          typeof service.estimated_price === "number"
+            ? String(service.estimated_price)
+            : ""
+        );
+      };
+
+      const handleSaveEditService = async () => {
+        if (!editingServiceId) return;
+
+        if (!editServiceName.trim()) {
+          alert("Please enter a service name.");
+          return;
+        }
+
+        setSaving(true);
+
+        try {
+          const { data: updatedService, error } = await supabase
+            .from("job_services")
+            .update({
+              service_name: editServiceName.trim(),
+              service_description: editServiceDescription.trim() || null,
+              estimated_hours: editServiceEstimatedHours
+                ? Number(editServiceEstimatedHours)
+                : null,
+              estimated_price: editServiceEstimatedPrice
+                ? Number(editServiceEstimatedPrice)
+                : null,
+            })
+            .eq("id", editingServiceId)
+            .select(
+              "id, service_name, service_description, estimated_hours, estimated_price, sort_order"
+            )
+            .single();
+
+          if (error) throw error;
+
+          setServices((prev) =>
+            prev.map((service) =>
+              service.id === editingServiceId ? updatedService : service
+            )
+          );
+
+          setEditingServiceId(null);
+          setEditServiceName("");
+          setEditServiceDescription("");
+          setEditServiceEstimatedHours("");
+          setEditServiceEstimatedPrice("");
+        } catch (error: any) {
+          console.error(error);
+          alert(`Failed to update service: ${error.message || "Unknown error"}`);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleCancelEditService = () => {
+        setEditingServiceId(null);
+        setEditServiceName("");
+        setEditServiceDescription("");
+        setEditServiceEstimatedHours("");
+        setEditServiceEstimatedPrice("");
+      };
+
+      const handleStartEditPart = (part: JobPart) => {
+        setEditingPartId(part.id);
+        setEditPartName(part.part_name || "");
+        setEditPartNumber(part.part_number || "");
+        setEditPartQuantity(String(part.quantity ?? 1));
+        setEditPartUnitCost(
+          typeof part.unit_cost === "number" ? String(part.unit_cost) : ""
+        );
+        setEditPartUnitPrice(
+          typeof part.unit_price === "number" ? String(part.unit_price) : ""
+        );
+        setEditPartSupplier(part.supplier || "");
+        setEditPartNotes("");
+      };
+
+      const handleSaveEditPart = async () => {
+        if (!editingPartId) return;
+
+        if (!editPartName.trim()) {
+          alert("Please enter a part name.");
+          return;
+        }
+
+        const quantity = Number(editPartQuantity);
+        if (!quantity || quantity <= 0) {
+          alert("Please enter a valid quantity.");
+          return;
+        }
+
+        setSaving(true);
+
+        try {
+          const { data: updatedPart, error } = await supabase
+            .from("job_parts")
+            .update({
+              part_name: editPartName.trim(),
+              part_number: editPartNumber.trim() || null,
+              quantity,
+              unit_cost: editPartUnitCost ? Number(editPartUnitCost) : null,
+              unit_price: editPartUnitPrice ? Number(editPartUnitPrice) : null,
+              supplier: editPartSupplier || null,
+              notes: editPartNotes.trim() || null,
+            })
+            .eq("id", editingPartId)
+            .select("id, part_name, part_number, quantity, unit_cost, unit_price, supplier")
+            .single();
+
+          if (error) throw error;
+
+          setParts((prev) =>
+            prev.map((part) => (part.id === editingPartId ? updatedPart : part))
+          );
+
+          setEditingPartId(null);
+          setEditPartName("");
+          setEditPartNumber("");
+          setEditPartQuantity("1");
+          setEditPartUnitCost("");
+          setEditPartUnitPrice("");
+          setEditPartSupplier("");
+          setEditPartNotes("");
+        } catch (error: any) {
+          console.error(error);
+          alert(`Failed to update part: ${error.message || "Unknown error"}`);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleCancelEditPart = () => {
+        setEditingPartId(null);
+        setEditPartName("");
+        setEditPartNumber("");
+        setEditPartQuantity("1");
+        setEditPartUnitCost("");
+        setEditPartUnitPrice("");
+        setEditPartSupplier("");
+        setEditPartNotes("");
+      };
+
+      const handleSaveJobDetails = async () => {
+        setSaving(true);
+        try {
+          const { error } = await supabase
+            .from("jobs")
+            .update({
+              status,
+              priority,
+              assigned_tech_user_id: assignedTechId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", jobId);
+
+          if (error) throw error;
+          alert("Job details updated!");
+          fetchJobData(); // Refresh
+        } catch (error: any) {
+          console.error("Error updating job:", error);
+          alert("Failed to update job.");
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleAddNote = async () => {
+        if (!newNote.trim()) return;
+        try {
+          const { error } = await supabase.from("job_notes").insert({
+            job_id: jobId,
+            note: newNote,
+            note_type: noteType,
+            created_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+          });
+          if (error) throw error;
+          setNewNote("");
+          fetchJobData();
+        } catch (error: any) {
+          console.error("Error adding note:", error);
+          alert("Failed to add note.");
+        }
+      };
+
+      const handleCreateEstimate = async () => {
+        if (!job) {
+          alert("Job not loaded.");
+          return;
+        }
+
+        if (estimateId) {
+          alert("An estimate already exists for this job.");
+          return;
+        }
+
+        setSaving(true);
+
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          const { data: createdEstimate, error: estimateError } = await supabase
+            .from("estimates")
+            .insert({
+              job_id: job.id,
+              customer_id: (job as any).customer_id ?? null,
+              vehicle_id: (job as any).vehicle_id ?? null,
+              estimate_status: "draft",
+              subtotal: jobSubtotal,
+              tax_total: 0,
+              total_amount: jobSubtotal,
+              created_by_user_id: user?.id ?? null,
+              notes: `Generated from job ${job.business_job_number || job.id}`,
+            })
+            .select("id")
+            .single();
+
+          if (estimateError) throw estimateError;
+
+          const lineItems = [
+            ...services.map((service, index) => ({
+              estimate_id: createdEstimate.id,
+              line_type: "service",
+              description: service.service_name,
+              quantity: 1,
+              unit_price: service.estimated_price ?? 0,
+              unit_cost: null,
+              taxable: true,
+              sort_order: index,
+              notes: service.service_description ?? null,
+            })),
+            ...parts.map((part, index) => ({
+              estimate_id: createdEstimate.id,
+              line_type: "part",
+              description: part.part_name,
+              quantity: part.quantity ?? 1,
+              unit_price: part.unit_price ?? 0,
+              unit_cost: part.unit_cost ?? null,
+              taxable: true,
+              sort_order: services.length + index,
+              notes: part.part_number
+                ? `Part #: ${part.part_number}${part.supplier ? ` | Source: ${part.supplier}` : ""}`
+                : part.supplier
+                  ? `Source: ${part.supplier}`
+                  : null,
+            })),
+          ];
+
+          if (lineItems.length > 0) {
+            const { error: lineItemsError } = await supabase
+              .from("estimate_line_items")
+              .insert(lineItems);
+
+            if (lineItemsError) throw lineItemsError;
+          }
+
+          const { error: jobUpdateError } = await supabase
+            .from("jobs")
+            .update({ estimate_id: createdEstimate.id })
+            .eq("id", job.id);
+
+          if (jobUpdateError) throw jobUpdateError;
+
+          setEstimateId(createdEstimate.id);
+          setJob((prev) => (prev ? { ...prev, estimate_id: createdEstimate.id } : prev));
+
+          alert("Estimate created successfully.");
+        } catch (error: any) {
+          console.error(error);
+          alert(`Failed to create estimate: ${error.message || "Unknown error"}`);
+        } finally {
+          setSaving(false);
+        }
+      };
 
   if (loading) {
     return (
@@ -467,10 +788,10 @@ export default function JobDetailPage() {
             {/* Technician Assignment */}
             <div className="space-y-2">
               <Label>Assigned Technician</Label>
-<Select
-  value={assignedTechId || "unassigned"}
-  onValueChange={(val) => setAssignedTechId(val === "unassigned" ? null : val)}
->
+                <Select
+                  value={assignedTechId || "unassigned"}
+                  onValueChange={(val) => setAssignedTechId(val === "unassigned" ? null : val)}
+                >
                 <SelectTrigger>
                   <SelectValue placeholder="Select Technician" />
                 </SelectTrigger>
@@ -595,46 +916,160 @@ export default function JobDetailPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Services Performed</CardTitle>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Select
-                        value={selectedCatalogServiceId}
-                        onValueChange={setSelectedCatalogServiceId}
-                    >
-                        <SelectTrigger className="w-full sm:w-[320px]">
-                        <SelectValue placeholder="Select service from catalog" />
-                        </SelectTrigger>
-                        <SelectContent>
-                        {catalogServices.map((service) => (
-                            <SelectItem key={service.id} value={service.id}>
-                            {service.service_name}
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
+                  <Select
+                    value={selectedCatalogServiceId}
+                    onValueChange={setSelectedCatalogServiceId}
+                  >
+                    <SelectTrigger className="w-full sm:w-[320px]">
+                      <SelectValue placeholder="Select service from catalog" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {catalogServices.map((service) => (
+                        <SelectItem key={service.id} value={service.id}>
+                          {service.service_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                    <Button size="sm" onClick={handleAddCatalogService} disabled={saving}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Service
-                    </Button>
-                    </div>
+                  <Button size="sm" onClick={handleAddCatalogService} disabled={saving}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Service
+                  </Button>
+                </div>
               </CardHeader>
+
               <CardContent>
                 {services.length === 0 ? (
-                  <p className="text-slate-500 text-center py-4">No services added yet.</p>
+                  <p className="py-4 text-center text-slate-500">No services added yet.</p>
                 ) : (
                   <div className="space-y-3">
                     {services.map((svc) => (
-                      <div key={svc.id} className="flex items-center justify-between p-4 border rounded-lg bg-slate-50">
-                        <div>
-                          <p className="font-semibold">{svc.service_name}</p>
-                          {svc.service_description && <p className="text-sm text-slate-600">{svc.service_description}</p>}
-                          <div className="flex gap-4 mt-2 text-sm text-slate-500">
-                            <span>Est. Hours: {svc.estimated_hours || "-"}</span>
-                            <span>Est. Price: ${svc.estimated_price?.toFixed(2) || "-"}</span>
-                          </div>
+                      <div
+                        key={svc.id}
+                        className="flex items-center justify-between rounded-lg border bg-slate-50 p-4"
+                      >
+                        <div className="flex-1">
+                          {editingServiceId === svc.id ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <Input
+                                placeholder="Service name"
+                                value={editServiceName}
+                                onChange={(e) => setEditServiceName(e.target.value)}
+                              />
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Estimated hours"
+                                value={editServiceEstimatedHours}
+                                onChange={(e) =>
+                                  setEditServiceEstimatedHours(e.target.value)
+                                }
+                              />
+
+                              <Textarea
+                                placeholder="Service description"
+                                value={editServiceDescription}
+                                onChange={(e) =>
+                                  setEditServiceDescription(e.target.value)
+                                }
+                                className="md:col-span-2"
+                              />
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Estimated price"
+                                value={editServiceEstimatedPrice}
+                                onChange={(e) =>
+                                  setEditServiceEstimatedPrice(e.target.value)
+                                }
+                              />
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="font-semibold">{svc.service_name}</p>
+                              {svc.service_description && (
+                                <p className="text-sm text-slate-600">
+                                  {svc.service_description}
+                                </p>
+                              )}
+                              <div className="mt-2 flex gap-4 text-sm text-slate-500">
+                                <span>Est. Hours: {svc.estimated_hours || "-"}</span>
+                                <span>
+                                  Est. Price: ${svc.estimated_price?.toFixed(2) || "-"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+
+                        <div className="flex items-center gap-2">
+                          {editingServiceId === svc.id ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleSaveEditService();
+                                }}
+                                disabled={saving}
+                              >
+                                Save
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleCancelEditService();
+                                }}
+                                disabled={saving}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleStartEditService(svc);
+                                }}
+                                disabled={saving}
+                              >
+                                Edit
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:text-red-700"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeleteService(svc.id);
+                                }}
+                                disabled={saving}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -642,7 +1077,7 @@ export default function JobDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-
+          
           {/* Parts Tab */}
           <TabsContent value="parts" className="mt-6">
             <Card>
@@ -724,31 +1159,145 @@ export default function JobDetailPage() {
                         key={part.id}
                         className="flex items-center justify-between rounded-lg border bg-slate-50 p-4"
                         >
-                        <div>
-                            <p className="font-semibold">{part.part_name}</p>
+                        <div className="flex-1">
+                          {editingPartId === part.id ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <Input
+                                placeholder="Part name"
+                                value={editPartName}
+                                onChange={(e) => setEditPartName(e.target.value)}
+                              />
 
-                            {part.part_number && (
-                            <p className="text-sm text-slate-600">Part #: {part.part_number}</p>
-                            )}
+                              <Input
+                                placeholder="Part number"
+                                value={editPartNumber}
+                                onChange={(e) => setEditPartNumber(e.target.value)}
+                              />
 
-                            {part.supplier && (
-                            <p className="text-sm text-slate-600">Source: {part.supplier}</p>
-                            )}
+                              <Input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                placeholder="Qty"
+                                value={editPartQuantity}
+                                onChange={(e) => setEditPartQuantity(e.target.value)}
+                              />
 
-                            <div className="mt-2 flex gap-4 text-sm text-slate-500">
-                            <span>Qty: {part.quantity}</span>
-                            <span>Cost: ${part.unit_cost?.toFixed(2) || "-"}</span>
-                            <span>Price: ${part.unit_price?.toFixed(2) || "-"}</span>
+                              <Select value={editPartSupplier} onValueChange={setEditPartSupplier}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Source / Supplier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {suppliers.map((supplier) => (
+                                    <SelectItem key={supplier.id} value={supplier.name}>
+                                      {supplier.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Unit cost"
+                                value={editPartUnitCost}
+                                onChange={(e) => setEditPartUnitCost(e.target.value)}
+                              />
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Unit price"
+                                value={editPartUnitPrice}
+                                onChange={(e) => setEditPartUnitPrice(e.target.value)}
+                              />
                             </div>
+                          ) : (
+                            <div>
+                              <p className="font-semibold">{part.part_name}</p>
+
+                              {part.part_number && (
+                                <p className="text-sm text-slate-600">Part #: {part.part_number}</p>
+                              )}
+
+                              {part.supplier && (
+                                <p className="text-sm text-slate-600">Source: {part.supplier}</p>
+                              )}
+
+                              <div className="mt-2 flex gap-4 text-sm text-slate-500">
+                                <span>Qty: {part.quantity}</span>
+                                <span>Cost: ${part.unit_cost?.toFixed(2) || "-"}</span>
+                                <span>Price: ${part.unit_price?.toFixed(2) || "-"}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-500 hover:text-red-700"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {editingPartId === part.id ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleSaveEditPart();
+                                }}
+                                disabled={saving}
+                              >
+                                Save
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleCancelEditPart();
+                                }}
+                                disabled={saving}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleStartEditPart(part);
+                                }}
+                                disabled={saving}
+                              >
+                                Edit
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:text-red-700"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeletePart(part.id);
+                                }}
+                                disabled={saving}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                         </div>
                     ))}
                     </div>
@@ -833,18 +1382,55 @@ export default function JobDetailPage() {
             </Card>
           </TabsContent>
 
-          {/* Billing Tab (Placeholder) */}
+          {/* Billing Tab */}
           <TabsContent value="billing" className="mt-6">
             <Card>
               <CardHeader>
                 <CardTitle>Billing & Estimates</CardTitle>
               </CardHeader>
-              <CardContent className="text-center py-8 text-slate-500">
-                <DollarSign className="mx-auto h-12 w-12 text-slate-300 mb-4" />
-                <p>Estimates and Invoices will appear here once generated.</p>
-                <Button className="mt-4" variant="outline" onClick={() => alert("Create Estimate Modal would open here")}>
-                  Create Estimate
-                </Button>
+
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Services Subtotal
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-slate-900">
+                      ${servicesSubtotal.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Parts Subtotal
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-slate-900">
+                      ${partsSubtotal.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Job Subtotal
+                    </div>
+                    <div className="mt-2 text-2xl font-bold text-slate-900">
+                      ${jobSubtotal.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-dashed p-6 text-center text-slate-500">
+                  <DollarSign className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+                  <p>Estimate and invoice generation can be wired next.</p>
+                  <Button
+                    className="mt-4"
+                    variant="outline"
+                    onClick={handleCreateEstimate}
+                    disabled={saving || !!estimateId}
+                  >
+                    {estimateId ? "Estimate Created" : "Create Estimate"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
