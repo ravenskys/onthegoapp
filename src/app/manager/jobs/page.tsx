@@ -97,18 +97,20 @@ export default function ManagerJobsPage() {
 
       if (jobsError) throw jobsError;
 
-      // Enrich jobs with technician info
-      const enrichedJobs = await Promise.all(
+     const enrichedJobs = await Promise.all(
         (jobsData || []).map(async (job) => {
           let assigned_tech = null;
+
           if (job.assigned_tech_user_id) {
-            const { data: techUser } = await supabase
-              .from("auth.users")
-              .select("id, email")
+            const { data: techProfile } = await supabase
+              .from("profiles")
+              .select("id, first_name, last_name, email")
               .eq("id", job.assigned_tech_user_id)
               .single();
-            assigned_tech = techUser;
+
+            assigned_tech = techProfile;
           }
+
           return { ...job, assigned_tech };
         })
       );
@@ -295,8 +297,11 @@ export default function ManagerJobsPage() {
                     </div>
                     <div>
                       <span className="font-medium text-slate-700">Assigned To:</span>{" "}
-                      {job.assigned_tech?.email ? (
-                        <span className="text-blue-600">{job.assigned_tech.email}</span>
+                      {job.assigned_tech ? (
+                        <span className="text-blue-600">
+                          {`${job.assigned_tech.first_name ?? ""} ${job.assigned_tech.last_name ?? ""}`.trim() ||
+                            job.assigned_tech.email}
+                        </span>
                       ) : (
                         <span className="text-orange-600 italic">Unassigned</span>
                       )}
