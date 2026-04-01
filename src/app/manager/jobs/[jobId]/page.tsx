@@ -118,6 +118,28 @@ export default function JobDetailPage() {
   const [editPartNotes, setEditPartNotes] = useState("");
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [estimateTotal, setEstimateTotal] = useState<number | null>(null);
+  const [estimate, setEstimate] = useState<{
+  id: string;
+  estimate_number: string | null;
+  estimate_status: string;
+  subtotal: number | null;
+  tax_total: number | null;
+  total_amount: number | null;
+} | null>(null);
+
+const [estimateLineItems, setEstimateLineItems] = useState<
+  Array<{
+    id: string;
+    line_type: string;
+    description: string;
+    quantity: number;
+    unit_price: number | null;
+    unit_cost: number | null;
+    notes: string | null;
+  }>
+>([]);
+  const [serviceTaxRate, setServiceTaxRate] = useState("0");
+  const [partsTaxRate, setPartsTaxRate] = useState("0");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -150,6 +172,11 @@ export default function JobDetailPage() {
 
   const jobSubtotal = servicesSubtotal + partsSubtotal;
 
+  const serviceTaxTotal = servicesSubtotal * (Number(serviceTaxRate || "0") / 100);
+  const partsTaxTotal = partsSubtotal * (Number(partsTaxRate || "0") / 100);
+  const combinedTaxTotal = serviceTaxTotal + partsTaxTotal;
+  const jobGrandTotal = jobSubtotal + combinedTaxTotal;
+
   useEffect(() => {
     if (!jobId) return;
     fetchJobData();
@@ -175,6 +202,35 @@ export default function JobDetailPage() {
         setStatus(jobData.status);
         setPriority(jobData.priority);
         setAssignedTechId(jobData.assigned_tech_user_id);
+
+        if (jobData.estimate_id) {
+        const { data: estimateData, error: estimateError } = await supabase
+          .from("estimates")
+          .select("id, estimate_number, estimate_status, subtotal, tax_total, total_amount")
+          .eq("id", jobData.estimate_id)
+          .single();
+
+        if (estimateError) throw estimateError;
+
+        setEstimate(estimateData);
+          if ((estimateData.tax_total ?? 0) > 0 && (estimateData.subtotal ?? 0) > 0) {
+            const blendedRate = ((estimateData.tax_total ?? 0) / (estimateData.subtotal ?? 1)) * 100;
+            setPartsTaxRate(blendedRate.toFixed(2));
+          }
+
+        const { data: lineItemsData, error: lineItemsError } = await supabase
+          .from("estimate_line_items")
+          .select("id, line_type, description, quantity, unit_price, unit_cost, notes")
+          .eq("estimate_id", jobData.estimate_id)
+          .order("sort_order", { ascending: true });
+
+        if (lineItemsError) throw lineItemsError;
+
+        setEstimateLineItems(lineItemsData ?? []);
+      } else {
+        setEstimate(null);
+        setEstimateLineItems([]);
+      }
 
       // 2. Fetch Services
       const { data: servicesData } = await supabase
@@ -701,6 +757,26 @@ export default function JobDetailPage() {
           setEstimateId(createdEstimate.id);
           setJob((prev) => (prev ? { ...prev, estimate_id: createdEstimate.id } : prev));
 
+          const { data: estimateData, error: estimateFetchError } = await supabase
+            .from("estimates")
+            .select("id, estimate_number, estimate_status, subtotal, tax_total, total_amount")
+            .eq("id", createdEstimate.id)
+            .single();
+
+          if (estimateFetchError) throw estimateFetchError;
+
+          setEstimate(estimateData);
+
+          const { data: lineItemsData, error: lineItemsFetchError } = await supabase
+            .from("estimate_line_items")
+            .select("id, line_type, description, quantity, unit_price, unit_cost, notes")
+            .eq("estimate_id", createdEstimate.id)
+            .order("sort_order", { ascending: true });
+
+          if (lineItemsFetchError) throw lineItemsFetchError;
+
+          setEstimateLineItems(lineItemsData ?? []);
+
           alert("Estimate created successfully.");
         } catch (error: any) {
           console.error(error);
@@ -709,6 +785,38 @@ export default function JobDetailPage() {
           setSaving(false);
         }
       };
+
+      const handleSaveEstimateTaxes = async () => {
+        if (!estimateId) {
+          alert("Create an estimate first.");
+          return;
+        }
+
+        setSaving(true);
+
+        try {
+          const { data: updatedEstimate, error } = await supabase
+            .from("estimates")
+            .update({
+              subtotal: jobSubtotal,
+              tax_total: combinedTaxTotal,
+              total_amount: jobGrandTotal,
+            })
+            .eq("id", estimateId)
+            .select("id, estimate_number, estimate_status, subtotal, tax_total, total_amount")
+            .single();
+
+          if (error) throw error;
+
+          setEstimate(updatedEstimate);
+          alert("Estimate taxes updated.");
+        } catch (error: any) {
+          console.error(error);
+          alert(`Failed to update estimate taxes: ${error.message || "Unknown error"}`);
+        } finally {
+          setSaving(false);
+        }
+      };   
 
   if (loading) {
     return (
@@ -1419,17 +1527,180 @@ export default function JobDetailPage() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-dashed p-6 text-center text-slate-500">
-                  <DollarSign className="mx-auto mb-4 h-12 w-12 text-slate-300" />
-                  <p>Estimate and invoice generation can be wired next.</p>
-                  <Button
-                    className="mt-4"
-                    variant="outline"
-                    onClick={handleCreateEstimate}
-                    disabled={saving || !!estimateId}
-                  >
-                    {estimateId ? "Estimate Created" : "Create Estimate"}
-                  </Button>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Service Tax %
+                    </div>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={serviceTaxRate}
+                      onChange={(e) => setServiceTaxRate(e.target.value)}
+                      className="mt-3"
+                    />
+                    <div className="mt-3 text-sm text-slate-600">
+                      Service Tax Total: ${serviceTaxTotal.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Parts Tax %
+                    </div>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={partsTaxRate}
+                      onChange={(e) => setPartsTaxRate(e.target.value)}
+                      className="mt-3"
+                    />
+                    <div className="mt-3 text-sm text-slate-600">
+                      Parts Tax Total: ${partsTaxTotal.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border p-4">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        Estimate
+                      </div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        {estimate
+                          ? `Status: ${estimate.estimate_status}`
+                          : "No estimate created yet."}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        variant="outline"
+                        onClick={handleCreateEstimate}
+                        disabled={saving || !!estimateId}
+                      >
+                        {estimateId ? "Estimate Created" : "Create Estimate"}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        onClick={handleSaveEstimateTaxes}
+                        disabled={saving || !estimateId}
+                      >
+                        Save Tax Changes
+                      </Button>
+                    </div>
+                  </div>
+
+                  {estimate && (
+                    <div className="mt-6 space-y-6">
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Estimate Number
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            {estimate.estimate_number || "—"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Subtotal
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            ${(estimate.subtotal ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Tax
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            ${combinedTaxTotal.toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Total
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            ${jobGrandTotal.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Service Tax Total
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            ${serviceTaxTotal.toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Parts Tax Total
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            ${partsTaxTotal.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-3 text-sm font-semibold text-slate-900">
+                          Estimate Line Items
+                        </div>
+
+                        {estimateLineItems.length === 0 ? (
+                          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">
+                            No line items found.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {estimateLineItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex items-start justify-between rounded-lg border bg-slate-50 p-4"
+                              >
+                                <div>
+                                  <div className="font-medium text-slate-900">
+                                    {item.description}
+                                  </div>
+                                  <div className="mt-1 text-sm text-slate-500">
+                                    Type: {item.line_type} • Qty: {item.quantity}
+                                  </div>
+                                  {item.notes && (
+                                    <div className="mt-1 text-sm text-slate-600">
+                                      {item.notes}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="text-right text-sm text-slate-700">
+                                  <div>
+                                    Unit Price: ${(item.unit_price ?? 0).toFixed(2)}
+                                  </div>
+                                  <div>
+                                    Line Total: $
+                                    {((item.unit_price ?? 0) * (item.quantity ?? 0)).toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
