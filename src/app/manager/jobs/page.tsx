@@ -41,9 +41,11 @@ interface Job {
     vin: string;
   } | null;
   assigned_tech: {
-    id: string;
-    email: string;
-  } | null;
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+} | null;
 }
 
 export default function ManagerJobsPage() {

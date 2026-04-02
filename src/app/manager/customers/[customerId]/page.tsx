@@ -1,0 +1,344 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, ArrowLeft, Save, Plus } from "lucide-react";
+
+type Customer = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  tax_exempt: boolean;
+};
+
+type Vehicle = {
+  id: string;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  license_plate: string | null;
+  vin: string | null;
+};
+
+export default function CustomerDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const customerId = params.customerId as string;
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [newVehicleYear, setNewVehicleYear] = useState("");
+  const [newVehicleMake, setNewVehicleMake] = useState("");
+  const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [newVehiclePlate, setNewVehiclePlate] = useState("");
+  const [newVehicleVin, setNewVehicleVin] = useState("");
+  
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [taxExempt, setTaxExempt] = useState(false);
+
+  useEffect(() => {
+    if (!customerId) return;
+    fetchCustomer();
+  }, [customerId]);
+
+  const fetchCustomer = async () => {
+  setLoading(true);
+
+  try {
+    console.log("Loading customer page for customerId:", customerId);
+
+    const { data: customerData, error: customerError } = await supabase
+      .from("customers")
+      .select("id, first_name, last_name, email, phone, tax_exempt")
+      .eq("id", customerId)
+      .single();
+
+    if (customerError) {
+      console.error("Customer query failed", customerError);
+      throw customerError;
+    }
+
+    setCustomer(customerData);
+    setFirstName(customerData.first_name ?? "");
+    setLastName(customerData.last_name ?? "");
+    setEmail(customerData.email ?? "");
+    setPhone(customerData.phone ?? "");
+    setTaxExempt(customerData.tax_exempt ?? false);
+
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from("vehicles")
+      .select("id, year, make, model, license_plate, vin")
+      .eq("customer_id", customerId)
+      .order("year", { ascending: false });
+
+    if (vehicleError) {
+      console.error("Vehicle query failed", vehicleError);
+      throw vehicleError;
+    }
+
+    setVehicles(vehicleData ?? []);
+  } catch (error: any) {
+    console.error("Error loading customer:", {
+      message: error?.message,
+      details: error?.details,
+      hint: error?.hint,
+      code: error?.code,
+      full: error,
+      customerId,
+    });
+    alert(`Failed to load customer: ${error?.message || "Unknown error"}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const handleSaveCustomer = async () => {
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .update({
+          first_name: firstName.trim() || null,
+          last_name: lastName.trim() || null,
+          email: email.trim() || null,
+          phone: phone.trim() || null,
+          tax_exempt: taxExempt,
+        })
+        .eq("id", customerId);
+
+      if (error) throw error;
+
+      alert("Customer updated.");
+      fetchCustomer();
+    } catch (error: any) {
+      console.error("Error saving customer:", error);
+      alert("Failed to save customer.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
+      </div>
+    );
+  }
+
+  if (!customer) {
+    return <div className="p-8 text-center text-red-600">Customer not found.</div>;
+  }
+
+  const handleAddVehicle = async () => {
+  if (!customerId) return;
+
+  if (!newVehicleMake.trim() && !newVehicleModel.trim() && !newVehicleVin.trim()) {
+    alert("Please enter at least basic vehicle information.");
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    const { error } = await supabase.from("vehicles").insert({
+      customer_id: customerId,
+      year: newVehicleYear ? Number(newVehicleYear) : null,
+      make: newVehicleMake.trim() || null,
+      model: newVehicleModel.trim() || null,
+      license_plate: newVehiclePlate.trim() || null,
+      vin: newVehicleVin.trim() || null,
+    });
+
+    if (error) throw error;
+
+    setNewVehicleYear("");
+    setNewVehicleMake("");
+    setNewVehicleModel("");
+    setNewVehiclePlate("");
+    setNewVehicleVin("");
+
+    fetchCustomer();
+  } catch (error: any) {
+    console.error("Error adding vehicle:", error);
+    alert(`Failed to add vehicle: ${error?.message || "Unknown error"}`);
+  } finally {
+    setSaving(false);
+  }
+};
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" onClick={() => router.back()}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">
+                Customer Details
+              </h1>
+              <p className="text-slate-600">
+                {firstName} {lastName}
+              </p>
+            </div>
+          </div>
+
+          <Button onClick={handleSaveCustomer} disabled={saving}>
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>First Name</Label>
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Last Name</Label>
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Tax Status</Label>
+              <label className="flex items-center gap-3 rounded-md border bg-white px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={taxExempt}
+                  onChange={(e) => setTaxExempt(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span>Customer is tax exempt</span>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>Vehicles</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-2">
+                    <Label>Year</Label>
+                    <Input
+                        value={newVehicleYear}
+                        onChange={(e) => setNewVehicleYear(e.target.value)}
+                        placeholder="2020"
+                    />
+                    </div>
+
+                    <div className="space-y-2">
+                    <Label>Make</Label>
+                    <Input
+                        value={newVehicleMake}
+                        onChange={(e) => setNewVehicleMake(e.target.value)}
+                        placeholder="Ford"
+                    />
+                    </div>
+
+                    <div className="space-y-2">
+                    <Label>Model</Label>
+                    <Input
+                        value={newVehicleModel}
+                        onChange={(e) => setNewVehicleModel(e.target.value)}
+                        placeholder="F-150"
+                    />
+                    </div>
+
+                    <div className="space-y-2">
+                    <Label>License Plate</Label>
+                    <Input
+                        value={newVehiclePlate}
+                        onChange={(e) => setNewVehiclePlate(e.target.value)}
+                        placeholder="ABC123"
+                    />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2 lg:col-span-2">
+                    <Label>VIN</Label>
+                    <Input
+                        value={newVehicleVin}
+                        onChange={(e) => setNewVehicleVin(e.target.value)}
+                        placeholder="Vehicle identification number"
+                    />
+                    </div>
+                </div>
+
+                <div>
+                    <Button onClick={handleAddVehicle} disabled={saving}>
+                    {saving ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    Add Vehicle
+                    </Button>
+                </div>
+
+                {vehicles.length === 0 ? (
+                    <p className="text-sm text-slate-500">No vehicles found for this customer.</p>
+                ) : (
+                    <div className="space-y-3">
+                    {vehicles.map((vehicle) => {
+                        const vehicleName =
+                        [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unnamed vehicle";
+
+                        return (
+                        <div
+                            key={vehicle.id}
+                            className="rounded-lg border bg-slate-50 p-4"
+                        >
+                            <div className="font-medium text-slate-900">{vehicleName}</div>
+
+                            <div className="mt-2 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
+                            <div>Plate: {vehicle.license_plate || "—"}</div>
+                            <div>VIN: {vehicle.vin || "—"}</div>
+                            </div>
+                        </div>
+                        );
+                    })}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

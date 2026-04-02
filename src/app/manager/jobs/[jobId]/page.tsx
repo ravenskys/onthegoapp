@@ -16,6 +16,8 @@ import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, Fil
 // Types
 interface Job {
   id: string;
+  customer_id: string | null;
+  vehicle_id: string | null;
   estimate_id: string | null;
   business_job_number: string | null;
   service_number: number | null;
@@ -28,7 +30,13 @@ interface Job {
   scheduled_end: string | null;
   assigned_tech_user_id: string | null;
   notes: string | null;
-  customer: { first_name: string; last_name: string; email: string; phone: string } | null;
+  customer: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    tax_exempt: boolean;
+  } | null;
   vehicle: { year: string; make: string; model: string; license_plate: string; vin: string } | null;
 }
 
@@ -138,6 +146,12 @@ const [estimateLineItems, setEstimateLineItems] = useState<
     notes: string | null;
   }>
 >([]);
+
+  const [businessSettings, setBusinessSettings] = useState<{
+    default_service_tax_rate: number;
+    default_parts_tax_rate: number;
+  } | null>(null);
+
   const [serviceTaxRate, setServiceTaxRate] = useState("0");
   const [partsTaxRate, setPartsTaxRate] = useState("0");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -159,6 +173,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   const [assignedTechId, setAssignedTechId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState("");
   const [noteType, setNoteType] = useState("internal");
+  const [customerTaxExempt, setCustomerTaxExempt] = useState(false);
 
   const servicesSubtotal = services.reduce(
     (sum, service) => sum + (service.estimated_price ?? 0),
@@ -172,8 +187,16 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
   const jobSubtotal = servicesSubtotal + partsSubtotal;
 
-  const serviceTaxTotal = servicesSubtotal * (Number(serviceTaxRate || "0") / 100);
-  const partsTaxTotal = partsSubtotal * (Number(partsTaxRate || "0") / 100);
+  const isTaxExempt = customerTaxExempt;
+
+  const serviceTaxTotal = isTaxExempt
+    ? 0
+    : servicesSubtotal * (Number(serviceTaxRate || "0") / 100);
+
+  const partsTaxTotal = isTaxExempt
+    ? 0
+    : partsSubtotal * (Number(partsTaxRate || "0") / 100);
+
   const combinedTaxTotal = serviceTaxTotal + partsTaxTotal;
   const jobGrandTotal = jobSubtotal + combinedTaxTotal;
 
@@ -185,12 +208,12 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   const fetchJobData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch Job + Relations
+          // 1. Fetch Job + Relations
       const { data: jobData, error: jobError } = await supabase
         .from("jobs")
         .select(`
           *,
-          customer:customers(first_name, last_name, email, phone),
+          customer:customers(first_name, last_name, email, phone, tax_exempt),
           vehicle:vehicles(year, make, model, license_plate, vin)
         `)
         .eq("id", jobId)
@@ -202,6 +225,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setStatus(jobData.status);
         setPriority(jobData.priority);
         setAssignedTechId(jobData.assigned_tech_user_id);
+        setCustomerTaxExempt(jobData.customer?.tax_exempt ?? false);
 
         if (jobData.estimate_id) {
         const { data: estimateData, error: estimateError } = await supabase
@@ -232,7 +256,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setEstimateLineItems([]);
       }
 
-      // 2. Fetch Services
+          // 2. Fetch Services
       const { data: servicesData } = await supabase
         .from("job_services")
         .select("*")
@@ -240,14 +264,14 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         .order("sort_order");
       setServices(servicesData || []);
 
-      // 3. Fetch Parts
+          // 3. Fetch Parts
       const { data: partsData } = await supabase
         .from("job_parts")
         .select("*")
         .eq("job_id", jobId);
       setParts(partsData || []);
 
-      // 4. Fetch Time Entries
+          // 4. Fetch Time Entries
       const { data: timeData } = await supabase
         .from("time_entries")
         .select("*")
@@ -255,7 +279,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         .order("clock_in", { ascending: false });
       setTimeEntries(timeData || []);
 
-      // 5. Fetch Notes
+          // 5. Fetch Notes
       const { data: notesData } = await supabase
         .from("job_notes")
         .select("*")
@@ -318,6 +342,19 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         if (supplierError) throw supplierError;
 
         setSuppliers(supplierData ?? []);
+
+              // 9. Fetch business settings for tax rates
+        const { data: settingsData, error: settingsError } = await supabase
+          .from("business_settings")
+          .select("default_service_tax_rate, default_parts_tax_rate")
+          .limit(1)
+          .single();
+
+        if (settingsError) throw settingsError;
+
+        setBusinessSettings(settingsData);
+        setServiceTaxRate(String(settingsData.default_service_tax_rate ?? 0));
+        setPartsTaxRate(String(settingsData.default_parts_tax_rate ?? 0));
 
     } catch (error: any) {
       console.error("Error fetching job:", error);
@@ -635,7 +672,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
       const handleSaveJobDetails = async () => {
         setSaving(true);
         try {
-          const { error } = await supabase
+          const { error: jobError } = await supabase
             .from("jobs")
             .update({
               status,
@@ -645,9 +682,40 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             })
             .eq("id", jobId);
 
-          if (error) throw error;
+          if (jobError) throw jobError;
+
+          const customerId = (job as any)?.customer_id;
+
+          if (customerId) {
+            const { error: customerError } = await supabase
+              .from("customers")
+              .update({
+                tax_exempt: customerTaxExempt,
+              })
+              .eq("id", customerId);
+
+            if (customerError) throw customerError;
+          }
+
+          setJob((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status,
+                  priority,
+                  assigned_tech_user_id: assignedTechId,
+                  customer: prev.customer
+                    ? {
+                        ...prev.customer,
+                        tax_exempt: customerTaxExempt,
+                      }
+                    : prev.customer,
+                }
+              : prev
+          );
+
           alert("Job details updated!");
-          fetchJobData(); // Refresh
+          fetchJobData();
         } catch (error: any) {
           console.error("Error updating job:", error);
           alert("Failed to update job.");
@@ -658,6 +726,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
       const handleAddNote = async () => {
         if (!newNote.trim()) return;
+
         try {
           const { error } = await supabase.from("job_notes").insert({
             job_id: jobId,
@@ -665,7 +734,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             note_type: noteType,
             created_by_user_id: (await supabase.auth.getUser()).data.user?.id,
           });
+
           if (error) throw error;
+
           setNewNote("");
           fetchJobData();
         } catch (error: any) {
@@ -848,9 +919,28 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="destructive" onClick={() => router.push("/manager/jobs")}>Cancel</Button>
+            {job.customer_id && (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/manager/customers/${job.customer_id}`)}
+              >
+                View Customer
+              </Button>
+            )}
+
+            <Button
+              variant="destructive"
+              onClick={() => router.push("/manager/jobs")}
+            >
+              Cancel
+            </Button>
+
             <Button onClick={handleSaveJobDetails} disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
               Save Changes
             </Button>
           </div>
@@ -921,6 +1011,19 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label>Customer Tax Status</Label>
+              <label className="flex items-center gap-3 rounded-md border bg-white px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={customerTaxExempt}
+                  onChange={(e) => setCustomerTaxExempt(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span>Customer is tax exempt</span>
+              </label>
+            </div>
+
             {/* Dates */}
             <div className="space-y-2">
               <Label>Requested Date</Label>
@@ -934,6 +1037,62 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 disabled 
                 className="bg-slate-100"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Customer Summary</CardTitle>
+
+            {job.customer_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/manager/customers/${job.customer_id}`)}
+              >
+                Open Customer
+              </Button>
+            )}
+          </CardHeader>
+
+          <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Customer
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {`${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim() || "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Email
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {job.customer?.email || "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Phone
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {job.customer?.phone || "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Tax Status
+              </div>
+              <div className="mt-1">
+                <Badge variant={customerTaxExempt ? "secondary" : "outline"}>
+                  {customerTaxExempt ? "Tax Exempt" : "Taxable"}
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1526,6 +1685,12 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                     </div>
                   </div>
                 </div>
+
+                {isTaxExempt && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    This customer is marked tax exempt. Service and parts taxes are currently set to $0.00.
+                  </div>
+                )}  
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl border bg-slate-50 p-4">
