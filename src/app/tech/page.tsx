@@ -126,6 +126,42 @@ type StepCompletionToggleProps = {
   label: string;
 };
 
+type TireEntry = {
+  psiIn: string;
+  psiOut: string;
+  treadOuter: string;
+  treadInner: string;
+  status: string;
+  flags: string[];
+  recommendation: string;
+};
+
+type TireDataState = Record<string, TireEntry>;
+
+type ChecklistEntry = {
+  status: string;
+  why: string;
+};
+
+type ChecklistState = Record<string, ChecklistEntry>;
+
+type UploadedPhoto = {
+  id: string;
+  name: string;
+  file?: File;
+  preview: string;
+  note: string;
+};
+
+type ConditionPhoto = {
+  preview: string;
+  name: string;
+  note: string;
+  file?: File;
+};
+
+type ConditionPhotoState = Record<string, ConditionPhoto>;
+
 function StatusPill({ value }: StatusPillProps) {
   const map = {
     ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -241,7 +277,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     obdCode: "",
   });
 
-  const [tireData, setTireData] = useState(
+  const [tireData, setTireData] = useState<TireDataState>(
     Object.fromEntries(
       tires.map((tire) => [
         tire,
@@ -271,19 +307,19 @@ export default function OnTheGoTechnicianAppPrototype() {
     status: "",
   });
 
-  const [maintenance, setMaintenance] = useState(
+  const [maintenance, setMaintenance] = useState<ChecklistState>(
     Object.fromEntries(maintenanceItems.map((item) => [item, { status: "", why: "" }]))
   );
 
-  const [undercar, setUndercar] = useState(
+  const [undercar, setUndercar] = useState<ChecklistState>(
     Object.fromEntries(undercarItems.map((item) => [item, { status: "", why: "" }]))
   );
 
-  const [photos, setPhotos] = useState([]);
-  const [preServicePhotos, setPreServicePhotos] = useState(
+  const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
+  const [preServicePhotos, setPreServicePhotos] = useState<ConditionPhotoState>(
     Object.fromEntries(requiredConditionShots.map((shot) => [shot, { preview: "", name: "", note: "" }]))
   );
-  const [postWorkPhotos, setPostWorkPhotos] = useState(
+  const [postWorkPhotos, setPostWorkPhotos] = useState<ConditionPhotoState>(
     Object.fromEntries(requiredConditionShots.map((shot) => [shot, { preview: "", name: "", note: "" }]))
   );
 
