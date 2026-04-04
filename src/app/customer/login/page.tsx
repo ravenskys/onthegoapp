@@ -31,7 +31,7 @@ export default function CustomerLoginPage() {
     if (error) {
       setLoading(false);
       setLoginError(
-        "We could not sign you in with that email and password. If you are new here, you can create an account instead."
+        `${error.message} If you are new here, you can create an account instead.`
       );
       return;
     }
@@ -102,7 +102,7 @@ export default function CustomerLoginPage() {
     const { error } = await supabase.auth.resetPasswordForEmail(
       normalizedEmail,
       {
-        redirectTo: "http://localhost:3000/customer/reset-password",
+        redirectTo: `${window.location.origin}/customer/reset-password`,
       }
     );
 
