@@ -1,5 +1,5 @@
 type InspectionRecommendationEntry = {
-  status?: string;
+  status?: string | null;
   why?: string;
   recommendation?: string;
 };
@@ -13,9 +13,9 @@ export function getInspectionRecommendations({
 }: {
   maintenance: Record<string, InspectionRecommendationEntry>;
   undercar: Record<string, InspectionRecommendationEntry>;
-  brakes: { status?: string; brakeNotes?: string };
+  brakes: { status?: string | null; brakeNotes?: string };
   tireData: Record<string, InspectionRecommendationEntry>;
-  tires: string[];
+  tires: readonly string[];
 }) {
   const items: string[] = [];
 

@@ -45,7 +45,7 @@ const conditionOptions = [
   { value: "req", label: "Required" },
 ];
 
-const tireFlags = ["Edgewear", "Cupping", "Cuts", "Irregularity", "Cracking", "Nails", "Repairable", "Non-Repairable"];
+const tireFlags = ["Edgewear", "Cupping", "Cuts", "Irregularity", "Cracking", "Nails", "Repairable", "Non-Repairable"] as const;
 
 const maintenanceItems = [
   "Wiper Blades",
@@ -72,7 +72,7 @@ const maintenanceItems = [
   "Master Cylinder Fluid Level",
   "A/C",
   "Belts",
-];
+] as const;
 
 const undercarItems = [
   "U-Joint",
@@ -91,9 +91,9 @@ const undercarItems = [
   "Exhaust System",
   "Muffler",
   "Intermediate Pipe",
-];
+] as const;
 
-const tires = ["Left Front", "Right Front", "Right Rear", "Left Rear", "Spare"];
+const tires = ["Left Front", "Right Front", "Right Rear", "Left Rear", "Spare"] as const;
 
 const requiredConditionShots = [
   "Front Left Corner",
@@ -111,9 +111,11 @@ type StatusPillProps = {
 
 type RecommendationStatus = "ok" | "sug" | "req";
 
+type RgbColor = [number, number, number];
+
 type ConditionSelectProps = {
   value: InspectionStatus;
-  onChange: (value: string) => void;
+  onChange: (value: RecommendationStatus) => void;
 };
 
 type SectionHeaderProps = {
@@ -133,19 +135,62 @@ type TireEntry = {
   psiOut: string;
   treadOuter: string;
   treadInner: string;
-  status: string;
+  status: InspectionStatus;
   flags: string[];
   recommendation: string;
 };
 
-type TireDataState = Record<string, TireEntry>;
+type TirePosition = (typeof tires)[number];
+
+type TireDataState = Record<TirePosition, TireEntry>;
 
 type ChecklistEntry = {
-  status: string;
+  status: InspectionStatus;
   why: string;
 };
 
-type ChecklistState = Record<string, ChecklistEntry>;
+type MaintenanceItem = (typeof maintenanceItems)[number];
+type UndercarItem = (typeof undercarItems)[number];
+
+type ChecklistState<T extends string> = Record<T, ChecklistEntry>;
+
+type VehicleState = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  year: string;
+  make: string;
+  model: string;
+  mileage: string;
+  vin: string;
+  engineSize: string;
+  licensePlate: string;
+  state: string;
+  transmission: string;
+  driveline: string;
+  techName: string;
+  notes: string;
+  obdCode: string;
+};
+
+type BrakeState = {
+  lfPad: string;
+  rfPad: string;
+  lrPad: string;
+  rrPad: string;
+  lfRotor: string;
+  rfRotor: string;
+  lrRotor: string;
+  rrRotor: string;
+  brakeNotes: string;
+  status: InspectionStatus;
+};
+
+type VehicleFieldKey = keyof VehicleState;
+type BrakeFieldKey = keyof Omit<BrakeState, "brakeNotes" | "status">;
+type TireFieldKey = Exclude<keyof TireEntry, "flags">;
+type ChecklistFieldKey = keyof ChecklistEntry;
 
 type UploadedPhoto = {
   id: string;
@@ -261,7 +306,7 @@ function StepCompletionToggle({
 }
 
 export default function OnTheGoTechnicianAppPrototype() {
-  const [vehicle, setVehicle] = useState({
+  const [vehicle, setVehicle] = useState<VehicleState>({
     firstName: "",
     lastName: "",
     phone: "",
@@ -282,23 +327,21 @@ export default function OnTheGoTechnicianAppPrototype() {
   });
 
   const [tireData, setTireData] = useState<TireDataState>(
-    Object.fromEntries(
-      tires.map((tire) => [
-        tire,
-        {
-          psiIn: "",
-          psiOut: "",
-          treadOuter: "",
-          treadInner: "",
-          status: "",
-          flags: [],
-          recommendation: "",
-        },
-      ])
-    )
+    tires.reduce<TireDataState>((acc, tire) => {
+      acc[tire] = {
+        psiIn: "",
+        psiOut: "",
+        treadOuter: "",
+        treadInner: "",
+        status: "",
+        flags: [],
+        recommendation: "",
+      };
+      return acc;
+    }, {} as TireDataState)
   );
 
-  const [brakes, setBrakes] = useState({
+  const [brakes, setBrakes] = useState<BrakeState>({
     lfPad: "",
     rfPad: "",
     lrPad: "",
@@ -311,12 +354,12 @@ export default function OnTheGoTechnicianAppPrototype() {
     status: "",
   });
 
-  const [maintenance, setMaintenance] = useState<ChecklistState>(
-    Object.fromEntries(maintenanceItems.map((item) => [item, { status: "", why: "" }]))
+  const [maintenance, setMaintenance] = useState<ChecklistState<MaintenanceItem>>(
+    Object.fromEntries(maintenanceItems.map((item) => [item, { status: "", why: "" }])) as ChecklistState<MaintenanceItem>
   );
 
-  const [undercar, setUndercar] = useState<ChecklistState>(
-    Object.fromEntries(undercarItems.map((item) => [item, { status: "", why: "" }]))
+  const [undercar, setUndercar] = useState<ChecklistState<UndercarItem>>(
+    Object.fromEntries(undercarItems.map((item) => [item, { status: "", why: "" }])) as ChecklistState<UndercarItem>
   );
 
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
@@ -349,7 +392,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     return Math.round((completed / total) * 100);
   }, [vehicle, tireData, brakes]);
 
-  const normalizeVehicleFieldValue = (key: string, value: string) => {
+  const normalizeVehicleFieldValue = (key: VehicleFieldKey, value: string) => {
     switch (key) {
       case "phone":
         return formatPhoneNumber(value);
@@ -368,10 +411,10 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const updateVehicle = (key: string, value: string) =>
+  const updateVehicle = (key: VehicleFieldKey, value: string) =>
     setVehicle((prev) => ({ ...prev, [key]: normalizeVehicleFieldValue(key, value) }));
 
-  const updateTire = (tire: string, key: string, value: string) => {
+  const updateTire = (tire: TirePosition, key: TireFieldKey, value: string) => {
     setTireData((prev) => ({
       ...prev,
       [tire]: {
@@ -381,7 +424,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     }));
   };
 
-  const toggleTireFlag = (tire: string, flag: string) => {
+  const toggleTireFlag = (tire: TirePosition, flag: string) => {
     setTireData((prev) => {
       const exists = prev[tire].flags.includes(flag);
       return {
@@ -394,11 +437,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     });
   };
 
-  const updateMaintenance = (item: string, key: string, value: string) => {
+  const updateMaintenance = (item: MaintenanceItem, key: ChecklistFieldKey, value: string) => {
     setMaintenance((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
-  const updateUndercar = (item: string, key: string, value: string) => {
+  const updateUndercar = (item: UndercarItem, key: ChecklistFieldKey, value: string) => {
     setUndercar((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
@@ -482,7 +525,7 @@ export default function OnTheGoTechnicianAppPrototype() {
 
   const summaryCounts = useMemo(() => {
     const statuses: Record<RecommendationStatus, number> = { ok: 0, sug: 0, req: 0 };
-    const isRecommendationStatus = (value: string): value is RecommendationStatus =>
+    const isRecommendationStatus = (value: InspectionStatus): value is RecommendationStatus =>
       value === "ok" || value === "sug" || value === "req";
 
     Object.values(tireData).forEach((t) => {
@@ -698,6 +741,10 @@ export default function OnTheGoTechnicianAppPrototype() {
         const { customerData, vehicleData } = await ensureCustomerProfile();
         customerId = customerData.id;
         vehicleId = vehicleData.id;
+      }
+
+      if (!customerId || !vehicleId) {
+        throw new Error("Customer and vehicle must be saved before inspection progress can be recorded.");
       }
 
       const inspectionData = await upsertInspectionDraft(customerId, vehicleId, workflowState);
@@ -956,13 +1003,13 @@ const handleGeneratePdf = async () => {
     const margin = 14;
     let y = 20;
 
-    const primary = [15, 23, 42];
-    const lightGray = [241, 245, 249];
-    const midGray = [100, 116, 139];
-    const darkText = [30, 41, 59];
-    const green = [22, 163, 74];
-    const amber = [217, 119, 6];
-    const red = [220, 38, 38];
+    const primary: RgbColor = [15, 23, 42];
+    const lightGray: RgbColor = [241, 245, 249];
+    const midGray: RgbColor = [100, 116, 139];
+    const darkText: RgbColor = [30, 41, 59];
+    const green: RgbColor = [22, 163, 74];
+    const amber: RgbColor = [217, 119, 6];
+    const red: RgbColor = [220, 38, 38];
 
     const addPageIfNeeded = (neededHeight = 12) => {
       if (y + neededHeight > pageHeight - 18) {
@@ -998,8 +1045,8 @@ const handleGeneratePdf = async () => {
       x: number,
       title: string,
       value: string | number,
-      fill: number[],
-      textColor: number[]
+      fill: RgbColor,
+      textColor: RgbColor
     ) => {
       doc.setFillColor(...fill);
       doc.roundedRect(x, y, 55, 24, 3, 3, "F");
@@ -1307,7 +1354,7 @@ if (!isAuthorized) {
                   </div>
                 )}
                 <div className="grid gap-4 md:grid-cols-3">
-                  {[
+                  {([
                     ["First Name", "firstName"],
                     ["Last Name", "lastName"],
                     ["Phone", "phone"],
@@ -1318,7 +1365,7 @@ if (!isAuthorized) {
                     ["License Plate", "licensePlate"],
                     ["State", "state"],
                     ["Technician Name", "techName"],
-                  ].map(([label, key]) => (
+                  ] as const satisfies readonly (readonly [string, VehicleFieldKey])[]).map(([label, key]) => (
                     <div key={key} className="space-y-2">
                       <Label>{label}</Label>
                       <Input
@@ -1515,7 +1562,7 @@ if (!isAuthorized) {
                   label="Mark brake inspection as complete."
                 />
                 <div className="grid gap-4 md:grid-cols-4">
-                  {[
+                  {([
                     ["LF Pad (mm)", "lfPad"],
                     ["RF Pad (mm)", "rfPad"],
                     ["LR Pad/Shoe (mm)", "lrPad"],
@@ -1524,7 +1571,7 @@ if (!isAuthorized) {
                     ["RF Rotor/Drum", "rfRotor"],
                     ["LR Rotor/Drum", "lrRotor"],
                     ["RR Rotor/Drum", "rrRotor"],
-                  ].map(([label, key]) => (
+                  ] as const satisfies readonly (readonly [string, BrakeFieldKey])[]).map(([label, key]) => (
                     <div key={key} className="space-y-2">
                       <Label>{label}</Label>
                       <Input value={brakes[key]} onChange={(e) => setBrakes((prev) => ({ ...prev, [key]: e.target.value }))} className="bg-white" />
