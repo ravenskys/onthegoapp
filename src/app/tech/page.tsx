@@ -389,7 +389,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     setPhotos((prev) => [...prev, ...newPhotos]);
   };
 
-  const updatePhotoNote = (id, note) => {
+  const updatePhotoNote = (id: string, note: string) => {
     setPhotos((prev) => prev.map((photo) => (photo.id === id ? { ...photo, note } : photo)));
   };
 
@@ -679,7 +679,10 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const handleWorkflowStepCompletionChange = async (step, value) => {
+  const handleWorkflowStepCompletionChange = async (
+    step: string,
+    value: boolean
+  ) => {
     const nextWorkflowSteps = {
       ...workflowSteps,
       [step]: value,
@@ -723,7 +726,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const getStepTriggerClassName = (step) => {
+  const getStepTriggerClassName = (step: string) => {
     if (workflowSteps[step]) {
       return "h-full w-full rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-center text-sm font-semibold leading-tight text-emerald-800 shadow-sm whitespace-normal break-words data-[state=active]:border-emerald-700 data-[state=active]:bg-emerald-700 data-[state=active]:text-white";
     }
