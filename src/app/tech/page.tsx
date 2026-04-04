@@ -1,7 +1,7 @@
 "use client";
 // @ts-nocheck
 import { supabase } from "@/lib/supabase";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,32 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Camera, Car, CheckCircle2, ClipboardList, FileText, Send, Upload, User, Wrench } from "lucide-react";
+import { Camera, Car, Check, CheckCircle2, ClipboardList, FileText, Upload, Wrench } from "lucide-react";
+import {
+  formatMileage,
+  formatPhoneNumber,
+  MAX_MODEL_YEAR,
+  normalizeEmail,
+  normalizeLicensePlate,
+  normalizeVin,
+  normalizeYear,
+} from "@/lib/input-formatters";
+import { vehicleCatalog, vehicleMakes } from "@/lib/vehicleCatalog";
+import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
+import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
+import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import {
+  buildCustomerPayload,
+  buildInspectionPayload,
+  buildTechInspectionDraft,
+  buildVehiclePayload,
+  getErrorMessage,
+  getVehicleCatalogModes,
+  getCustomerProfileValidationError,
+  TECH_DRAFT_STORAGE_KEY,
+} from "@/lib/tech-inspection";
 
 const conditionOptions = [
   { value: "ok", label: "OK" },
@@ -125,6 +150,49 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
   );
 }
 
+function StepCompletionToggle({ checked, onCheckedChange, label }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onCheckedChange(!checked)}
+      className={`w-full rounded-2xl border px-5 py-4 text-left shadow-sm transition-colors ${
+        checked
+          ? "border-emerald-300 bg-emerald-100"
+          : "border-red-200 bg-red-50"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-base font-semibold text-slate-900">Step completion</div>
+          <div className="mt-1 text-sm text-slate-700">{label}</div>
+        </div>
+
+        <div
+          className={`flex min-h-12 min-w-12 items-center justify-center rounded-2xl border-2 ${
+            checked
+              ? "border-emerald-600 bg-emerald-600 text-white"
+              : "border-red-400 bg-white text-red-500"
+          }`}
+          aria-hidden="true"
+        >
+          {checked ? (
+            <Check className="h-6 w-6" />
+          ) : (
+            <Checkbox
+              checked={false}
+              className="pointer-events-none size-6 rounded-md border-2 border-current data-[state=checked]:bg-transparent"
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 text-sm font-medium text-slate-800">
+        {checked ? "Completed. Tap to mark incomplete." : "Tap anywhere in this box to mark complete."}
+      </div>
+    </button>
+  );
+}
+
 export default function OnTheGoTechnicianAppPrototype() {
   const [vehicle, setVehicle] = useState({
     firstName: "",
@@ -214,7 +282,27 @@ export default function OnTheGoTechnicianAppPrototype() {
     return Math.round((completed / total) * 100);
   }, [vehicle, tireData, brakes]);
 
-  const updateVehicle = (key, value) => setVehicle((prev) => ({ ...prev, [key]: value }));
+  const normalizeVehicleFieldValue = (key, value) => {
+    switch (key) {
+      case "phone":
+        return formatPhoneNumber(value);
+      case "email":
+        return normalizeEmail(value);
+      case "year":
+        return normalizeYear(value);
+      case "mileage":
+        return formatMileage(value);
+      case "vin":
+        return normalizeVin(value);
+      case "licensePlate":
+        return normalizeLicensePlate(value);
+      default:
+        return value;
+    }
+  };
+
+  const updateVehicle = (key, value) =>
+    setVehicle((prev) => ({ ...prev, [key]: normalizeVehicleFieldValue(key, value) }));
 
   const updateTire = (tire, key, value) => {
     setTireData((prev) => ({
@@ -249,8 +337,18 @@ export default function OnTheGoTechnicianAppPrototype() {
 
   const [savedInspectionId, setSavedInspectionId] = useState<string | null>(null);
   const [savedCustomerId, setSavedCustomerId] = useState<string | null>(null);
+  const [savedVehicleId, setSavedVehicleId] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [useCustomMake, setUseCustomMake] = useState(false);
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
+  const [recordSyncState, setRecordSyncState] = useState("idle");
+  const [recordSyncMessage, setRecordSyncMessage] = useState("");
+  const [workflowSteps, setWorkflowSteps] = useState(
+    Object.fromEntries(workflowStepOrder.map((step) => [step, false]))
+  );
   
   const onPhotoUpload = (e) => {
     const files = Array.from(e.target.files || []);
@@ -316,96 +414,351 @@ export default function OnTheGoTechnicianAppPrototype() {
     return statuses;
   }, [tireData, maintenance, undercar, brakes.status]);
 
-  const handleSaveInspection = async () => {
-  try {
-  let customerData;
+  const completedWorkflowCount = useMemo(
+    () => Object.values(workflowSteps).filter(Boolean).length,
+    [workflowSteps]
+  );
 
-    const normalizedEmail = vehicle.email.trim().toLowerCase();
+  const toggleWorkflowStep = (step, value) => {
+    setWorkflowSteps((prev) => ({
+      ...prev,
+      [step]: value,
+    }));
+  };
 
-    const { data: existingCustomers, error: findCustomerError } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("email", normalizedEmail)
-      .limit(1);
+  const ensureCustomerProfile = async (vehicleSnapshot = vehicle) => {
+    const validationError = getCustomerProfileValidationError(vehicleSnapshot);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const normalizedEmail = String(vehicleSnapshot.email || "").trim().toLowerCase();
+    const customerPayload = buildCustomerPayload(vehicleSnapshot);
+    let customerData;
+    let vehicleData;
+
+    if (savedCustomerId) {
+      const { data: existingSavedCustomer, error: savedCustomerError } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", savedCustomerId)
+        .maybeSingle();
+
+      if (savedCustomerError) throw savedCustomerError;
+      customerData = existingSavedCustomer;
+    }
+
+    if (!customerData) {
+      const { data: existingCustomers, error: findCustomerError } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .limit(1);
 
       if (findCustomerError) throw findCustomerError;
+      customerData = existingCustomers && existingCustomers.length > 0 ? existingCustomers[0] : null;
+    }
 
-      if (existingCustomers && existingCustomers.length > 0) {
-        customerData = existingCustomers[0];
+    if (customerData) {
+      if (savedCustomerId && customerData.id !== savedCustomerId) {
+        throw new Error("This email is already linked to a different customer profile.");
+      }
 
-        const { error: updateCustomerError } = await supabase
-          .from("customers")
-          .update({
-            first_name: vehicle.firstName,
-            last_name: vehicle.lastName,
-            phone: vehicle.phone,
-            email: normalizedEmail,
-          })
-          .eq("id", customerData.id);
+      const { error: updateCustomerError } = await supabase
+        .from("customers")
+        .update(customerPayload)
+        .eq("id", customerData.id);
 
-        if (updateCustomerError) throw updateCustomerError;
-      } else {
-        const { data: newCustomer, error: customerError } = await supabase
-          .from("customers")
-          .insert([
-          {
-            first_name: vehicle.firstName,
-            last_name: vehicle.lastName,
-            phone: vehicle.phone,
-            email: normalizedEmail,
-          },
-        ])
+      if (updateCustomerError) throw updateCustomerError;
+    } else {
+      const { data: newCustomer, error: customerError } = await supabase
+        .from("customers")
+        .insert([customerPayload])
+        .select()
+        .single();
+
+      if (customerError) throw customerError;
+      customerData = newCustomer;
+    }
+
+    const vehiclePayload = buildVehiclePayload(vehicleSnapshot, customerData.id);
+    let vehicleMatchId = savedVehicleId;
+
+    if (!vehicleMatchId && vehiclePayload.vin) {
+      const { data: existingVehicleByVin, error: existingVehicleByVinError } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("customer_id", customerData.id)
+        .eq("vin", vehiclePayload.vin)
+        .limit(1);
+
+      if (existingVehicleByVinError) throw existingVehicleByVinError;
+      vehicleMatchId = existingVehicleByVin?.[0]?.id ?? null;
+    }
+
+    if (!vehicleMatchId && vehiclePayload.license_plate) {
+      const { data: existingVehicleByPlate, error: existingVehicleByPlateError } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("customer_id", customerData.id)
+        .eq("license_plate", vehiclePayload.license_plate)
+        .limit(1);
+
+      if (existingVehicleByPlateError) throw existingVehicleByPlateError;
+      vehicleMatchId = existingVehicleByPlate?.[0]?.id ?? null;
+    }
+
+    if (vehicleMatchId) {
+      const { data: updatedVehicleData, error: vehicleError } = await supabase
+        .from("vehicles")
+        .update(vehiclePayload)
+        .eq("id", vehicleMatchId)
+        .select()
+        .single();
+
+      if (vehicleError) throw vehicleError;
+      vehicleData = updatedVehicleData;
+    } else {
+      const { data: newVehicleData, error: vehicleError } = await supabase
+        .from("vehicles")
+        .insert([vehiclePayload])
+        .select()
+        .single();
+
+      if (vehicleError) throw vehicleError;
+      vehicleData = newVehicleData;
+    }
+
+    setSavedCustomerId(customerData.id);
+    setSavedVehicleId(vehicleData.id);
+
+    return { customerData, vehicleData };
+  };
+
+  const upsertInspectionDraft = async (customerId, vehicleId, workflowState = workflowSteps) => {
+    const inspectionPayload = buildInspectionPayload({
+      customerId,
+      vehicleId,
+      vehicle,
+      brakes,
+      tireData,
+      maintenance,
+      undercar,
+      summaryCounts,
+      workflowState,
+      workflowTotalCount: workflowStepOrder.length,
+    });
+
+    const { data: inspectionData, error: inspectionError } = savedInspectionId
+      ? await supabase
+          .from("inspections")
+          .update(inspectionPayload)
+          .eq("id", savedInspectionId)
+          .select()
+          .single()
+      : await supabase
+          .from("inspections")
+          .insert([inspectionPayload])
           .select()
           .single();
 
-        if (customerError) throw customerError;
-        customerData = newCustomer;
+    if (inspectionError) throw inspectionError;
+
+    setSavedInspectionId(inspectionData.id);
+    return inspectionData;
+  };
+
+  const syncCustomerProfileAndInspection = async ({
+    vehicleSnapshot = vehicle,
+    workflowState = workflowSteps,
+    successMessage = "Customer profile saved.",
+  } = {}) => {
+    setRecordSyncState("saving");
+    setRecordSyncMessage("Saving customer and vehicle profile...");
+
+    try {
+      const { customerData, vehicleData } = await ensureCustomerProfile(vehicleSnapshot);
+      const inspectionData = await upsertInspectionDraft(
+        customerData.id,
+        vehicleData.id,
+        workflowState
+      );
+
+      setRecordSyncState("saved");
+      setRecordSyncMessage(successMessage);
+
+      return { customerData, vehicleData, inspectionData };
+    } catch (error) {
+      setRecordSyncState("error");
+      setRecordSyncMessage(getErrorMessage(error, "Failed to save customer profile."));
+      throw error;
+    }
+  };
+
+  const syncInspectionProgress = async (
+    workflowState = workflowSteps,
+    successMessage = "Inspection progress saved."
+  ) => {
+    setRecordSyncState("saving");
+    setRecordSyncMessage("Saving inspection progress...");
+
+    try {
+      let customerId = savedCustomerId;
+      let vehicleId = savedVehicleId;
+
+      if (!customerId || !vehicleId) {
+        const { customerData, vehicleData } = await ensureCustomerProfile();
+        customerId = customerData.id;
+        vehicleId = vehicleData.id;
       }
 
-    const { data: vehicleData, error: vehicleError } = await supabase
-      .from("vehicles")
-      .insert([
-        {
-          customer_id: customerData.id,
-          year: vehicle.year,
-          make: vehicle.make,
-          model: vehicle.model,
-          mileage: vehicle.mileage,
-          vin: vehicle.vin,
-          engine_size: vehicle.engineSize,
-          license_plate: vehicle.licensePlate,
-          state: vehicle.state,
-          transmission: vehicle.transmission,
-          driveline: vehicle.driveline,
-        },
-      ])
-      .select()
-      .single();
+      const inspectionData = await upsertInspectionDraft(customerId, vehicleId, workflowState);
 
-    if (vehicleError) throw vehicleError;
+      setRecordSyncState("saved");
+      setRecordSyncMessage(successMessage);
 
-    const { data: inspectionData, error: inspectionError } = await supabase
-      .from("inspections")
-      .insert([
-        {
-          customer_id: customerData.id,
-          vehicle_id: vehicleData.id,
-          tech_name: vehicle.techName,
-          obd_code: vehicle.obdCode,
-          notes: vehicle.notes,
-          brakes,
-          tire_data: tireData,
-          maintenance,
-          undercar,
-          inspection_summary: {
-            ok: summaryCounts.ok,
-            suggested: summaryCounts.sug,
-            required: summaryCounts.req,
-          },
-        },
-      ])
-      .select()
-      .single();
+      return inspectionData;
+    } catch (error) {
+      setRecordSyncState("error");
+      setRecordSyncMessage(getErrorMessage(error, "Failed to save inspection progress."));
+      throw error;
+    }
+  };
+
+  const handleVehicleProfileBlur = async () => {
+    if (
+      !workflowSteps.vehicle &&
+      !savedCustomerId &&
+      !savedVehicleId &&
+      !savedInspectionId
+    ) {
+      return;
+    }
+
+    try {
+      await syncCustomerProfileAndInspection({
+        successMessage: "Customer profile updated.",
+      });
+    } catch (error) {
+      console.error("Failed to sync customer profile after vehicle edit:", error);
+    }
+  };
+
+  const handleWorkflowStepCompletionChange = async (step, value) => {
+    const nextWorkflowSteps = {
+      ...workflowSteps,
+      [step]: value,
+    };
+
+    if (step === "vehicle" && value) {
+      try {
+        await syncCustomerProfileAndInspection({
+          workflowState: nextWorkflowSteps,
+          successMessage:
+            "Customer profile created and inspection progress is now linked to the customer portal.",
+        });
+        toggleWorkflowStep("vehicle", true);
+      } catch (error) {
+        console.error("Failed to save customer profile from vehicle step:", error);
+        alert(getErrorMessage(error, "Failed to save customer profile."));
+      }
+
+      return;
+    }
+
+    toggleWorkflowStep(step, value);
+
+    if (
+      !savedCustomerId &&
+      !savedVehicleId &&
+      !savedInspectionId &&
+      !workflowSteps.vehicle
+    ) {
+      return;
+    }
+
+    try {
+      await syncInspectionProgress(
+        nextWorkflowSteps,
+        `${workflowStepLabels[step]} saved.`
+      );
+    } catch (error) {
+      console.error(`Failed to save ${step} workflow progress:`, error);
+      alert(getErrorMessage(error, "Failed to save inspection progress."));
+    }
+  };
+
+  const getStepTriggerClassName = (step) => {
+    if (workflowSteps[step]) {
+      return "h-full w-full rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-center text-sm font-semibold leading-tight text-emerald-800 shadow-sm whitespace-normal break-words data-[state=active]:border-emerald-700 data-[state=active]:bg-emerald-700 data-[state=active]:text-white";
+    }
+
+    return "h-full w-full rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-center text-sm font-semibold leading-tight text-red-700 shadow-sm whitespace-normal break-words data-[state=active]:border-red-700 data-[state=active]:bg-red-700 data-[state=active]:text-white";
+  };
+
+  const saveDraftToLocal = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const draft = buildTechInspectionDraft({
+      vehicle,
+      tireData,
+      brakes,
+      maintenance,
+      undercar,
+      photos,
+      preServicePhotos,
+      postWorkPhotos,
+      workflowSteps,
+      savedInspectionId,
+      savedCustomerId,
+      savedVehicleId,
+    });
+
+    window.localStorage.setItem(TECH_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  }, [
+    vehicle,
+    tireData,
+    brakes,
+    maintenance,
+    undercar,
+    photos,
+    preServicePhotos,
+    postWorkPhotos,
+    workflowSteps,
+    savedInspectionId,
+    savedCustomerId,
+    savedVehicleId,
+  ]);
+
+  const handleSaveInspection = async () => {
+  try {
+    const { customerData, vehicleData } = await ensureCustomerProfile();
+
+    const inspectionPayload = buildInspectionPayload({
+      customerId: customerData.id,
+      vehicleId: vehicleData.id,
+      vehicle,
+      brakes,
+      tireData,
+      maintenance,
+      undercar,
+      summaryCounts,
+      workflowState: workflowSteps,
+      workflowTotalCount: workflowStepOrder.length,
+    });
+
+    const { data: inspectionData, error: inspectionError } = savedInspectionId
+      ? await supabase
+          .from("inspections")
+          .update(inspectionPayload)
+          .eq("id", savedInspectionId)
+          .select()
+          .single()
+      : await supabase
+          .from("inspections")
+          .insert([inspectionPayload])
+          .select()
+          .single();
 
     if (inspectionError) throw inspectionError;
 
@@ -421,10 +774,6 @@ for (const shot of requiredConditionShots) {
       .upload(filePath, photo.file);
 
     if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = supabase.storage
-      .from("inspection-photos")
-      .getPublicUrl(filePath);
 
     uploadedPhotoRows.push({
       inspection_id: inspectionData.id,
@@ -447,10 +796,6 @@ for (const photo of photos) {
 
     if (uploadError) throw uploadError;
 
-    const { data: publicUrlData } = supabase.storage
-      .from("inspection-photos")
-      .getPublicUrl(filePath);
-
     uploadedPhotoRows.push({
       inspection_id: inspectionData.id,
       photo_stage: "inspection",
@@ -472,10 +817,6 @@ for (const shot of requiredConditionShots) {
       .upload(filePath, photo.file);
 
     if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = supabase.storage
-      .from("inspection-photos")
-      .getPublicUrl(filePath);
 
     uploadedPhotoRows.push({
       inspection_id: inspectionData.id,
@@ -500,10 +841,12 @@ if (uploadedPhotoRows.length > 0) {
     console.log("Saved inspection:", inspectionData.id);
     setSavedInspectionId(inspectionData.id);
     setSavedCustomerId(customerData.id);
-  } catch (error: any) {
+    setSavedVehicleId(vehicleData.id);
+    saveDraftToLocal();
+  } catch (error) {
   console.error("Save failed full error:", JSON.stringify(error, null, 2));
   console.error("Save failed raw error:", error);
-  alert(`Save failed: ${error?.message || "Unknown error"}`);
+  alert(`Save failed: ${getErrorMessage(error, "Unknown error")}`);
 }
 };
 
@@ -577,29 +920,12 @@ const handleGeneratePdf = async () => {
       doc.text(String(value), x + 4, y + 18);
     };
 
-    const recommendedItems: string[] = [];
-
-    Object.entries(maintenance).forEach(([name, value]: any) => {
-      if (value?.status === "req" || value?.status === "sug") {
-        recommendedItems.push(`${name}${value?.why ? ` - ${value.why}` : ""}`);
-      }
-    });
-
-    Object.entries(undercar).forEach(([name, value]: any) => {
-      if (value?.status === "req" || value?.status === "sug") {
-        recommendedItems.push(`${name}${value?.why ? ` - ${value.why}` : ""}`);
-      }
-    });
-
-    if (brakes.status === "req" || brakes.status === "sug") {
-      recommendedItems.push(`Brake service${brakes.brakeNotes ? ` - ${brakes.brakeNotes}` : ""}`);
-    }
-
-    tires.forEach((tire) => {
-      const t: any = tireData[tire];
-      if (t?.status === "req" || t?.status === "sug") {
-        recommendedItems.push(`${tire} tire${t?.recommendation ? ` - ${t.recommendation}` : ""}`);
-      }
+    const recommendedItems = getInspectionRecommendations({
+      maintenance,
+      undercar,
+      brakes,
+      tireData,
+      tires,
     });
 
     doc.setFillColor(...primary);
@@ -690,82 +1016,87 @@ const handleGeneratePdf = async () => {
 
     doc.save(fileName);
     alert("PDF generated, uploaded, and linked successfully.");
-  } catch (error: any) {
+  } catch (error) {
     console.error("PDF generation failed:", error);
-    alert(error?.message || "There was a problem generating the PDF.");
+    alert(getErrorMessage(error, "There was a problem generating the PDF."));
   }
 };
 
 useEffect(() => {
   const checkAccess = async () => {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { user, roles: roleNames } = await getUserRoles();
 
-    if (userError || !user) {
+    if (!user) {
       window.location.href = "/customer/login";
       return;
     }
 
-const { data: roles, error: rolesError } = await supabase
-  .from("user_roles")
-  .select("role")
-  .eq("user_id", user.id);
+    if (hasAnyRole(roleNames, ["technician", "manager", "admin"])) {
+      setIsAuthorized(true);
+      setAuthLoading(false);
+      return;
+    }
 
-if (rolesError || !roles || roles.length === 0) {
-  window.location.href = "/customer/login";
-  return;
-}
-
-const roleNames = roles.map((r) => r.role);
-
-if (
-  roleNames.includes("technician") ||
-  roleNames.includes("manager") ||
-  roleNames.includes("admin")
-) {
-  setIsAuthorized(true);
-  setAuthLoading(false);
-  return;
-}
-
-window.location.href = "/customer/dashboard";
+    window.location.href = getPostLoginRoute(roleNames);
   };
 
   checkAccess();
 }, []);
 
-const getRecommendedItems = () => {
-  const items: string[] = [];
+useEffect(() => {
+  if (typeof window === "undefined") return;
 
-  Object.entries(maintenance).forEach(([name, value]: any) => {
-    if (value?.status === "req" || value?.status === "sug") {
-      items.push(`${name}${value?.why ? ` - ${value.why}` : ""}`);
-    }
-  });
-
-  Object.entries(undercar).forEach(([name, value]: any) => {
-    if (value?.status === "req" || value?.status === "sug") {
-      items.push(`${name}${value?.why ? ` - ${value.why}` : ""}`);
-    }
-  });
-
-  if (brakes.status === "req" || brakes.status === "sug") {
-    items.push(`Brake service${brakes.brakeNotes ? ` - ${brakes.brakeNotes}` : ""}`);
+  const savedDraft = window.localStorage.getItem(TECH_DRAFT_STORAGE_KEY);
+  if (!savedDraft) {
+    setDraftLoaded(true);
+    return;
   }
 
-  tires.forEach((tire) => {
-    const t: any = tireData[tire];
-    if (t?.status === "req" || t?.status === "sug") {
-      items.push(`${tire} tire${t?.recommendation ? ` - ${t.recommendation}` : ""}`);
-    }
-  });
+  try {
+    const draft = JSON.parse(savedDraft);
+    const vehicleSnapshot = draft.vehicle || {};
+    const vehicleCatalogModes = getVehicleCatalogModes({
+      make: vehicleSnapshot.make,
+      model: vehicleSnapshot.model,
+      engineSize: vehicleSnapshot.engineSize,
+      vehicleMakes,
+      vehicleCatalog,
+    });
 
-  return items;
-};
+    if (draft.vehicle) setVehicle(draft.vehicle);
+    if (draft.tireData) setTireData(draft.tireData);
+    if (draft.brakes) setBrakes(draft.brakes);
+    if (draft.maintenance) setMaintenance(draft.maintenance);
+    if (draft.undercar) setUndercar(draft.undercar);
+    if (draft.photos) setPhotos(draft.photos);
+    if (draft.preServicePhotos) setPreServicePhotos(draft.preServicePhotos);
+    if (draft.postWorkPhotos) setPostWorkPhotos(draft.postWorkPhotos);
+    if (draft.workflowSteps) setWorkflowSteps(draft.workflowSteps);
+    if (draft.savedInspectionId) setSavedInspectionId(draft.savedInspectionId);
+    if (draft.savedCustomerId) setSavedCustomerId(draft.savedCustomerId);
+    if (draft.savedVehicleId) setSavedVehicleId(draft.savedVehicleId);
+    setUseCustomMake(vehicleCatalogModes.useCustomMake);
+    setUseCustomModel(vehicleCatalogModes.useCustomModel);
+    setUseCustomEngineSize(vehicleCatalogModes.useCustomEngineSize);
+  } catch (error) {
+    console.error("Failed to load technician draft:", error);
+  } finally {
+    setDraftLoaded(true);
+  }
+}, []);
 
-const recommendedItems = getRecommendedItems();
+useEffect(() => {
+  if (!draftLoaded) return;
+  saveDraftToLocal();
+}, [draftLoaded, saveDraftToLocal]);
+
+const recommendedItems = getInspectionRecommendations({
+  maintenance,
+  undercar,
+  brakes,
+  tireData,
+  tires,
+});
 
 if (authLoading) {
   return (
@@ -783,15 +1114,13 @@ if (!isAuthorized) {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8" onBlurCapture={saveDraftToLocal}>
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div>
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
             <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
               <div>
-                  <div className="otg-brand-title-black">
-                    <Wrench className="h-4 w-4" /> On The Go Maintenance
-                  </div>
+                  <BrandLogo priority />
                   <h1 className="text-3xl font-bold tracking-tight text-slate-900">
                     Technician Inspection App
                   </h1>
@@ -829,45 +1158,35 @@ if (!isAuthorized) {
                   <Badge variant="secondary" className="rounded-full">Suggested: {summaryCounts.sug}</Badge>
                   <Badge variant="secondary" className="rounded-full">Required: {summaryCounts.req}</Badge>
                 </div>
+                <div className="pt-2 text-sm text-slate-600">
+                  Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {workflowStepOrder.length}</span>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
-            <CardHeader>
-              <CardTitle className="text-lg">Workflow</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm text-slate-700">
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-3"><User className="h-4 w-4" /> Customer + vehicle info</div>
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-3"><ClipboardList className="h-4 w-4" /> Inspection sheet</div>
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-3"><Camera className="h-4 w-4" /> Add issue photos</div>
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-3"><FileText className="h-4 w-4" /> Review summary</div>
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-3"><Send className="h-4 w-4" /> Send report to customer</div>
             </CardContent>
           </Card>
         </div>
 
         <Tabs defaultValue="vehicle" className="mt-6 space-y-6">
           <TabsList className="grid w-full grid-cols-2 items-stretch gap-3 rounded-2xl border border-slate-200 bg-slate-200 p-2 shadow-sm md:grid-cols-7">
-            <TabsTrigger value="vehicle" className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="vehicle" className={getStepTriggerClassName("vehicle")}>
               Vehicle
             </TabsTrigger>
-            <TabsTrigger value="tires" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="tires" className={getStepTriggerClassName("tires")}>
               Tires
             </TabsTrigger>
-            <TabsTrigger value="brakes" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="brakes" className={getStepTriggerClassName("brakes")}>
               Brakes
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="maintenance" className={getStepTriggerClassName("maintenance")}>
               Maintenance
             </TabsTrigger>
-            <TabsTrigger value="photos" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="photos" className={getStepTriggerClassName("photos")}>
               Photos
             </TabsTrigger>
-            <TabsTrigger value="customer-report" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="customer-report" className={getStepTriggerClassName("customer-report")}>
               Customer Report
             </TabsTrigger>
-            <TabsTrigger value="review" className="h-full w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold leading-tight text-slate-800 shadow-sm whitespace-normal break-words data-[state=active]:border-slate-900 data-[state=active]:bg-slate-900 data-[state=active]:text-white">
+            <TabsTrigger value="review" className={getStepTriggerClassName("review")}>
               Review
             </TabsTrigger>
           </TabsList>
@@ -876,6 +1195,26 @@ if (!isAuthorized) {
             <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
               <CardContent className="space-y-6 p-6">
                 <SectionHeader icon={Car} title="Customer and vehicle information" subtitle="Start the inspection by capturing the service visit details." />
+                <StepCompletionToggle
+                  checked={workflowSteps.vehicle}
+                  onCheckedChange={(value) =>
+                    handleWorkflowStepCompletionChange("vehicle", value)
+                  }
+                  label="Mark customer and vehicle information as complete."
+                />
+                {recordSyncMessage && (
+                  <div
+                    className={`rounded-2xl border px-4 py-3 text-sm ${
+                      recordSyncState === "error"
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : recordSyncState === "saved"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    {recordSyncMessage}
+                  </div>
+                )}
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
                     ["First Name", "firstName"],
@@ -883,21 +1222,101 @@ if (!isAuthorized) {
                     ["Phone", "phone"],
                     ["Email", "email"],
                     ["Year", "year"],
-                    ["Make", "make"],
-                    ["Model", "model"],
                     ["Mileage", "mileage"],
                     ["VIN", "vin"],
-                    ["Engine Size", "engineSize"],
                     ["License Plate", "licensePlate"],
                     ["State", "state"],
                     ["Technician Name", "techName"],
                   ].map(([label, key]) => (
                     <div key={key} className="space-y-2">
                       <Label>{label}</Label>
-                      <Input value={vehicle[key]} onChange={(e) => updateVehicle(key, e.target.value)} className="bg-white" />
+                      <Input
+                        value={vehicle[key]}
+                        onChange={(e) => updateVehicle(key, e.target.value)}
+                        onBlur={(e) => {
+                          updateVehicle(key, e.target.value);
+                          handleVehicleProfileBlur();
+                        }}
+                        inputMode={
+                          key === "phone"
+                            ? "tel"
+                            : key === "year" || key === "mileage"
+                              ? "numeric"
+                              : "text"
+                        }
+                        autoCapitalize={key === "vin" ? "characters" : "none"}
+                        maxLength={
+                          key === "phone"
+                            ? 14
+                            : key === "year"
+                              ? 4
+                              : key === "vin"
+                                ? 17
+                                : undefined
+                        }
+                        placeholder={
+                          key === "phone"
+                            ? "(555) 555-5555"
+                            : key === "email"
+                              ? "customer@example.com"
+                              : key === "year"
+                                ? String(MAX_MODEL_YEAR)
+                                : key === "mileage"
+                                  ? "125,000"
+                                  : key === "vin"
+                                    ? "17-character VIN"
+                                    : undefined
+                        }
+                        max={key === "year" ? MAX_MODEL_YEAR : undefined}
+                        className="bg-white"
+                      />
+                      {key === "email" && (
+                        <p className="text-xs text-slate-500">
+                          Required. Email is the main key we use to create and reconnect customer records.
+                        </p>
+                      )}
+                      {key === "licensePlate" && (
+                        <p className="text-xs text-slate-500">
+                          Custom and specialty plates are okay. We only normalize spacing and capitalization.
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
+
+                <VehicleCatalogFields
+                  year={vehicle.year}
+                  make={vehicle.make}
+                  model={vehicle.model}
+                  engineSize={vehicle.engineSize}
+                  licensePlate={vehicle.licensePlate}
+                  vin={vehicle.vin}
+                  useCustomMake={useCustomMake}
+                  useCustomModel={useCustomModel}
+                  useCustomEngineSize={useCustomEngineSize}
+                  normalizeYear={normalizeYear}
+                  normalizeVin={normalizeVin}
+                  normalizeLicensePlate={normalizeLicensePlate}
+                  setYear={(value) => updateVehicle("year", value)}
+                  setMake={(value) => updateVehicle("make", value)}
+                  setModel={(value) => updateVehicle("model", value)}
+                  setEngineSize={(value) => updateVehicle("engineSize", value)}
+                  setLicensePlate={(value) => updateVehicle("licensePlate", value)}
+                  setVin={(value) => updateVehicle("vin", value)}
+                  setUseCustomMake={setUseCustomMake}
+                  setUseCustomModel={setUseCustomModel}
+                  setUseCustomEngineSize={setUseCustomEngineSize}
+                  makeListId="vehicle-makes"
+                  modelListId="vehicle-models"
+                  engineListId="vehicle-engine-sizes"
+                  className="grid gap-4 md:grid-cols-3"
+                  onYearCommit={() => handleVehicleProfileBlur()}
+                  onMakeCommit={() => handleVehicleProfileBlur()}
+                  onModelCommit={() => handleVehicleProfileBlur()}
+                  onEngineCommit={() => handleVehicleProfileBlur()}
+                  onPlateCommit={() => handleVehicleProfileBlur()}
+                  onVinCommit={() => handleVehicleProfileBlur()}
+                />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -911,9 +1330,9 @@ if (!isAuthorized) {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Driveline</Label>
+                    <Label>Drivetrain</Label>
                     <Select value={vehicle.driveline} onValueChange={(value) => updateVehicle("driveline", value)}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select driveline" /></SelectTrigger>
+                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select drivetrain" /></SelectTrigger>
                       <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">                        <SelectItem value="fwd">FWD</SelectItem>
                         <SelectItem value="rwd">RWD</SelectItem>
                         <SelectItem value="awd">AWD</SelectItem>
@@ -940,6 +1359,13 @@ if (!isAuthorized) {
           <TabsContent value="tires">
             <div className="space-y-6">
               <SectionHeader icon={ClipboardList} title="Tire inspection" subtitle="Record PSI, tread data, condition, and wear indicators for each tire." />
+              <StepCompletionToggle
+                checked={workflowSteps.tires}
+                onCheckedChange={(value) =>
+                  handleWorkflowStepCompletionChange("tires", value)
+                }
+                label="Mark tire inspection as complete."
+              />
               <div className="grid gap-4 xl:grid-cols-2">
                 {tires.map((tire) => (
                   <Card key={tire} className="rounded-3xl border border-slate-200 bg-white shadow-md">
@@ -990,6 +1416,13 @@ if (!isAuthorized) {
             <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
               <CardContent className="space-y-6 p-6">
                 <SectionHeader icon={Wrench} title="Brake inspection" subtitle="Capture measured pad and rotor values plus the overall brake recommendation." />
+                <StepCompletionToggle
+                  checked={workflowSteps.brakes}
+                  onCheckedChange={(value) =>
+                    handleWorkflowStepCompletionChange("brakes", value)
+                  }
+                  label="Mark brake inspection as complete."
+                />
                 <div className="grid gap-4 md:grid-cols-4">
                   {[
                     ["LF Pad (mm)", "lfPad"],
@@ -1024,6 +1457,13 @@ if (!isAuthorized) {
 
           <TabsContent value="maintenance">
             <div className="space-y-6">
+              <StepCompletionToggle
+                checked={workflowSteps.maintenance}
+                onCheckedChange={(value) =>
+                  handleWorkflowStepCompletionChange("maintenance", value)
+                }
+                label="Mark maintenance and undercar inspection as complete."
+              />
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={ClipboardList} title="Maintenance inspection" subtitle="Record service recommendations and why each item needs attention." />
@@ -1058,6 +1498,13 @@ if (!isAuthorized) {
 
           <TabsContent value="photos">
             <div className="space-y-6">
+              <StepCompletionToggle
+                checked={workflowSteps.photos}
+                onCheckedChange={(value) =>
+                  handleWorkflowStepCompletionChange("photos", value)
+                }
+                label="Mark photo collection as complete."
+              />
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={Camera} title="Pre-service condition photos" subtitle="Capture the same required baseline photo set before work begins: all four corners and the interior." />
@@ -1234,13 +1681,19 @@ if (!isAuthorized) {
             </div>
           </TabsContent>
           <TabsContent value="customer-report">
-  <div className="mx-auto max-w-5xl">
+  <div className="mx-auto max-w-5xl space-y-6">
+    <StepCompletionToggle
+      checked={workflowSteps["customer-report"]}
+      onCheckedChange={(value) =>
+        handleWorkflowStepCompletionChange("customer-report", value)
+      }
+      label="Mark the customer report as complete and ready."
+    />
     <Card className="rounded-3xl border border-slate-200 bg-white shadow-md overflow-hidden">
       <div className="bg-slate-900 px-8 py-8 text-white">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="otg-brand-title">
-              On The Go Maintenance</div>
+            <BrandLogo surface="dark" />
             <h2 className="mt-2 text-3xl font-bold">Vehicle Inspection Report</h2>
             <p className="mt-2 text-sm text-slate-300">
               Prepared for {[vehicle.firstName, vehicle.lastName].filter(Boolean).join(" ") || "Customer"} on {new Date().toLocaleDateString()}
@@ -1390,6 +1843,13 @@ if (!isAuthorized) {
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={FileText} title="Inspection summary" subtitle="This is the customer-facing summary that can become a PDF or shareable report." />
+                  <StepCompletionToggle
+                    checked={workflowSteps.review}
+                    onCheckedChange={(value) =>
+                      handleWorkflowStepCompletionChange("review", value)
+                    }
+                    label="Mark the final review as complete."
+                  />
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl bg-slate-100 p-4">

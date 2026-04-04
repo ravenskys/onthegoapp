@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { normalizeEmail } from "@/lib/input-formatters";
+import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
+import { getErrorMessage } from "@/lib/tech-inspection";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -14,47 +18,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     const checkAccess = async () => {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+      const { user, roles: roleNames } = await getUserRoles();
 
-      if (userError || !user) {
+      if (!user) {
         window.location.href = "/customer/login";
         return;
       }
 
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-
-      if (error || !data || data.length === 0) {
+      if (roleNames.length === 0) {
         window.location.href = "/customer/login";
         return;
       }
-
-      const roleNames = data.map((r: any) => r.role);
       setRoles(roleNames);
 
       if (!roleNames.includes("admin")) {
-        if (roleNames.includes("manager")) {
-          window.location.href = roleNames.length > 1 ? "/portal" : "/manager";
-          return;
-        }
-
-        if (roleNames.includes("technician")) {
-          window.location.href = roleNames.length > 1 ? "/portal" : "/tech";
-          return;
-        }
-
-        if (roleNames.includes("customer")) {
-          window.location.href =
-            roleNames.length > 1 ? "/portal" : "/customer/dashboard";
-          return;
-        }
-
-        window.location.href = "/customer/login";
+        window.location.href = getPostLoginRoute(roleNames);
         return;
       }
 
@@ -82,7 +60,7 @@ export default function AdminPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalizeEmail(email),
           role: selectedRole,
         }),
       });
@@ -95,11 +73,11 @@ export default function AdminPage() {
         return;
       }
 
-      setMessage(`Role "${selectedRole}" assigned to ${email.trim().toLowerCase()}.`);
+      setMessage(`Role "${selectedRole}" assigned to ${normalizeEmail(email)}.`);
       setEmail("");
       setSelectedRole("technician");
-    } catch (error: any) {
-      setMessage(error?.message || "Failed to assign role.");
+    } catch (error) {
+      setMessage(getErrorMessage(error, "Failed to assign role."));
     } finally {
       setSubmitting(false);
     }
@@ -107,9 +85,11 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-12">
-        <div className="mx-auto max-w-6xl rounded-3xl border border-slate-200 bg-white p-8 shadow-md">
+      <div className="otg-page">
+        <div className="otg-container max-w-6xl">
+        <div className="otg-app-panel">
           <p className="text-slate-700">Loading admin dashboard...</p>
+        </div>
         </div>
       </div>
     );
@@ -120,14 +100,12 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-12">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-md">
+    <div className="otg-page">
+      <div className="otg-container max-w-6xl space-y-6">
+        <div className="otg-app-panel">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="otg-brand-title-black">
-                On The Go Maintenance
-              </div>
+              <BrandLogo priority />
               <h1 className="mt-2 text-3xl font-bold text-slate-900">
                 Admin Dashboard
               </h1>
@@ -140,7 +118,7 @@ export default function AdminPage() {
               {roles.length > 1 && (
                 <a
                   href="/portal"
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+                  className="otg-btn otg-btn-secondary"
                 >
                   Portal Home
                 </a>
@@ -148,7 +126,7 @@ export default function AdminPage() {
 
               <button
                 onClick={handleLogout}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+                className="otg-btn otg-btn-secondary"
               >
                 Log Out
               </button>
@@ -156,7 +134,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-md">
+        <div className="otg-app-panel">
           <h2 className="text-2xl font-bold text-slate-900">Assign User Role</h2>
           <p className="mt-2 text-slate-600">
             Add a role to an existing account by email.
@@ -164,23 +142,23 @@ export default function AdminPage() {
 
           <form onSubmit={handleAssignRole} className="mt-6 space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-800">Email</label>
+              <label className="otg-label">Email</label>
               <input
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
+                onChange={(e) => setEmail(normalizeEmail(e.target.value))}
+                className="otg-input"
                 placeholder="user@email.com"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-800">Role</label>
+              <label className="otg-label">Role</label>
               <select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
+                className="otg-select"
               >
                 <option value="customer">customer</option>
                 <option value="technician">technician</option>
@@ -192,7 +170,7 @@ export default function AdminPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              className="otg-btn otg-btn-dark disabled:opacity-50"
             >
               {submitting ? "Assigning..." : "Assign Role"}
             </button>

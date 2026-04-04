@@ -28,6 +28,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
 type Customer = {
   id: string;
   first_name: string | null;
@@ -90,26 +91,14 @@ export default function NewJobPage() {
 
   useEffect(() => {
     const checkAccess = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
+      const { user, roles } = await getUserRoles();
       if (!user) {
         window.location.href = "/customer/login";
         return;
       }
 
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-
-      if (
-        !roles ||
-        roles.length === 0 ||
-        !roles.some((r) => r.role === "manager" || r.role === "admin")
-      ) {
-        window.location.href = "/portal";
+      if (!hasAnyRole(roles, ["manager", "admin"])) {
+        window.location.href = getPostLoginRoute(roles);
         return;
       }
 
@@ -184,7 +173,7 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">

@@ -76,8 +76,9 @@ export default function CustomerLinkPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-12">
-      <div className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-md">
+    <div className="otg-page">
+      <div className="otg-container max-w-md">
+      <div className="otg-app-panel">
         <h1 className="text-2xl font-bold text-slate-900">Link Customer Account</h1>
         <p className="mt-3 text-slate-700">{status}</p>
 
@@ -87,10 +88,11 @@ export default function CustomerLinkPage() {
 
         <button
           onClick={handleLink}
-          className="mt-6 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+          className="otg-btn otg-btn-dark mt-6 w-full"
         >
           Link My Account
         </button>
+      </div>
       </div>
     </div>
   );

@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { formatPhoneNumber, normalizeEmail } from "@/lib/input-formatters";
+import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export default function CustomerSignupPage() {
   const router = useRouter();
@@ -19,34 +22,10 @@ export default function CustomerSignupPage() {
     setLoading(true);
 
     try {
-      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedEmail = normalizeEmail(email);
       const trimmedFirstName = firstName.trim();
       const trimmedLastName = lastName.trim();
-      const trimmedPhone = phone.trim();
-
-      const { data: existingCustomers, error: customerLookupError } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("email", normalizedEmail)
-        .limit(1);
-
-      if (customerLookupError) {
-        throw new Error(customerLookupError.message);
-      }
-
-      const existingCustomer =
-        existingCustomers && existingCustomers.length > 0
-          ? existingCustomers[0]
-          : null;
-
-      if (existingCustomer?.auth_user_id) {
-        setLoading(false);
-        alert(
-          "An account already exists for this email. Please sign in or use Forgot Password."
-        );
-        router.push("/customer/login");
-        return;
-      }
+      const trimmedPhone = formatPhoneNumber(phone).trim();
 
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
@@ -71,6 +50,21 @@ export default function CustomerSignupPage() {
       if (!user) {
         throw new Error("User account was not created.");
       }
+
+      const { data: existingCustomers, error: customerLookupError } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .limit(1);
+
+      if (customerLookupError) {
+        throw new Error(customerLookupError.message);
+      }
+
+      const existingCustomer =
+        existingCustomers && existingCustomers.length > 0
+          ? existingCustomers[0]
+          : null;
 
       const { error: profileError } = await supabase
         .from("profiles")
@@ -102,6 +96,18 @@ export default function CustomerSignupPage() {
       }
 
       if (existingCustomer) {
+        if (
+          existingCustomer.auth_user_id &&
+          existingCustomer.auth_user_id !== user.id
+        ) {
+          setLoading(false);
+          alert(
+            "An account already exists for this email. Please sign in or use Forgot Password."
+          );
+          router.push("/customer/login");
+          return;
+        }
+
         const { error: updateCustomerError } = await supabase
           .from("customers")
           .update({
@@ -135,9 +141,9 @@ export default function CustomerSignupPage() {
       setLoading(false);
       alert("Account created. You can now sign in.");
       router.push("/customer/login");
-    } catch (error: any) {
+    } catch (error) {
       setLoading(false);
-      alert(error?.message || "Signup failed.");
+      alert(error instanceof Error ? error.message : "Signup failed.");
     }
   };
 
@@ -151,7 +157,7 @@ export default function CustomerSignupPage() {
               style={{ backgroundImage: "url('/preventive-maintenance.png')" }}
             >
               <div className="max-w-lg rounded-2xl bg-black/55 p-6 backdrop-blur-sm">
-                <div className="otg-brand-title-white">On The Go Maintenance</div>
+                <BrandLogo surface="dark" priority />
                 <h1 className="mt-3 text-3xl font-bold uppercase text-white">
                   Create Your Account
                 </h1>
@@ -172,41 +178,14 @@ export default function CustomerSignupPage() {
             </p>
 
             <form onSubmit={handleSignup} className="mt-8 space-y-5">
-              <div className="space-y-2">
-                <label className="otg-label">First Name</label>
-                <input
-                  type="text"
-                  required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="otg-input"
-                  placeholder="John"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="otg-label">Last Name</label>
-                <input
-                  type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="otg-input"
-                  placeholder="Smith"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="otg-label">Phone</label>
-                <input
-                  type="tel"
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="otg-input"
-                  placeholder="(555) 555-5555"
-                />
-              </div>
+              <CustomerContactFields
+                firstName={firstName}
+                lastName={lastName}
+                phone={phone}
+                setFirstName={setFirstName}
+                setLastName={setLastName}
+                setPhone={(value) => setPhone(formatPhoneNumber(value))}
+              />
 
               <div className="space-y-2">
                 <label className="otg-label">Email</label>
@@ -214,7 +193,7 @@ export default function CustomerSignupPage() {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(normalizeEmail(e.target.value))}
                   className="otg-input"
                   placeholder="customer@email.com"
                 />

@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Save, Plus } from "lucide-react";
+import {
+  formatPhoneNumber,
+  normalizeEmail,
+  normalizeLicensePlate,
+  normalizeVin,
+  normalizeYear,
+} from "@/lib/input-formatters";
+import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 
 type Customer = {
   id: string;
@@ -23,6 +31,7 @@ type Vehicle = {
   year: number | null;
   make: string | null;
   model: string | null;
+  engine_size?: string | null;
   license_plate: string | null;
   vin: string | null;
 };
@@ -39,8 +48,12 @@ export default function CustomerDetailPage() {
   const [newVehicleYear, setNewVehicleYear] = useState("");
   const [newVehicleMake, setNewVehicleMake] = useState("");
   const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [newVehicleEngineSize, setNewVehicleEngineSize] = useState("");
   const [newVehiclePlate, setNewVehiclePlate] = useState("");
   const [newVehicleVin, setNewVehicleVin] = useState("");
+  const [useCustomMake, setUseCustomMake] = useState(false);
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -79,7 +92,7 @@ export default function CustomerDetailPage() {
 
     const { data: vehicleData, error: vehicleError } = await supabase
       .from("vehicles")
-      .select("id, year, make, model, license_plate, vin")
+      .select("id, year, make, model, engine_size, license_plate, vin")
       .eq("customer_id", customerId)
       .order("year", { ascending: false });
 
@@ -108,13 +121,21 @@ export default function CustomerDetailPage() {
     setSaving(true);
 
     try {
+      const normalizedCustomerEmail = normalizeEmail(email);
+
+      if (!normalizedCustomerEmail) {
+        alert("Email is required because it is the main way customer records are matched and linked.");
+        setSaving(false);
+        return;
+      }
+
       const { error } = await supabase
         .from("customers")
         .update({
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
-          email: email.trim() || null,
-          phone: phone.trim() || null,
+          email: normalizedCustomerEmail,
+          phone: formatPhoneNumber(phone).trim() || null,
           tax_exempt: taxExempt,
         })
         .eq("id", customerId);
@@ -159,8 +180,9 @@ export default function CustomerDetailPage() {
       year: newVehicleYear ? Number(newVehicleYear) : null,
       make: newVehicleMake.trim() || null,
       model: newVehicleModel.trim() || null,
-      license_plate: newVehiclePlate.trim() || null,
-      vin: newVehicleVin.trim() || null,
+      engine_size: newVehicleEngineSize.trim() || null,
+      license_plate: normalizeLicensePlate(newVehiclePlate) || null,
+      vin: normalizeVin(newVehicleVin) || null,
     });
 
     if (error) throw error;
@@ -168,8 +190,12 @@ export default function CustomerDetailPage() {
     setNewVehicleYear("");
     setNewVehicleMake("");
     setNewVehicleModel("");
+    setNewVehicleEngineSize("");
     setNewVehiclePlate("");
     setNewVehicleVin("");
+    setUseCustomMake(false);
+    setUseCustomModel(false);
+    setUseCustomEngineSize(false);
 
     fetchCustomer();
   } catch (error: any) {
@@ -181,7 +207,7 @@ export default function CustomerDetailPage() {
 };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -226,12 +252,25 @@ export default function CustomerDetailPage() {
 
             <div className="space-y-2">
               <Label>Email</Label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(normalizeEmail(e.target.value))}
+                placeholder="customer@email.com"
+              />
+              <p className="text-xs text-slate-500">
+                Required. We use email to match customer records, portal access, and service history.
+              </p>
             </div>
 
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                placeholder="(555) 555-5555"
+              />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -254,52 +293,32 @@ export default function CustomerDetailPage() {
                 <CardTitle>Vehicles</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <div className="space-y-2">
-                    <Label>Year</Label>
-                    <Input
-                        value={newVehicleYear}
-                        onChange={(e) => setNewVehicleYear(e.target.value)}
-                        placeholder="2020"
-                    />
-                    </div>
-
-                    <div className="space-y-2">
-                    <Label>Make</Label>
-                    <Input
-                        value={newVehicleMake}
-                        onChange={(e) => setNewVehicleMake(e.target.value)}
-                        placeholder="Ford"
-                    />
-                    </div>
-
-                    <div className="space-y-2">
-                    <Label>Model</Label>
-                    <Input
-                        value={newVehicleModel}
-                        onChange={(e) => setNewVehicleModel(e.target.value)}
-                        placeholder="F-150"
-                    />
-                    </div>
-
-                    <div className="space-y-2">
-                    <Label>License Plate</Label>
-                    <Input
-                        value={newVehiclePlate}
-                        onChange={(e) => setNewVehiclePlate(e.target.value)}
-                        placeholder="ABC123"
-                    />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2 lg:col-span-2">
-                    <Label>VIN</Label>
-                    <Input
-                        value={newVehicleVin}
-                        onChange={(e) => setNewVehicleVin(e.target.value)}
-                        placeholder="Vehicle identification number"
-                    />
-                    </div>
-                </div>
+                <VehicleCatalogFields
+                  year={newVehicleYear}
+                  make={newVehicleMake}
+                  model={newVehicleModel}
+                  engineSize={newVehicleEngineSize}
+                  licensePlate={newVehiclePlate}
+                  vin={newVehicleVin}
+                  useCustomMake={useCustomMake}
+                  useCustomModel={useCustomModel}
+                  useCustomEngineSize={useCustomEngineSize}
+                  normalizeYear={normalizeYear}
+                  normalizeVin={normalizeVin}
+                  normalizeLicensePlate={normalizeLicensePlate}
+                  setYear={setNewVehicleYear}
+                  setMake={setNewVehicleMake}
+                  setModel={setNewVehicleModel}
+                  setEngineSize={setNewVehicleEngineSize}
+                  setLicensePlate={setNewVehiclePlate}
+                  setVin={setNewVehicleVin}
+                  setUseCustomMake={setUseCustomMake}
+                  setUseCustomModel={setUseCustomModel}
+                  setUseCustomEngineSize={setUseCustomEngineSize}
+                  makeListId="manager-vehicle-makes"
+                  modelListId="manager-vehicle-models"
+                  engineListId="manager-vehicle-engine-sizes"
+                />
 
                 <div>
                     <Button onClick={handleAddVehicle} disabled={saving}>
@@ -328,6 +347,7 @@ export default function CustomerDetailPage() {
                             <div className="font-medium text-slate-900">{vehicleName}</div>
 
                             <div className="mt-2 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
+                            <div>Engine: {vehicle.engine_size || "—"}</div>
                             <div>Plate: {vehicle.license_plate || "—"}</div>
                             <div>VIN: {vehicle.vin || "—"}</div>
                             </div>

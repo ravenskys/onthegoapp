@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getErrorMessage } from "@/lib/tech-inspection";
 
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -18,29 +20,14 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     const loadPage = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
+      const { user, roles } = await getUserRoles();
       if (!user) {
         window.location.href = "/customer/login";
         return;
       }
 
-      const { data: roles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-
-      if (rolesError) {
-        console.error(rolesError);
-        return;
-      }
-
-      const isAdmin = roles?.some((r) => r.role === "admin");
-
-      if (!isAdmin) {
-        window.location.href = "/portal";
+      if (!hasAnyRole(roles, ["admin"])) {
+        window.location.href = getPostLoginRoute(roles);
         return;
       }
 
@@ -88,9 +75,9 @@ export default function AdminSettingsPage() {
       if (updateError) throw updateError;
 
       alert("Settings saved.");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      alert(`Failed to save settings: ${error.message || "Unknown error"}`);
+      alert(`Failed to save settings: ${getErrorMessage(error, "Unknown error")}`);
     } finally {
       setSaving(false);
     }

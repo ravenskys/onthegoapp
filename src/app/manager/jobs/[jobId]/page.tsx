@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
+import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
 
 // Types
 interface Job {
@@ -100,6 +101,7 @@ export default function JobDetailPage() {
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [selectedCatalogServiceId, setSelectedCatalogServiceId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [services, setServices] = useState<JobService[]>([]);
@@ -202,7 +204,25 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
   useEffect(() => {
     if (!jobId) return;
-    fetchJobData();
+
+    const checkAccessAndLoad = async () => {
+      const { user, roles } = await getUserRoles();
+
+      if (!user) {
+        window.location.href = "/customer/login";
+        return;
+      }
+
+      if (!hasAnyRole(roles, ["manager", "admin"])) {
+        window.location.href = getPostLoginRoute(roles);
+        return;
+      }
+
+      setAuthorized(true);
+      fetchJobData();
+    };
+
+    checkAccessAndLoad();
   }, [jobId]);
 
   const fetchJobData = async () => {
@@ -889,7 +909,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         }
       };   
 
-  if (loading) {
+  if (loading || !authorized) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
@@ -900,7 +920,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   if (!job) return <div className="p-8 text-center text-red-600">Job not found.</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         
         {/* Header */}

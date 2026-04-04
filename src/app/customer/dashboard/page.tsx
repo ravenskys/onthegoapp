@@ -2,12 +2,45 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { formatPhoneNumber } from "@/lib/input-formatters";
+import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
+import { workflowStepLabels } from "@/lib/inspection-workflow";
+import { getErrorMessage } from "@/lib/tech-inspection";
+import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+
+const normalizeStoragePath = (value: string | null | undefined, bucket: string) => {
+  if (!value) return null;
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return null;
+
+  const publicPrefix = `/storage/v1/object/public/${bucket}/`;
+  const signPrefix = `/storage/v1/object/sign/${bucket}/`;
+
+  try {
+    const parsedUrl = new URL(trimmedValue);
+
+    if (parsedUrl.pathname.includes(publicPrefix)) {
+      return decodeURIComponent(parsedUrl.pathname.split(publicPrefix)[1] || "");
+    }
+
+    if (parsedUrl.pathname.includes(signPrefix)) {
+      return decodeURIComponent(parsedUrl.pathname.split(signPrefix)[1] || "");
+    }
+  } catch {
+    return trimmedValue;
+  }
+
+  return trimmedValue;
+};
 
 export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<any>(null);
   const [reports, setReports] = useState<any[]>([]);
   const [photosByInspection, setPhotosByInspection] = useState<Record<string, any[]>>({});
+  const [latestInspection, setLatestInspection] = useState<any>(null);
   const [roles, setRoles] = useState<string[]>([]);
 
   const [accountFirstName, setAccountFirstName] = useState("");
@@ -19,47 +52,21 @@ export default function CustomerDashboardPage() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError) throw userError;
+        const { user, roles: roleNames } = await getUserRoles();
         if (!user) {
           window.location.href = "/customer/login";
           return;
         }
 
-        const { data: rolesData, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id);
-
-        if (rolesError || !rolesData || rolesData.length === 0) {
+        if (roleNames.length === 0) {
           setLoading(false);
           return;
         }
 
-        const roleNames = rolesData.map((r: any) => r.role);
         setRoles(roleNames);
 
         if (!roleNames.includes("customer")) {
-          if (roleNames.includes("technician")) {
-            window.location.href = "/tech";
-            return;
-          }
-
-          if (roleNames.includes("manager")) {
-            window.location.href = "/manager";
-            return;
-          }
-
-          if (roleNames.includes("admin")) {
-            window.location.href = "/admin";
-            return;
-          }
-
-          window.location.href = "/customer/login";
+          window.location.href = getPostLoginRoute(roleNames);
           return;
         }
 
@@ -78,6 +85,33 @@ export default function CustomerDashboardPage() {
         setAccountFirstName(customerRow.first_name || "");
         setAccountLastName(customerRow.last_name || "");
         setAccountPhone(customerRow.phone || "");
+
+        const { data: inspectionRows, error: inspectionError } = await supabase
+          .from("inspections")
+          .select(`
+            id,
+            created_at,
+            tech_name,
+            inspection_summary,
+            vehicles (
+              year,
+              make,
+              model,
+              mileage,
+              vin
+            )
+          `)
+          .eq("customer_id", customerRow.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (inspectionError) throw inspectionError;
+
+        if (inspectionRows && inspectionRows.length > 0) {
+          setLatestInspection(inspectionRows[0]);
+        } else {
+          setLatestInspection(null);
+        }
 
         const { data: reportRows, error: reportError } = await supabase
           .from("inspection_reports")
@@ -127,19 +161,21 @@ export default function CustomerDashboardPage() {
 
           const photosWithUrls = await Promise.all(
             (photoRows || []).map(async (photo: any) => {
-              if (!photo.file_url) {
+              const storagePath = normalizeStoragePath(photo.file_url, "inspection-photos");
+
+              if (!storagePath) {
                 return { ...photo, signedUrl: null };
               }
 
               const { data, error } = await supabase.storage
                 .from("inspection-photos")
-                .createSignedUrl(photo.file_url, 60);
+                .createSignedUrl(storagePath, 60);
 
               if (error) {
                 return { ...photo, signedUrl: null };
               }
 
-              return { ...photo, signedUrl: data.signedUrl };
+              return { ...photo, file_path: storagePath, signedUrl: data.signedUrl };
             })
           );
 
@@ -175,14 +211,16 @@ export default function CustomerDashboardPage() {
 
   const handleOpenPdf = async (pdfPath: string) => {
     try {
-      if (!pdfPath) {
+      const storagePath = normalizeStoragePath(pdfPath, "inspection-reports");
+
+      if (!storagePath) {
         alert("No PDF path found for this report.");
         return;
       }
 
       const { data, error } = await supabase.storage
         .from("inspection-reports")
-        .createSignedUrl(pdfPath, 60);
+        .createSignedUrl(storagePath, 60);
 
       if (error) throw error;
 
@@ -195,14 +233,16 @@ export default function CustomerDashboardPage() {
 
   const handleOpenPhoto = async (fileUrl: string) => {
     try {
-      if (!fileUrl) {
+      const storagePath = normalizeStoragePath(fileUrl, "inspection-photos");
+
+      if (!storagePath) {
         alert("No photo found.");
         return;
       }
 
       const { data, error } = await supabase.storage
         .from("inspection-photos")
-        .createSignedUrl(fileUrl, 300);
+        .createSignedUrl(storagePath, 300);
 
       if (error) throw error;
 
@@ -224,7 +264,7 @@ export default function CustomerDashboardPage() {
     try {
       const trimmedFirstName = accountFirstName.trim();
       const trimmedLastName = accountLastName.trim();
-      const trimmedPhone = accountPhone.trim();
+      const trimmedPhone = formatPhoneNumber(accountPhone).trim();
 
       const { error } = await supabase
         .from("customers")
@@ -249,12 +289,20 @@ export default function CustomerDashboardPage() {
       );
 
       setAccountMessage("Account information updated.");
-    } catch (error: any) {
-      setAccountMessage(error?.message || "Failed to update account information.");
+    } catch (error) {
+      setAccountMessage(getErrorMessage(error, "Failed to update account information."));
     } finally {
       setSavingAccount(false);
     }
   };
+
+  const latestWorkflowSteps = latestInspection?.inspection_summary?.workflow_steps || {};
+  const workflowTotal =
+    latestInspection?.inspection_summary?.workflow_total_count ||
+    Object.keys(workflowStepLabels).length;
+  const workflowCompleted =
+    latestInspection?.inspection_summary?.workflow_completed_count ||
+    Object.values(latestWorkflowSteps).filter(Boolean).length;
 
   if (loading) {
     return (
@@ -292,7 +340,7 @@ export default function CustomerDashboardPage() {
         <div className="otg-card p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="otg-brand-title-black">On The Go Maintenance</div>
+              <BrandLogo priority />
               <h1 className="otg-page-title">Customer Portal</h1>
               <p className="otg-body mt-2">
                 Welcome, {[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "Customer"}.
@@ -326,41 +374,14 @@ export default function CustomerDashboardPage() {
           </p>
 
           <form onSubmit={handleSaveAccountInfo} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <label className="otg-label">First Name</label>
-              <input
-                type="text"
-                required
-                value={accountFirstName}
-                onChange={(e) => setAccountFirstName(e.target.value)}
-                className="otg-input"
-                placeholder="John"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="otg-label">Last Name</label>
-              <input
-                type="text"
-                required
-                value={accountLastName}
-                onChange={(e) => setAccountLastName(e.target.value)}
-                className="otg-input"
-                placeholder="Smith"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="otg-label">Phone</label>
-              <input
-                type="tel"
-                required
-                value={accountPhone}
-                onChange={(e) => setAccountPhone(e.target.value)}
-                className="otg-input"
-                placeholder="(555) 555-5555"
-              />
-            </div>
+            <CustomerContactFields
+              firstName={accountFirstName}
+              lastName={accountLastName}
+              phone={accountPhone}
+              setFirstName={setAccountFirstName}
+              setLastName={setAccountLastName}
+              setPhone={(value) => setAccountPhone(formatPhoneNumber(value))}
+            />
 
             <button
               type="submit"
@@ -374,6 +395,74 @@ export default function CustomerDashboardPage() {
           {accountMessage && (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               {accountMessage}
+            </div>
+          )}
+        </div>
+
+        <div className="otg-card p-8">
+          <h2 className="otg-section-title">Current Service Progress</h2>
+          <p className="otg-body mt-2">
+            Track the latest technician steps as your vehicle moves through the inspection.
+          </p>
+
+          {latestInspection ? (
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-lg font-semibold text-slate-900">
+                      {(() => {
+                        const vehicle =
+                          latestInspection?.vehicles && Array.isArray(latestInspection.vehicles)
+                            ? latestInspection.vehicles[0]
+                            : latestInspection?.vehicles;
+
+                        return (
+                          [vehicle?.year, vehicle?.make, vehicle?.model]
+                            .filter(Boolean)
+                            .join(" ") || "Vehicle"
+                        );
+                      })()}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      Last updated: {new Date(latestInspection.created_at).toLocaleString()}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      Technician: {latestInspection.tech_name || "-"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700">
+                    {workflowCompleted} of {workflowTotal} steps complete
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                {Object.entries(workflowStepLabels).map(([stepKey, label]) => {
+                  const complete = Boolean(latestWorkflowSteps?.[stepKey]);
+
+                  return (
+                    <div
+                      key={stepKey}
+                      className={`rounded-2xl border p-4 text-sm ${
+                        complete
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-slate-200 bg-slate-50 text-slate-600"
+                      }`}
+                    >
+                      <div className="font-semibold">{label}</div>
+                      <div className="mt-1">
+                        {complete ? "Completed" : "Waiting on this step"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-slate-600">
+              No live service progress is available yet.
             </div>
           )}
         </div>
@@ -449,7 +538,7 @@ export default function CustomerDashboardPage() {
                                 href="#"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  handleOpenPhoto(photo.file_url);
+                                  handleOpenPhoto(photo.file_path || photo.file_url);
                                 }}
                                 className="block overflow-hidden rounded-xl border border-slate-200 bg-white"
                               >

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Search, Filter } from "lucide-react";
+import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
 
 // Types matching your DB schema
 interface Job {
@@ -48,6 +49,11 @@ interface Job {
 } | null;
 }
 
+interface TechnicianOption {
+  id: string;
+  email: string | null;
+}
+
 export default function ManagerJobsPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
@@ -56,24 +62,19 @@ export default function ManagerJobsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [techFilter, setTechFilter] = useState<string>("all");
-  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
 
   // 1. Auth Check
   useEffect(() => {
     const checkAccess = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, roles } = await getUserRoles();
       if (!user) {
         window.location.href = "/customer/login";
         return;
       }
 
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
-
-      if (!roles || roles.length === 0 || (!roles.some(r => r.role === "manager" || r.role === "admin"))) {
-        window.location.href = "/portal";
+      if (!hasAnyRole(roles, ["manager", "admin"])) {
+        window.location.href = getPostLoginRoute(roles);
         return;
       }
 
@@ -125,16 +126,18 @@ export default function ManagerJobsPage() {
 
       if (techData) {
         const techIds = techData.map(t => t.user_id);
-        const { data: techUsers } = await supabase
-          .from("auth.users")
+        const { data: techUsers, error: techUsersError } = await supabase
+          .from("profiles")
           .select("id, email")
           .in("id", techIds);
+
+        if (techUsersError) throw techUsersError;
         setTechnicians(techUsers || []);
       }
 
       setJobs(enrichedJobs || []);
       setFilteredJobs(enrichedJobs || []);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error fetching jobs:", error);
       alert("Failed to load jobs.");
     } finally {
@@ -193,7 +196,7 @@ export default function ManagerJobsPage() {
   if (!authorized) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         
         {/* Header */}

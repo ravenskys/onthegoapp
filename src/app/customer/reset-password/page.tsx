@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -37,13 +38,11 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-12">
-      <div className="mx-auto max-w-md">
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-md">
+    <div className="otg-page">
+      <div className="otg-container max-w-md">
+        <div className="otg-app-panel">
           <div className="mb-6">
-            <div className="otg-brand-title-black">
-              On The Go Maintenance
-            </div>
+            <BrandLogo priority />
             <h1 className="mt-2 text-3xl font-bold text-slate-900">
               Reset Password
             </h1>
@@ -54,25 +53,25 @@ export default function ResetPasswordPage() {
 
           <form onSubmit={handleUpdatePassword} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-800">New Password</label>
+              <label className="otg-label">New Password</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
+                className="otg-input"
                 placeholder="Enter a new password"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-800">Confirm Password</label>
+              <label className="otg-label">Confirm Password</label>
               <input
                 type="password"
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-900"
+                className="otg-input"
                 placeholder="Confirm your new password"
               />
             </div>
@@ -80,7 +79,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              className="otg-btn otg-btn-dark w-full disabled:opacity-50"
             >
               {loading ? "Updating password..." : "Update Password"}
             </button>
