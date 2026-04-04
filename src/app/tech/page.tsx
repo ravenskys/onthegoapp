@@ -103,7 +103,30 @@ const requiredConditionShots = [
   "Interior",
 ];
 
-function StatusPill({ value }) {
+type InspectionStatus = "ok" | "sug" | "req" | "" | null | undefined;
+
+type StatusPillProps = {
+  value: InspectionStatus;
+};
+
+type ConditionSelectProps = {
+  value: InspectionStatus;
+  onChange: (value: string) => void;
+};
+
+type SectionHeaderProps = {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle: string;
+};
+
+type StepCompletionToggleProps = {
+  checked: boolean;
+  onCheckedChange: (value: boolean) => void;
+  label: string;
+};
+
+function StatusPill({ value }: StatusPillProps) {
   const map = {
     ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
     sug: "bg-amber-100 text-amber-700 border-amber-200",
@@ -120,7 +143,7 @@ function StatusPill({ value }) {
   );
 }
 
-function ConditionSelect({ value, onChange }) {
+function ConditionSelect({ value, onChange }: ConditionSelectProps) {
   return (
     <Select value={value || ""} onValueChange={onChange}>
       <SelectTrigger className="w-full bg-white">
@@ -136,7 +159,7 @@ function ConditionSelect({ value, onChange }) {
   );
 }
 
-function SectionHeader({ icon: Icon, title, subtitle }) {
+function SectionHeader({ icon: Icon, title, subtitle }: SectionHeaderProps) {
   return (
     <div className="flex items-start gap-3">
       <div className="rounded-2xl bg-slate-200 p-2">
@@ -150,7 +173,11 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
   );
 }
 
-function StepCompletionToggle({ checked, onCheckedChange, label }) {
+function StepCompletionToggle({
+  checked,
+  onCheckedChange,
+  label,
+}: StepCompletionToggleProps) {
   return (
     <button
       type="button"
@@ -282,7 +309,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     return Math.round((completed / total) * 100);
   }, [vehicle, tireData, brakes]);
 
-  const normalizeVehicleFieldValue = (key, value) => {
+  const normalizeVehicleFieldValue = (key: string, value: string) => {
     switch (key) {
       case "phone":
         return formatPhoneNumber(value);
@@ -301,10 +328,10 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const updateVehicle = (key, value) =>
+  const updateVehicle = (key: string, value: string) =>
     setVehicle((prev) => ({ ...prev, [key]: normalizeVehicleFieldValue(key, value) }));
 
-  const updateTire = (tire, key, value) => {
+  const updateTire = (tire: string, key: string, value: string) => {
     setTireData((prev) => ({
       ...prev,
       [tire]: {
@@ -314,7 +341,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     }));
   };
 
-  const toggleTireFlag = (tire, flag) => {
+  const toggleTireFlag = (tire: string, flag: string) => {
     setTireData((prev) => {
       const exists = prev[tire].flags.includes(flag);
       return {
@@ -327,11 +354,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     });
   };
 
-  const updateMaintenance = (item, key, value) => {
+  const updateMaintenance = (item: string, key: string, value: string) => {
     setMaintenance((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
-  const updateUndercar = (item, key, value) => {
+  const updateUndercar = (item: string, key: string, value: string) => {
     setUndercar((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
@@ -350,7 +377,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     Object.fromEntries(workflowStepOrder.map((step) => [step, false]))
   );
   
-  const onPhotoUpload = (e) => {
+  const onPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const newPhotos = files.map((file) => ({
   id: `${file.name}-${file.size}-${Date.now()}`,
@@ -366,7 +393,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     setPhotos((prev) => prev.map((photo) => (photo.id === id ? { ...photo, note } : photo)));
   };
 
-  const onConditionPhotoUpload = (stage, shot, e) => {
+  const onConditionPhotoUpload = (
+    stage: "pre" | "post",
+    shot: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -383,7 +414,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     }));
   };
 
-  const updateConditionPhotoNote = (stage, shot, note) => {
+  const updateConditionPhotoNote = (
+    stage: "pre" | "post",
+    shot: string,
+    note: string
+  ) => {
     const setter = stage === "pre" ? setPreServicePhotos : setPostWorkPhotos;
 
     setter((prev) => ({
@@ -419,7 +454,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     [workflowSteps]
   );
 
-  const toggleWorkflowStep = (step, value) => {
+  const toggleWorkflowStep = (step: string, value: boolean) => {
     setWorkflowSteps((prev) => ({
       ...prev,
       [step]: value,
