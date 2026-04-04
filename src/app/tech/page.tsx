@@ -109,6 +109,8 @@ type StatusPillProps = {
   value: InspectionStatus;
 };
 
+type RecommendationStatus = "ok" | "sug" | "req";
+
 type ConditionSelectProps = {
   value: InspectionStatus;
   onChange: (value: string) => void;
@@ -477,11 +479,20 @@ export default function OnTheGoTechnicianAppPrototype() {
   );
 
   const summaryCounts = useMemo(() => {
-    const statuses = { ok: 0, sug: 0, req: 0 };
-    Object.values(tireData).forEach((t) => t.status && (statuses[t.status] += 1));
-    Object.values(maintenance).forEach((m) => m.status && (statuses[m.status] += 1));
-    Object.values(undercar).forEach((u) => u.status && (statuses[u.status] += 1));
-    if (brakes.status) statuses[brakes.status] += 1;
+    const statuses: Record<RecommendationStatus, number> = { ok: 0, sug: 0, req: 0 };
+    const isRecommendationStatus = (value: string): value is RecommendationStatus =>
+      value === "ok" || value === "sug" || value === "req";
+
+    Object.values(tireData).forEach((t) => {
+      if (isRecommendationStatus(t.status)) statuses[t.status] += 1;
+    });
+    Object.values(maintenance).forEach((m) => {
+      if (isRecommendationStatus(m.status)) statuses[m.status] += 1;
+    });
+    Object.values(undercar).forEach((u) => {
+      if (isRecommendationStatus(u.status)) statuses[u.status] += 1;
+    });
+    if (isRecommendationStatus(brakes.status)) statuses[brakes.status] += 1;
     return statuses;
   }, [tireData, maintenance, undercar, brakes.status]);
 
