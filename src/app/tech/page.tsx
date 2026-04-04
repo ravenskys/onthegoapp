@@ -164,6 +164,8 @@ type ConditionPhoto = {
 
 type ConditionPhotoState = Record<string, ConditionPhoto>;
 
+type WorkflowStepsState = Record<string, boolean>;
+
 function StatusPill({ value }: StatusPillProps) {
   const map = {
     ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -411,7 +413,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
-  const [workflowSteps, setWorkflowSteps] = useState(
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(
     Object.fromEntries(workflowStepOrder.map((step) => [step, false]))
   );
   
@@ -617,7 +619,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     return { customerData, vehicleData };
   };
 
-  const upsertInspectionDraft = async (customerId, vehicleId, workflowState = workflowSteps) => {
+  const upsertInspectionDraft = async (
+    customerId: string,
+    vehicleId: string,
+    workflowState: WorkflowStepsState = workflowSteps
+  ) => {
     const inspectionPayload = buildInspectionPayload({
       customerId,
       vehicleId,
@@ -678,7 +684,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   };
 
   const syncInspectionProgress = async (
-    workflowState = workflowSteps,
+    workflowState: WorkflowStepsState = workflowSteps,
     successMessage = "Inspection progress saved."
   ) => {
     setRecordSyncState("saving");
