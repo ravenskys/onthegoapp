@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -217,7 +217,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         return;
       }
 
-      if (!hasAnyRole(roles, ["manager", "admin"])) {
+      if (!hasPortalAccess(roles, "manager")) {
         window.location.href = getPostLoginRoute(roles);
         return;
       }

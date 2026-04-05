@@ -5,11 +5,11 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
-import { getUserRoles } from "@/lib/portal-auth";
+import { getUserRoles, hasPortalAccess, type PortalRole } from "@/lib/portal-auth";
 
 export default function PortalChooserPage() {
   const [loading, setLoading] = useState(true);
-  const [roles, setRoles] = useState<string[]>([]);
+  const [roles, setRoles] = useState<PortalRole[]>([]);
 
   useEffect(() => {
     const loadRoles = async () => {
@@ -77,7 +77,7 @@ export default function PortalChooserPage() {
             </div>
 
             <div className="mt-8 grid gap-4 md:grid-cols-2">
-              {roles.includes("customer") && (
+              {hasPortalAccess(roles, "customer") && (
                 <Link
                   href="/customer/dashboard"
                   className="otg-service-card block"
@@ -89,7 +89,7 @@ export default function PortalChooserPage() {
                 </Link>
               )}
 
-              {roles.includes("technician") && (
+              {hasPortalAccess(roles, "tech") && (
                 <Link href="/tech" className="otg-service-card block">
                   <div className="otg-card-title">Technician Portal</div>
                   <p className="otg-body mt-2">
@@ -98,7 +98,7 @@ export default function PortalChooserPage() {
                 </Link>
               )}
 
-              {roles.includes("manager") && (
+              {hasPortalAccess(roles, "manager") && (
                 <Link href="/manager" className="otg-service-card block">
                   <div className="otg-card-title">Manager Portal</div>
                   <p className="otg-body mt-2">
@@ -107,7 +107,7 @@ export default function PortalChooserPage() {
                 </Link>
               )}
 
-              {roles.includes("admin") && (
+              {hasPortalAccess(roles, "admin") && (
                 <Link href="/admin" className="otg-service-card block">
                   <div className="otg-card-title">Admin Portal</div>
                   <p className="otg-body mt-2">

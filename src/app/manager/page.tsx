@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 import {
   Loader2,
@@ -33,7 +33,7 @@ export default function ManagerHomePage() {
           return;
         }
 
-        if (!hasAnyRole(roles, ["manager", "admin"])) {
+        if (!hasPortalAccess(roles, "manager")) {
           window.location.href = getPostLoginRoute(roles);
           return;
         }
@@ -188,7 +188,7 @@ export default function ManagerHomePage() {
                 <div>
                   <div className="mb-3 flex items-center gap-2 text-slate-900">
                     <Wrench className="h-5 w-5" />
-                    <h2 className="text-lg font-semibold">Admin Settings</h2>
+                    <h2 className="text-lg font-semibold">Settings</h2>
                   </div>
                   <p className="text-sm text-slate-600">
                     Update default tax settings and other internal business controls.

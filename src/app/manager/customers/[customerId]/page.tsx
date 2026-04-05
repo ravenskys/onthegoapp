@@ -16,6 +16,7 @@ import {
   normalizeYear,
 } from "@/lib/input-formatters";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -47,6 +48,7 @@ export default function CustomerDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [newVehicleYear, setNewVehicleYear] = useState("");
@@ -67,7 +69,25 @@ export default function CustomerDetailPage() {
 
   useEffect(() => {
     if (!customerId) return;
-    fetchCustomer();
+
+    const checkAccessAndLoad = async () => {
+      const { user, roles } = await getUserRoles();
+
+      if (!user) {
+        window.location.href = "/customer/login";
+        return;
+      }
+
+      if (!hasPortalAccess(roles, "manager")) {
+        window.location.href = getPostLoginRoute(roles);
+        return;
+      }
+
+      setAuthorized(true);
+      await fetchCustomer();
+    };
+
+    void checkAccessAndLoad();
   }, [customerId]);
 
   const fetchCustomer = async () => {
@@ -162,6 +182,10 @@ export default function CustomerDetailPage() {
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
       </div>
     );
+  }
+
+  if (!authorized) {
+    return null;
   }
 
   if (!customer) {

@@ -31,7 +31,7 @@ import {
 } from "@/components/portal/BackToPortalButton";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   buildCustomerPayload,
   buildInspectionPayload,
@@ -1180,7 +1180,7 @@ useEffect(() => {
       return;
     }
 
-    if (hasAnyRole(roleNames, ["technician", "manager", "admin"])) {
+    if (hasPortalAccess(roleNames, "tech")) {
       try {
         const { data: rolesData, error: rolesError } = await supabase
           .from("user_roles")

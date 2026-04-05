@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Search, Filter } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -77,7 +77,7 @@ export default function ManagerJobsPage() {
         return;
       }
 
-      if (!hasAnyRole(roles, ["manager", "admin"])) {
+      if (!hasPortalAccess(roles, "manager")) {
         window.location.href = getPostLoginRoute(roles);
         return;
       }

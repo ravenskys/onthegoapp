@@ -1,12 +1,30 @@
 import { supabase } from "@/lib/supabase";
 
 export type PortalRole = "customer" | "technician" | "manager" | "admin";
+export type PortalDestination = "customer" | "tech" | "manager" | "admin";
+
+const portalAccessMap: Record<PortalDestination, PortalRole[]> = {
+  customer: ["customer"],
+  tech: ["technician", "manager", "admin"],
+  manager: ["manager", "admin"],
+  admin: ["admin"],
+};
 
 export const getDistinctRoles = (roles: PortalRole[]) =>
   Array.from(new Set(roles));
 
+export const hasPortalAccess = (
+  roles: PortalRole[],
+  destination: PortalDestination,
+) => portalAccessMap[destination].some((role) => roles.includes(role));
+
+export const getAccessiblePortals = (roles: PortalRole[]) =>
+  (Object.keys(portalAccessMap) as PortalDestination[]).filter((destination) =>
+    hasPortalAccess(roles, destination),
+  );
+
 export const hasMultiplePortalAccess = (roles: PortalRole[]) =>
-  getDistinctRoles(roles).length > 1;
+  getAccessiblePortals(roles).length > 1;
 
 export const getUserRoles = async () => {
   const {
@@ -34,10 +52,10 @@ export const getUserRoles = async () => {
 };
 
 export const getPrimaryPortalRoute = (roles: PortalRole[]) => {
-  if (roles.includes("admin")) return "/admin";
-  if (roles.includes("manager")) return "/manager";
-  if (roles.includes("technician")) return "/tech";
-  if (roles.includes("customer")) return "/customer/dashboard";
+  if (hasPortalAccess(roles, "admin")) return "/admin";
+  if (hasPortalAccess(roles, "manager")) return "/manager";
+  if (hasPortalAccess(roles, "tech")) return "/tech";
+  if (hasPortalAccess(roles, "customer")) return "/customer/dashboard";
   return "/customer/login";
 };
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { normalizeEmail } from "@/lib/input-formatters";
-import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -33,7 +33,7 @@ export default function AdminPage() {
         return;
       }
 
-      if (!roleNames.includes("admin")) {
+      if (!hasPortalAccess(roleNames, "admin")) {
         window.location.href = getPostLoginRoute(roleNames);
         return;
       }
@@ -56,10 +56,19 @@ export default function AdminPage() {
     setMessage("");
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your session expired. Please log in again.");
+      }
+
       const response = await fetch("/api/admin/assign-role", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email: normalizeEmail(email),

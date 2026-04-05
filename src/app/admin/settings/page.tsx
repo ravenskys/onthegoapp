@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
@@ -27,7 +27,7 @@ export default function AdminSettingsPage() {
         return;
       }
 
-      if (!hasAnyRole(roles, ["admin"])) {
+      if (!hasPortalAccess(roles, "admin")) {
         window.location.href = getPostLoginRoute(roles);
         return;
       }

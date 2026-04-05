@@ -6,7 +6,7 @@ import { formatPhoneNumber } from "@/lib/input-formatters";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
 import { workflowStepLabels } from "@/lib/inspection-workflow";
 import { getErrorMessage } from "@/lib/tech-inspection";
-import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
   BackToPortalButton,
@@ -66,7 +66,7 @@ export default function CustomerDashboardPage() {
           return;
         }
 
-        if (!roleNames.includes("customer")) {
+        if (!hasPortalAccess(roleNames, "customer")) {
           window.location.href = getPostLoginRoute(roleNames);
           return;
         }

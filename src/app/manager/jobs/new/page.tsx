@@ -28,7 +28,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -101,7 +101,7 @@ export default function NewJobPage() {
         return;
       }
 
-      if (!hasAnyRole(roles, ["manager", "admin"])) {
+      if (!hasPortalAccess(roles, "manager")) {
         window.location.href = getPostLoginRoute(roles);
         return;
       }

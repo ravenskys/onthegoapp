@@ -7,6 +7,7 @@ import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 import { normalizeEmail } from "@/lib/input-formatters";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
@@ -36,57 +37,22 @@ export default function CustomerLoginPage() {
       return;
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { user, roles } = await getUserRoles();
 
-    if (userError || !user) {
+    if (!user) {
       setLoading(false);
       alert("Could not load user after login.");
       return;
     }
 
-    const { data: roles, error: rolesError } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
-
     setLoading(false);
 
-    if (rolesError || !roles || roles.length === 0) {
+    if (!roles.length) {
       alert("Could not load user role.");
       return;
     }
 
-    const roleNames = roles.map((r) => r.role);
-
-    if (roleNames.length > 1) {
-      router.push("/portal");
-      return;
-    }
-
-    if (roleNames.includes("customer")) {
-      router.push("/customer/dashboard");
-      return;
-    }
-
-    if (roleNames.includes("technician")) {
-      router.push("/tech");
-      return;
-    }
-
-    if (roleNames.includes("manager")) {
-      router.push("/manager");
-      return;
-    }
-
-    if (roleNames.includes("admin")) {
-      router.push("/admin");
-      return;
-    }
-
-    alert("No valid role found for this account.");
+    router.push(getPostLoginRoute(roles));
   };
 
   const handleForgotPassword = async () => {

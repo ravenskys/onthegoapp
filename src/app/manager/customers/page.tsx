@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowLeft, Search, Users, PlusCircle } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -45,7 +45,7 @@ export default function ManagerCustomersPage() {
           return;
         }
 
-        if (!hasAnyRole(roles, ["manager", "admin"])) {
+        if (!hasPortalAccess(roles, "manager")) {
           window.location.href = getPostLoginRoute(roles);
           return;
         }
