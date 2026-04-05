@@ -236,11 +236,12 @@ function StatusPill({ value }: StatusPillProps) {
 function ConditionSelect({ value, onChange }: ConditionSelectProps) {
   return (
     <Select value={value || ""} onValueChange={onChange}>
-      <SelectTrigger className="w-full bg-white">
+      <SelectTrigger className="h-12 w-full bg-white px-4 text-base">
         <SelectValue placeholder="Select status" />
       </SelectTrigger>
-      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">        {conditionOptions.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
+      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+        {conditionOptions.map((option) => (
+          <SelectItem key={option.value} value={option.value} className="min-h-12 px-4 py-3 text-base">
             {option.label}
           </SelectItem>
         ))}
@@ -1422,12 +1423,12 @@ if (!isAuthorized) {
                             void handleVehicleProfileBlur();
                           }}
                         >
-                          <SelectTrigger className="bg-white">
+                          <SelectTrigger className="h-12 bg-white px-4 text-base">
                             <SelectValue placeholder="Select technician" />
                           </SelectTrigger>
                           <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
                             {technicians.map((tech) => (
-                              <SelectItem key={tech.id} value={tech.label}>
+                              <SelectItem key={tech.id} value={tech.label} className="min-h-12 px-4 py-3 text-base">
                                 {tech.label}
                               </SelectItem>
                             ))}
@@ -1522,21 +1523,23 @@ if (!isAuthorized) {
                   <div className="space-y-2">
                     <Label>Transmission</Label>
                     <Select value={vehicle.transmission} onValueChange={(value) => updateVehicle("transmission", value)}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select transmission" /></SelectTrigger>
-                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">                        <SelectItem value="automatic">Automatic</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                        <SelectItem value="cvt">CVT</SelectItem>
+                      <SelectTrigger className="h-12 bg-white px-4 text-base"><SelectValue placeholder="Select transmission" /></SelectTrigger>
+                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                        <SelectItem value="automatic" className="min-h-12 px-4 py-3 text-base">Automatic</SelectItem>
+                        <SelectItem value="manual" className="min-h-12 px-4 py-3 text-base">Manual</SelectItem>
+                        <SelectItem value="cvt" className="min-h-12 px-4 py-3 text-base">CVT</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Drivetrain</Label>
                     <Select value={vehicle.driveline} onValueChange={(value) => updateVehicle("driveline", value)}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select drivetrain" /></SelectTrigger>
-                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">                        <SelectItem value="fwd">FWD</SelectItem>
-                        <SelectItem value="rwd">RWD</SelectItem>
-                        <SelectItem value="awd">AWD</SelectItem>
-                        <SelectItem value="4wd">4WD</SelectItem>
+                      <SelectTrigger className="h-12 bg-white px-4 text-base"><SelectValue placeholder="Select drivetrain" /></SelectTrigger>
+                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                        <SelectItem value="fwd" className="min-h-12 px-4 py-3 text-base">FWD</SelectItem>
+                        <SelectItem value="rwd" className="min-h-12 px-4 py-3 text-base">RWD</SelectItem>
+                        <SelectItem value="awd" className="min-h-12 px-4 py-3 text-base">AWD</SelectItem>
+                        <SelectItem value="4wd" className="min-h-12 px-4 py-3 text-base">4WD</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
