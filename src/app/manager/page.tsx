@@ -164,7 +164,15 @@ export default function ManagerHomePage() {
                     View all jobs, update statuses, assign technicians, and manage work.
                   </p>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">Open Jobs</div>
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span>Open Jobs</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    {openJobsCount} open
+                  </span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                    {unassignedJobsCount} unassigned
+                  </span>
+                </div>
               </CardContent>
             </Card>
           </button>
