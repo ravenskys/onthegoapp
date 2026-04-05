@@ -22,6 +22,7 @@ export default function ManagerHomePage() {
 
   const [openJobsCount, setOpenJobsCount] = useState(0);
   const [unassignedJobsCount, setUnassignedJobsCount] = useState(0);
+  const [draftJobsCount, setDraftJobsCount] = useState(0);
   const [customersCount, setCustomersCount] = useState(0);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function ManagerHomePage() {
         const [
           { count: openJobs, error: openJobsError },
           { count: unassignedJobs, error: unassignedJobsError },
+          { count: draftJobs, error: draftJobsError },
           { count: customers, error: customersError },
         ] = await Promise.all([
           supabase
@@ -57,16 +59,23 @@ export default function ManagerHomePage() {
             .is("assigned_tech_user_id", null),
 
           supabase
+            .from("jobs")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "draft"),
+
+          supabase
             .from("customers")
             .select("*", { count: "exact", head: true }),
         ]);
 
         if (openJobsError) throw openJobsError;
         if (unassignedJobsError) throw unassignedJobsError;
+        if (draftJobsError) throw draftJobsError;
         if (customersError) throw customersError;
 
         setOpenJobsCount(openJobs ?? 0);
         setUnassignedJobsCount(unassignedJobs ?? 0);
+        setDraftJobsCount(draftJobs ?? 0);
         setCustomersCount(customers ?? 0);
       } catch (error) {
         console.error("Error loading manager dashboard:", error);
@@ -117,6 +126,9 @@ export default function ManagerHomePage() {
                   <p className="text-sm text-slate-600">
                     View all jobs, update statuses, assign technicians, and manage work.
                   </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Draft jobs should be converted into active work or deleted.
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
                   <span>Open Jobs</span>
@@ -125,6 +137,9 @@ export default function ManagerHomePage() {
                   </span>
                   <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
                     {unassignedJobsCount} unassigned
+                  </span>
+                  <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+                    {draftJobsCount} drafts to review
                   </span>
                 </div>
               </CardContent>

@@ -1,7 +1,8 @@
 "use client";
 // @ts-nocheck
 import { supabase } from "@/lib/supabase";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ import {
   getVehicleCatalogModes,
   getCustomerProfileValidationError,
   TECH_DRAFT_STORAGE_KEY,
+  TECH_SAVED_DRAFTS_STORAGE_KEY,
 } from "@/lib/tech-inspection";
 
 const conditionOptions = [
@@ -98,6 +100,7 @@ const undercarItems = [
 ] as const;
 
 const tires = ["Left Front", "Right Front", "Right Rear", "Left Rear", "Spare"] as const;
+const spareUnavailableFlag = "Missing / Unavailable";
 
 const requiredConditionShots = [
   "Front Left Corner",
@@ -106,6 +109,64 @@ const requiredConditionShots = [
   "Rear Left Corner",
   "Interior",
 ];
+
+const createEmptyVehicleState = (techName = "") => ({
+  firstName: "",
+  lastName: "",
+  phone: "",
+  email: "",
+  year: "",
+  make: "",
+  model: "",
+  mileage: "",
+  vin: "",
+  engineSize: "",
+  licensePlate: "",
+  state: "",
+  transmission: "",
+  driveline: "",
+  techName,
+  notes: "",
+  obdCode: "",
+});
+
+const createEmptyTireDataState = () =>
+  tires.reduce<TireDataState>((acc, tire) => {
+    acc[tire] = {
+      psiIn: "",
+      psiOut: "",
+      treadOuter: "",
+      treadInner: "",
+      status: "",
+      flags: [],
+      recommendation: "",
+    };
+    return acc;
+  }, {} as TireDataState);
+
+const createEmptyBrakeState = (): BrakeState => ({
+  lfPad: "",
+  rfPad: "",
+  lrPad: "",
+  rrPad: "",
+  lfRotor: "",
+  rfRotor: "",
+  lrRotor: "",
+  rrRotor: "",
+  brakeNotes: "",
+  status: "",
+});
+
+const createEmptyChecklistState = <T extends string>(items: readonly T[]) =>
+  Object.fromEntries(items.map((item) => [item, { status: "", why: "" }])) as ChecklistState<T>;
+
+const createEmptyConditionPhotoState = (): ConditionPhotoState =>
+  Object.fromEntries(
+    requiredConditionShots.map((shot) => [shot, { preview: "", name: "", note: "" }])
+  );
+
+const createEmptyWorkflowSteps = (): WorkflowStepsState =>
+  Object.fromEntries(workflowStepOrder.map((step) => [step, false]));
 
 type InspectionStatus = "ok" | "sug" | "req" | "" | null | undefined;
 
@@ -220,6 +281,40 @@ type ConditionPhotoState = Record<string, ConditionPhoto>;
 
 type WorkflowStepsState = Record<string, boolean>;
 
+type TechnicianJob = {
+  id: string;
+  customer_id: string | null;
+  vehicle_id: string | null;
+  business_job_number: string | null;
+  service_type: string | null;
+  status: string | null;
+  notes: string | null;
+  assigned_tech_user_id: string | null;
+  created_at: string;
+  requested_date: string | null;
+  customer: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  vehicle: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    license_plate: string | null;
+    vin: string | null;
+  } | null;
+};
+
+type SavedTechDraft = {
+  id: string;
+  title: string;
+  subtitle: string;
+  savedAt: string;
+  draft: ReturnType<typeof buildTechInspectionDraft>;
+};
+
 function StatusPill({ value }: StatusPillProps) {
   const map = {
     ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -268,6 +363,63 @@ function SectionHeader({ icon: Icon, title, subtitle }: SectionHeaderProps) {
   );
 }
 
+function QuickConditionButtons({
+  value,
+  onChange,
+}: {
+  value: InspectionStatus;
+  onChange: (value: InspectionStatus) => void;
+}) {
+  const options: {
+    value: Exclude<InspectionStatus, "" | null | undefined>;
+    label: string;
+    selectedClassName: string;
+    unselectedClassName: string;
+  }[] = [
+    {
+      value: "ok",
+      label: "OK",
+      selectedClassName: "border-emerald-600 bg-emerald-600 text-white shadow-sm",
+      unselectedClassName: "border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300",
+    },
+    {
+      value: "sug",
+      label: "Suggested",
+      selectedClassName: "border-amber-500 bg-amber-500 text-white shadow-sm",
+      unselectedClassName: "border-amber-200 bg-white text-amber-700 hover:border-amber-300",
+    },
+    {
+      value: "req",
+      label: "Required",
+      selectedClassName: "border-red-600 bg-red-600 text-white shadow-sm",
+      unselectedClassName: "border-red-200 bg-white text-red-700 hover:border-red-300",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+              selected
+                ? option.selectedClassName
+                : option.unselectedClassName
+            }`}
+            aria-pressed={selected}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function StepCompletionToggle({
   checked,
   onCheckedChange,
@@ -300,9 +452,9 @@ function StepCompletionToggle({
           {checked ? (
             <Check className="h-6 w-6" />
           ) : (
-            <Checkbox
-              checked={false}
-              className="pointer-events-none size-6 rounded-md border-2 border-current data-[state=checked]:bg-transparent"
+            <span
+              className="block size-6 rounded-md border-2 border-current"
+              aria-hidden="true"
             />
           )}
         </div>
@@ -316,69 +468,25 @@ function StepCompletionToggle({
 }
 
 export default function OnTheGoTechnicianAppPrototype() {
-  const [vehicle, setVehicle] = useState<VehicleState>({
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    year: "",
-    make: "",
-    model: "",
-    mileage: "",
-    vin: "",
-    engineSize: "",
-    licensePlate: "",
-    state: "",
-    transmission: "",
-    driveline: "",
-    techName: "",
-    notes: "",
-    obdCode: "",
-  });
+  const searchParams = useSearchParams();
+  const initializedSelectionRef = useRef<string | null>(null);
+  const [vehicle, setVehicle] = useState<VehicleState>(createEmptyVehicleState());
 
-  const [tireData, setTireData] = useState<TireDataState>(
-    tires.reduce<TireDataState>((acc, tire) => {
-      acc[tire] = {
-        psiIn: "",
-        psiOut: "",
-        treadOuter: "",
-        treadInner: "",
-        status: "",
-        flags: [],
-        recommendation: "",
-      };
-      return acc;
-    }, {} as TireDataState)
-  );
+  const [tireData, setTireData] = useState<TireDataState>(createEmptyTireDataState);
 
-  const [brakes, setBrakes] = useState<BrakeState>({
-    lfPad: "",
-    rfPad: "",
-    lrPad: "",
-    rrPad: "",
-    lfRotor: "",
-    rfRotor: "",
-    lrRotor: "",
-    rrRotor: "",
-    brakeNotes: "",
-    status: "",
-  });
+  const [brakes, setBrakes] = useState<BrakeState>(createEmptyBrakeState);
 
   const [maintenance, setMaintenance] = useState<ChecklistState<MaintenanceItem>>(
-    Object.fromEntries(maintenanceItems.map((item) => [item, { status: "", why: "" }])) as ChecklistState<MaintenanceItem>
+    createEmptyChecklistState(maintenanceItems)
   );
 
   const [undercar, setUndercar] = useState<ChecklistState<UndercarItem>>(
-    Object.fromEntries(undercarItems.map((item) => [item, { status: "", why: "" }])) as ChecklistState<UndercarItem>
+    createEmptyChecklistState(undercarItems)
   );
 
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
-  const [preServicePhotos, setPreServicePhotos] = useState<ConditionPhotoState>(
-    Object.fromEntries(requiredConditionShots.map((shot) => [shot, { preview: "", name: "", note: "" }]))
-  );
-  const [postWorkPhotos, setPostWorkPhotos] = useState<ConditionPhotoState>(
-    Object.fromEntries(requiredConditionShots.map((shot) => [shot, { preview: "", name: "", note: "" }]))
-  );
+  const [preServicePhotos, setPreServicePhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
+  const [postWorkPhotos, setPostWorkPhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
 
   const completion = useMemo(() => {
     let total = 0;
@@ -458,6 +566,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [savedInspectionId, setSavedInspectionId] = useState<string | null>(null);
   const [savedCustomerId, setSavedCustomerId] = useState<string | null>(null);
   const [savedVehicleId, setSavedVehicleId] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -465,11 +574,13 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [jobUpdateSaving, setJobUpdateSaving] = useState(false);
+  const [activeJobStatus, setActiveJobStatus] = useState("new_request");
+  const [activeJobNotes, setActiveJobNotes] = useState("");
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(
-    Object.fromEntries(workflowStepOrder.map((step) => [step, false]))
-  );
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(createEmptyWorkflowSteps);
   
   const onPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -557,11 +668,425 @@ export default function OnTheGoTechnicianAppPrototype() {
     [workflowSteps]
   );
 
+  const getMissingRequiredReasonMessage = useCallback(() => {
+    const missingMaintenanceReason = maintenanceItems.find(
+      (item) =>
+        maintenance[item].status === "req" &&
+        !String(maintenance[item].why || "").trim()
+    );
+
+    if (missingMaintenanceReason) {
+      return `Add a reason for required maintenance item: ${missingMaintenanceReason}.`;
+    }
+
+    const missingUndercarReason = undercarItems.find(
+      (item) =>
+        undercar[item].status === "req" &&
+        !String(undercar[item].why || "").trim()
+    );
+
+    if (missingUndercarReason) {
+      return `Add a reason for required undercar item: ${missingUndercarReason}.`;
+    }
+
+    return null;
+  }, [maintenance, undercar]);
+
   const toggleWorkflowStep = (step: string, value: boolean) => {
     setWorkflowSteps((prev) => ({
       ...prev,
       [step]: value,
     }));
+  };
+
+  const getSavedDraftsFromStorage = useCallback((): SavedTechDraft[] => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const storedDrafts = window.localStorage.getItem(TECH_SAVED_DRAFTS_STORAGE_KEY);
+      return storedDrafts ? JSON.parse(storedDrafts) : [];
+    } catch (error) {
+      console.error("Failed to load saved technician drafts:", error);
+      return [];
+    }
+  }, []);
+
+  const applyDraftState = useCallback((draft: ReturnType<typeof buildTechInspectionDraft>) => {
+    const vehicleSnapshot = draft.vehicle || {};
+    const vehicleCatalogModes = getVehicleCatalogModes({
+      make: vehicleSnapshot.make,
+      model: vehicleSnapshot.model,
+      engineSize: vehicleSnapshot.engineSize,
+      vehicleMakes,
+      vehicleCatalog,
+    });
+
+    setVehicle({
+      ...createEmptyVehicleState(String(vehicleSnapshot.techName || "")),
+      ...vehicleSnapshot,
+    });
+    setTireData({
+      ...createEmptyTireDataState(),
+      ...(draft.tireData || {}),
+    });
+    setBrakes({
+      ...createEmptyBrakeState(),
+      ...(draft.brakes || {}),
+    });
+    setMaintenance({
+      ...createEmptyChecklistState(maintenanceItems),
+      ...(draft.maintenance || {}),
+    });
+    setUndercar({
+      ...createEmptyChecklistState(undercarItems),
+      ...(draft.undercar || {}),
+    });
+    setPhotos(draft.photos || []);
+    setPreServicePhotos({
+      ...createEmptyConditionPhotoState(),
+      ...(draft.preServicePhotos || {}),
+    });
+    setPostWorkPhotos({
+      ...createEmptyConditionPhotoState(),
+      ...(draft.postWorkPhotos || {}),
+    });
+    setWorkflowSteps({
+      ...createEmptyWorkflowSteps(),
+      ...(draft.workflowSteps || {}),
+    });
+    setSavedInspectionId(draft.savedInspectionId || null);
+    setSavedCustomerId(draft.savedCustomerId || null);
+    setSavedVehicleId(draft.savedVehicleId || null);
+    setUseCustomMake(vehicleCatalogModes.useCustomMake);
+    setUseCustomModel(vehicleCatalogModes.useCustomModel);
+    setUseCustomEngineSize(vehicleCatalogModes.useCustomEngineSize);
+  }, []);
+
+  const handleLoadJob = useCallback(async (job: TechnicianJob) => {
+    try {
+      const [customerResult, vehicleResult, inspectionResult] = await Promise.all([
+        job.customer_id
+          ? supabase
+              .from("customers")
+              .select("*")
+              .eq("id", job.customer_id)
+              .single()
+          : Promise.resolve({ data: null, error: null }),
+        job.vehicle_id
+          ? supabase
+              .from("vehicles")
+              .select("*")
+              .eq("id", job.vehicle_id)
+              .single()
+          : Promise.resolve({ data: null, error: null }),
+        job.customer_id && job.vehicle_id
+          ? supabase
+              .from("inspections")
+              .select("*")
+              .eq("customer_id", job.customer_id)
+              .eq("vehicle_id", job.vehicle_id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (customerResult.error) throw customerResult.error;
+      if (vehicleResult.error) throw vehicleResult.error;
+      if (inspectionResult.error) throw inspectionResult.error;
+
+      const customerData = customerResult.data;
+      const vehicleData = vehicleResult.data;
+      const inspectionData = inspectionResult.data?.[0] ?? null;
+      const nextTechName =
+        inspectionData?.tech_name ||
+        technicians.find((tech) => tech.id === currentUserId)?.label ||
+        "";
+
+      setVehicle({
+        ...createEmptyVehicleState(nextTechName),
+        firstName: customerData?.first_name ?? "",
+        lastName: customerData?.last_name ?? "",
+        phone: customerData?.phone ?? "",
+        email: customerData?.email ?? "",
+        year: vehicleData?.year ? String(vehicleData.year) : "",
+        make: vehicleData?.make ?? "",
+        model: vehicleData?.model ?? "",
+        mileage: vehicleData?.mileage ? formatMileage(vehicleData.mileage) : "",
+        vin: vehicleData?.vin ?? "",
+        engineSize: vehicleData?.engine_size ?? "",
+        licensePlate: vehicleData?.license_plate ?? "",
+        state: vehicleData?.state ?? "",
+        transmission: vehicleData?.transmission ?? "",
+        driveline: vehicleData?.driveline ?? "",
+        notes: inspectionData?.notes ?? "",
+        obdCode: inspectionData?.obd_code ?? "",
+      });
+      setTireData({
+        ...createEmptyTireDataState(),
+        ...(inspectionData?.tire_data || {}),
+      });
+      setBrakes({
+        ...createEmptyBrakeState(),
+        ...(inspectionData?.brakes || {}),
+      });
+      setMaintenance({
+        ...createEmptyChecklistState(maintenanceItems),
+        ...(inspectionData?.maintenance || {}),
+      });
+      setUndercar({
+        ...createEmptyChecklistState(undercarItems),
+        ...(inspectionData?.undercar || {}),
+      });
+      setPhotos([]);
+      setPreServicePhotos(createEmptyConditionPhotoState());
+      setPostWorkPhotos(createEmptyConditionPhotoState());
+      setWorkflowSteps({
+        ...createEmptyWorkflowSteps(),
+        ...(inspectionData?.inspection_summary?.workflow_steps || {}),
+      });
+      setSavedInspectionId(inspectionData?.id ?? null);
+      setSavedCustomerId(customerData?.id ?? null);
+      setSavedVehicleId(vehicleData?.id ?? null);
+      setActiveJobId(job.id);
+      setActiveJobStatus(job.status || "new_request");
+      setActiveJobNotes(job.notes || "");
+
+      const vehicleCatalogModes = getVehicleCatalogModes({
+        make: vehicleData?.make,
+        model: vehicleData?.model,
+        engineSize: vehicleData?.engine_size,
+        vehicleMakes,
+        vehicleCatalog,
+      });
+      setUseCustomMake(vehicleCatalogModes.useCustomMake);
+      setUseCustomModel(vehicleCatalogModes.useCustomModel);
+      setUseCustomEngineSize(vehicleCatalogModes.useCustomEngineSize);
+
+      setRecordSyncState("saved");
+      setRecordSyncMessage(
+        `Loaded job ${job.business_job_number || job.id.slice(0, 8)} for ${
+          [customerData?.first_name, customerData?.last_name].filter(Boolean).join(" ") || "customer"
+        }.`
+      );
+    } catch (error) {
+      console.error("Failed to load technician job:", error);
+      alert(getErrorMessage(error, "Failed to load that job."));
+    }
+  }, [currentUserId, technicians]);
+
+  const loadJobById = useCallback(async (jobId: string) => {
+    const { data, error } = await supabase
+      .from("jobs")
+      .select(`
+        id,
+        customer_id,
+        vehicle_id,
+        business_job_number,
+        service_type,
+        status,
+        notes,
+        assigned_tech_user_id,
+        created_at,
+        requested_date,
+        customer:customers(first_name, last_name, email, phone),
+        vehicle:vehicles(year, make, model, license_plate, vin)
+      `)
+      .eq("id", jobId)
+      .single();
+
+    if (error) throw error;
+    await handleLoadJob(data);
+  }, [handleLoadJob]);
+
+  const hasMeaningfulDraftContent = useCallback(() => {
+    const hasVehicleDetails = Object.entries(vehicle).some(([key, value]) => {
+      if (key === "techName") return false;
+      return String(value || "").trim().length > 0;
+    });
+
+    const hasTireDetails = Object.values(tireData).some(
+      (entry) =>
+        entry.status ||
+        entry.psiIn ||
+        entry.psiOut ||
+        entry.treadOuter ||
+        entry.treadInner ||
+        entry.flags.length ||
+        entry.recommendation
+    );
+
+    const hasBrakeDetails = Object.entries(brakes).some(
+      ([key, value]) => key !== "status" ? String(value || "").trim().length > 0 : Boolean(value)
+    );
+
+    const hasChecklistDetails =
+      [...Object.values(maintenance), ...Object.values(undercar)].some(
+        (entry) => entry.status || String(entry.why || "").trim()
+      );
+
+    const hasPhotoDetails =
+      photos.length > 0 ||
+      Object.values(preServicePhotos).some((photo) => photo.preview || photo.name || photo.note) ||
+      Object.values(postWorkPhotos).some((photo) => photo.preview || photo.name || photo.note);
+
+    return (
+      hasVehicleDetails ||
+      hasTireDetails ||
+      hasBrakeDetails ||
+      hasChecklistDetails ||
+      hasPhotoDetails ||
+      savedInspectionId ||
+      savedCustomerId ||
+      savedVehicleId
+    );
+  }, [
+    vehicle,
+    tireData,
+    brakes,
+    maintenance,
+    undercar,
+    photos,
+    preServicePhotos,
+    postWorkPhotos,
+    savedInspectionId,
+    savedCustomerId,
+    savedVehicleId,
+  ]);
+
+  const resetInspectionForm = useCallback((techName = vehicle.techName) => {
+    setVehicle(createEmptyVehicleState(techName));
+    setTireData(createEmptyTireDataState());
+    setBrakes(createEmptyBrakeState());
+    setMaintenance(createEmptyChecklistState(maintenanceItems));
+    setUndercar(createEmptyChecklistState(undercarItems));
+    setPhotos([]);
+    setPreServicePhotos(createEmptyConditionPhotoState());
+    setPostWorkPhotos(createEmptyConditionPhotoState());
+    setWorkflowSteps(createEmptyWorkflowSteps());
+    setSavedInspectionId(null);
+    setSavedCustomerId(null);
+    setSavedVehicleId(null);
+    setActiveJobId(null);
+    setActiveJobStatus("new_request");
+    setActiveJobNotes("");
+    setRecordSyncState("idle");
+    setRecordSyncMessage("");
+    setUseCustomMake(false);
+    setUseCustomModel(false);
+    setUseCustomEngineSize(false);
+  }, [vehicle.techName]);
+
+  const archiveCurrentDraft = useCallback(() => {
+    if (typeof window === "undefined" || !hasMeaningfulDraftContent()) {
+      return false;
+    }
+
+    const draft = buildTechInspectionDraft({
+      vehicle,
+      tireData,
+      brakes,
+      maintenance,
+      undercar,
+      photos,
+      preServicePhotos,
+      postWorkPhotos,
+      workflowSteps,
+      savedInspectionId,
+      savedCustomerId,
+      savedVehicleId,
+    });
+
+    const title =
+      [vehicle.firstName, vehicle.lastName].filter(Boolean).join(" ") ||
+      [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") ||
+      "Untitled draft";
+
+    const subtitle = [
+      vehicle.email,
+      vehicle.licensePlate,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+    const nextDraft: SavedTechDraft = {
+      id: `${Date.now()}`,
+      title,
+      subtitle: subtitle || "Technician inspection draft",
+      savedAt: draft.savedAt,
+      draft,
+    };
+
+    try {
+      const existingDrafts = window.localStorage.getItem(TECH_SAVED_DRAFTS_STORAGE_KEY);
+      const parsedDrafts: SavedTechDraft[] = existingDrafts ? JSON.parse(existingDrafts) : [];
+      const nextDrafts = [nextDraft, ...parsedDrafts].slice(0, 20);
+      window.localStorage.setItem(TECH_SAVED_DRAFTS_STORAGE_KEY, JSON.stringify(nextDrafts));
+      return true;
+    } catch (error) {
+      console.error("Failed to archive technician draft:", error);
+      return false;
+    }
+  }, [
+    hasMeaningfulDraftContent,
+    vehicle,
+    tireData,
+    brakes,
+    maintenance,
+    undercar,
+    photos,
+    preServicePhotos,
+    postWorkPhotos,
+    workflowSteps,
+    savedInspectionId,
+    savedCustomerId,
+    savedVehicleId,
+  ]);
+
+  const handleStartNewCustomer = () => {
+    const draftArchived = archiveCurrentDraft();
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(TECH_DRAFT_STORAGE_KEY);
+    }
+
+    resetInspectionForm(vehicle.techName);
+    setRecordSyncState("saved");
+    setRecordSyncMessage(
+      draftArchived
+        ? "Draft saved. The form is ready for a new customer."
+        : "Started a new customer record."
+    );
+  };
+
+  const handleSaveActiveJob = async () => {
+    if (!activeJobId) {
+      alert("Load a job before updating it.");
+      return;
+    }
+
+    setJobUpdateSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          status: activeJobStatus,
+          notes: activeJobNotes.trim() || null,
+          assigned_tech_user_id: currentUserId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", activeJobId);
+
+      if (error) throw error;
+
+      setRecordSyncState("saved");
+      setRecordSyncMessage("Job details updated.");
+    } catch (error) {
+      console.error("Failed to update technician job:", error);
+      alert(getErrorMessage(error, "Failed to update the job."));
+    } finally {
+      setJobUpdateSaving(false);
+    }
   };
 
   const ensureCustomerProfile = async (vehicleSnapshot = vehicle) => {
@@ -794,6 +1319,14 @@ export default function OnTheGoTechnicianAppPrototype() {
     step: string,
     value: boolean
   ) => {
+    if (value) {
+      const missingRequiredReasonMessage = getMissingRequiredReasonMessage();
+      if (missingRequiredReasonMessage) {
+        alert(missingRequiredReasonMessage);
+        return;
+      }
+    }
+
     const nextWorkflowSteps = {
       ...workflowSteps,
       [step]: value,
@@ -880,6 +1413,12 @@ export default function OnTheGoTechnicianAppPrototype() {
   ]);
 
   const handleSaveInspection = async () => {
+  const missingRequiredReasonMessage = getMissingRequiredReasonMessage();
+  if (missingRequiredReasonMessage) {
+    alert(missingRequiredReasonMessage);
+    return;
+  }
+
   try {
     const { customerData, vehicleData } = await ensureCustomerProfile();
 
@@ -1126,6 +1665,29 @@ const handleGeneratePdf = async () => {
     addParagraph(`Notes: ${brakes.brakeNotes || "No brake notes recorded."}`);
     y += 3;
 
+    addSectionTitle("Tire Findings");
+    tires.forEach((tire) => {
+      const tireEntry = tireData[tire];
+      const isSpareUnavailable = tireEntry.flags.includes(spareUnavailableFlag);
+      const tireSummary = isSpareUnavailable
+        ? `${tire}: ${spareUnavailableFlag}`
+        : `${tire}: PSI ${tireEntry.psiIn || "-"} -> ${tireEntry.psiOut || "-"} | Tread ${tireEntry.treadOuter || "-"} / ${tireEntry.treadInner || "-"} | Status ${tireEntry.status || "pending"}`;
+      addParagraph(tireSummary);
+
+      const visibleFlags = isSpareUnavailable
+        ? tireEntry.flags.filter((flag) => flag !== spareUnavailableFlag)
+        : tireEntry.flags;
+
+      if (visibleFlags.length) {
+        addParagraph(`Flags: ${visibleFlags.join(", ")}`, margin + 4);
+      }
+
+      if (tireEntry.recommendation) {
+        addParagraph(`Recommendation: ${tireEntry.recommendation}`, margin + 4);
+      }
+    });
+    y += 3;
+
     addSectionTitle("Technician Notes");
     addParagraph(vehicle.notes || "No technician notes were entered.");
 
@@ -1181,6 +1743,8 @@ useEffect(() => {
     }
 
     if (hasPortalAccess(roleNames, "tech")) {
+      setCurrentUserId(user.id);
+
       try {
         const { data: rolesData, error: rolesError } = await supabase
           .from("user_roles")
@@ -1236,44 +1800,62 @@ useEffect(() => {
 useEffect(() => {
   if (typeof window === "undefined") return;
 
+  const draftId = searchParams.get("draftId");
+  const jobId = searchParams.get("jobId");
+  const selectionKey = draftId ? `draft:${draftId}` : jobId ? `job:${jobId}` : "local-draft";
+
+  if (initializedSelectionRef.current === selectionKey) {
+    return;
+  }
+
+  if (draftId) {
+    try {
+      const parsedDrafts = getSavedDraftsFromStorage() || [];
+      const selectedDraft = parsedDrafts.find((draft) => draft.id === draftId);
+
+      if (selectedDraft) {
+        initializedSelectionRef.current = selectionKey;
+        applyDraftState(selectedDraft.draft);
+        setActiveJobId(null);
+        setActiveJobStatus("new_request");
+        setActiveJobNotes("");
+        setDraftLoaded(true);
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to load selected technician draft:", error);
+    }
+  }
+
+  if (jobId && currentUserId) {
+    initializedSelectionRef.current = selectionKey;
+    void loadJobById(jobId)
+      .catch((error) => {
+        console.error("Failed to load selected technician job:", error);
+      })
+      .finally(() => {
+        setDraftLoaded(true);
+      });
+    return;
+  }
+
   const savedDraft = window.localStorage.getItem(TECH_DRAFT_STORAGE_KEY);
   if (!savedDraft) {
+    initializedSelectionRef.current = selectionKey;
     setDraftLoaded(true);
     return;
   }
 
   try {
+    initializedSelectionRef.current = selectionKey;
     const draft = JSON.parse(savedDraft);
-    const vehicleSnapshot = draft.vehicle || {};
-    const vehicleCatalogModes = getVehicleCatalogModes({
-      make: vehicleSnapshot.make,
-      model: vehicleSnapshot.model,
-      engineSize: vehicleSnapshot.engineSize,
-      vehicleMakes,
-      vehicleCatalog,
-    });
-
-    if (draft.vehicle) setVehicle(draft.vehicle);
-    if (draft.tireData) setTireData(draft.tireData);
-    if (draft.brakes) setBrakes(draft.brakes);
-    if (draft.maintenance) setMaintenance(draft.maintenance);
-    if (draft.undercar) setUndercar(draft.undercar);
-    if (draft.photos) setPhotos(draft.photos);
-    if (draft.preServicePhotos) setPreServicePhotos(draft.preServicePhotos);
-    if (draft.postWorkPhotos) setPostWorkPhotos(draft.postWorkPhotos);
-    if (draft.workflowSteps) setWorkflowSteps(draft.workflowSteps);
-    if (draft.savedInspectionId) setSavedInspectionId(draft.savedInspectionId);
-    if (draft.savedCustomerId) setSavedCustomerId(draft.savedCustomerId);
-    if (draft.savedVehicleId) setSavedVehicleId(draft.savedVehicleId);
-    setUseCustomMake(vehicleCatalogModes.useCustomMake);
-    setUseCustomModel(vehicleCatalogModes.useCustomModel);
-    setUseCustomEngineSize(vehicleCatalogModes.useCustomEngineSize);
+    applyDraftState(draft);
   } catch (error) {
     console.error("Failed to load technician draft:", error);
   } finally {
     setDraftLoaded(true);
   }
-}, []);
+}, [applyDraftState, currentUserId, getSavedDraftsFromStorage, loadJobById, searchParams]);
 
 useEffect(() => {
   if (!draftLoaded) return;
@@ -1321,6 +1903,22 @@ if (!isAuthorized) {
                   <div className="mt-4 flex flex-wrap gap-3">
                     <BackToPortalButton className={headerActionButtonClassName} />
                     <button
+                      type="button"
+                      onClick={() => {
+                        window.location.href = "/tech/jobs";
+                      }}
+                      className={headerActionButtonClassName}
+                    >
+                      Job Queue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStartNewCustomer}
+                      className={headerActionButtonClassName}
+                    >
+                      Save Draft & New Customer
+                    </button>
+                    <button
                       onClick={async () => {
                         await supabase.auth.signOut();
                         window.location.href = "/customer/login";
@@ -1349,6 +1947,47 @@ if (!isAuthorized) {
             </CardContent>
           </Card>
         </div>
+
+        {activeJobId && (
+          <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+            <CardContent className="space-y-4 p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end">
+                <div className="space-y-2 md:w-56">
+                  <Label>Active Job Status</Label>
+                  <Select value={activeJobStatus} onValueChange={setActiveJobStatus}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="new_request">New Request</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <Label>Job Notes</Label>
+                  <Textarea
+                    value={activeJobNotes}
+                    onChange={(e) => setActiveJobNotes(e.target.value)}
+                    className="bg-white"
+                    placeholder="Add technician job notes"
+                  />
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={handleSaveActiveJob}
+                  disabled={jobUpdateSaving}
+                >
+                  {jobUpdateSaving ? "Saving Job..." : "Save Job"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="vehicle" className="mt-6 space-y-6">
           <TabsList className="grid w-full grid-cols-2 items-stretch gap-3 rounded-2xl border border-slate-200 bg-slate-200 p-2 shadow-sm md:grid-cols-7">
@@ -1575,6 +2214,16 @@ if (!isAuthorized) {
                       <StatusPill value={tireData[tire].status} />
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {tire === "Spare" && (
+                        <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                          <Checkbox
+                            checked={tireData[tire].flags.includes(spareUnavailableFlag)}
+                            onCheckedChange={() => toggleTireFlag(tire, spareUnavailableFlag)}
+                          />
+                          <span>Missing / Unavailable</span>
+                        </label>
+                      )}
+
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2"><Label>PSI In</Label><Input value={tireData[tire].psiIn} onChange={(e) => updateTire(tire, "psiIn", e.target.value)} className="bg-white" /></div>
                         <div className="space-y-2"><Label>PSI Out</Label><Input value={tireData[tire].psiOut} onChange={(e) => updateTire(tire, "psiOut", e.target.value)} className="bg-white" /></div>
@@ -1670,9 +2319,9 @@ if (!isAuthorized) {
                   <SectionHeader icon={ClipboardList} title="Maintenance inspection" subtitle="Record service recommendations and why each item needs attention." />
                   <div className="grid gap-4">
                     {maintenanceItems.map((item) => (
-                      <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_220px_1fr]">
+                      <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_320px_1fr]">
                         <div className="flex items-center font-medium">{item}</div>
-                        <ConditionSelect value={maintenance[item].status} onChange={(value) => updateMaintenance(item, "status", value)} />
+                        <QuickConditionButtons value={maintenance[item].status} onChange={(value) => updateMaintenance(item, "status", value)} />
                         <Input placeholder="Why we recommend service" value={maintenance[item].why} onChange={(e) => updateMaintenance(item, "why", e.target.value)} className="bg-white" />
                       </div>
                     ))}
@@ -1685,9 +2334,9 @@ if (!isAuthorized) {
                   <SectionHeader icon={ClipboardList} title="Steering, suspension, and undercar inspection" subtitle="Use this section for undercarriage and steering components from the inspection sheet." />
                   <div className="grid gap-4">
                     {undercarItems.map((item) => (
-                      <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_220px_1fr]">
+                      <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_320px_1fr]">
                         <div className="flex items-center font-medium">{item}</div>
-                        <ConditionSelect value={undercar[item].status} onChange={(value) => updateUndercar(item, "status", value)} />
+                        <QuickConditionButtons value={undercar[item].status} onChange={(value) => updateUndercar(item, "status", value)} />
                         <Input placeholder="Why we recommend service" value={undercar[item].why} onChange={(e) => updateUndercar(item, "why", e.target.value)} className="bg-white" />
                       </div>
                     ))}
@@ -1997,15 +2646,35 @@ if (!isAuthorized) {
               <div className="space-y-3">
                 {tires.map((tire) => {
                   const t: any = tireData[tire];
+                  const isSpareUnavailable = t.flags?.includes(spareUnavailableFlag);
+                  const visibleFlags = isSpareUnavailable
+                    ? (t.flags || []).filter((flag: string) => flag !== spareUnavailableFlag)
+                    : t.flags || [];
                   return (
                     <div key={tire} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-800">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{tire}</span>
-                        <span className="text-slate-600">{t.status || "pending"}</span>
+                        <span className="text-slate-600">{isSpareUnavailable ? spareUnavailableFlag : t.status || "pending"}</span>
                       </div>
-                      <div className="mt-1 text-slate-600">
-                        PSI {t.psiIn || "-"} → {t.psiOut || "-"} | Tread {t.treadOuter || "-"} / {t.treadInner || "-"}
-                      </div>
+                      {isSpareUnavailable ? (
+                        <div className="mt-1 text-red-600">
+                          Spare tire marked as missing or unavailable.
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-slate-600">
+                          PSI {t.psiIn || "-"} → {t.psiOut || "-"} | Tread {t.treadOuter || "-"} / {t.treadInner || "-"}
+                        </div>
+                      )}
+                      {visibleFlags.length > 0 && (
+                        <div className="mt-1 text-slate-600">
+                          Flags: {visibleFlags.join(", ")}
+                        </div>
+                      )}
+                      {t.recommendation ? (
+                        <div className="mt-1 text-slate-600">
+                          Recommendation: {t.recommendation}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

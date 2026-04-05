@@ -1,4 +1,5 @@
 export const TECH_DRAFT_STORAGE_KEY = "otg-tech-inspection-draft";
+export const TECH_SAVED_DRAFTS_STORAGE_KEY = "otg-tech-inspection-saved-drafts";
 
 export const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) {
