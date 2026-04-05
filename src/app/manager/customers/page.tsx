@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowLeft, Search, Users, PlusCircle } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 type Customer = {
   id: string;
@@ -141,10 +142,13 @@ export default function ManagerCustomersPage() {
             </div>
           </div>
 
-          <Button onClick={() => router.push("/manager/jobs/new")}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            New Job
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <BackToPortalButton />
+            <Button onClick={() => router.push("/manager/jobs/new")}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              New Job
+            </Button>
+          </div>
         </div>
 
         <Card>

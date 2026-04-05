@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Search, Filter } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 // Types matching your DB schema
 interface Job {
@@ -205,7 +206,8 @@ export default function ManagerJobsPage() {
             <h1 className="text-3xl font-bold text-slate-900">Jobs Dashboard</h1>
             <p className="text-slate-600 mt-1">Manage service requests, assignments, and workflow.</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <BackToPortalButton />
             <Button variant="outline" onClick={() => window.location.href = "/manager"}>
               Back to Manager Home
             </Button>

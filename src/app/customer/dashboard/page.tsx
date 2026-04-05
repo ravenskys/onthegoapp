@@ -334,7 +334,6 @@ export default function CustomerDashboardPage() {
 
   return (
     <div className="otg-page">
-      <BackToPortalButton />
       <div className="otg-container space-y-6">
         <div className="otg-card p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -347,6 +346,7 @@ export default function CustomerDashboardPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
+              <BackToPortalButton className="otg-btn otg-btn-secondary shadow-none" />
               <button
                 onClick={handleLogout}
                 className="otg-btn otg-btn-secondary"

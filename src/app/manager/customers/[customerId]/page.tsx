@@ -16,6 +16,7 @@ import {
   normalizeYear,
 } from "@/lib/input-formatters";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 type Customer = {
   id: string;
@@ -225,14 +226,17 @@ export default function CustomerDetailPage() {
             </div>
           </div>
 
-          <Button onClick={handleSaveCustomer} disabled={saving}>
-            {saving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Save Changes
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <BackToPortalButton />
+            <Button onClick={handleSaveCustomer} disabled={saving}>
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Save Changes
+            </Button>
+          </div>
         </div>
 
         <Card>

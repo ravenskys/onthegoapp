@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 import {
   Loader2,
   Users,
@@ -89,13 +90,15 @@ export default function ManagerHomePage() {
   return (
     <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Manager Dashboard</h1>
             <p className="mt-1 text-slate-600">
               Manage jobs, customers, and daily workflow.
             </p>
           </div>
+
+          <BackToPortalButton />
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">

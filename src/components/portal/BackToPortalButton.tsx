@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { getUserRoles, hasMultiplePortalAccess } from "@/lib/portal-auth";
+import { cn } from "@/lib/utils";
 
-export function BackToPortalButton() {
+type BackToPortalButtonProps = {
+  className?: string;
+};
+
+export function BackToPortalButton({ className }: BackToPortalButtonProps) {
   const [showButton, setShowButton] = useState(false);
 
   useEffect(() => {
@@ -33,14 +38,15 @@ export function BackToPortalButton() {
   }
 
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-50 md:right-6 md:top-6">
-      <Link
-        href="/portal"
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg transition hover:bg-slate-50"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Portal
-      </Link>
-    </div>
+    <Link
+      href="/portal"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50",
+        className
+      )}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back to Portal
+    </Link>
   );
 }

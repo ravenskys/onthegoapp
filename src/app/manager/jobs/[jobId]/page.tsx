@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 // Types
 interface Job {
@@ -938,7 +939,8 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <BackToPortalButton />
             {job.customer_id && (
               <Button
                 variant="outline"

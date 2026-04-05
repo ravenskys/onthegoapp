@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -94,11 +95,15 @@ export default function AdminSettingsPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Admin Settings</h1>
-          <p className="text-slate-600">
-            Manage default tax settings for estimates and billing.
-          </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Admin Settings</h1>
+            <p className="text-slate-600">
+              Manage default tax settings for estimates and billing.
+            </p>
+          </div>
+
+          <BackToPortalButton />
         </div>
 
         <Card>

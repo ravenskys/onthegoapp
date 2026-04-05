@@ -78,10 +78,12 @@ export default function CustomerLinkPage() {
 
   return (
     <div className="otg-page">
-      <BackToPortalButton />
       <div className="otg-container max-w-md">
       <div className="otg-app-panel">
-        <h1 className="text-2xl font-bold text-slate-900">Link Customer Account</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">Link Customer Account</h1>
+          <BackToPortalButton className="otg-btn otg-btn-secondary shadow-none" />
+        </div>
         <p className="mt-3 text-slate-700">{status}</p>
 
         <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-800">

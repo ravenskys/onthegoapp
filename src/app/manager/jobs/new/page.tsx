@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 type Customer = {
   id: string;
   first_name: string | null;
@@ -195,10 +196,13 @@ export default function NewJobPage() {
             </div>
           </div>
 
-          <Button type="submit" form="new-job-form" disabled={saving}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? "Creating..." : "Create Job"}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <BackToPortalButton />
+            <Button type="submit" form="new-job-form" disabled={saving}>
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? "Creating..." : "Create Job"}
+            </Button>
+          </div>
         </div>
 
           <form

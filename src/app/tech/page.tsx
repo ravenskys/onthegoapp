@@ -1302,7 +1302,6 @@ if (!isAuthorized) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8" onBlurCapture={saveDraftToLocal}>
-      <BackToPortalButton />
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
@@ -1317,6 +1316,7 @@ if (!isAuthorized) {
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-3">
+                    <BackToPortalButton className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-none hover:bg-slate-100" />
                     <button
                       onClick={async () => {
                         await supabase.auth.signOut();
