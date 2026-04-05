@@ -10,6 +10,9 @@ type BackToPortalButtonProps = {
   className?: string;
 };
 
+export const headerActionButtonClassName =
+  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50";
+
 export function BackToPortalButton({ className }: BackToPortalButtonProps) {
   const [showButton, setShowButton] = useState(false);
 
@@ -41,7 +44,7 @@ export function BackToPortalButton({ className }: BackToPortalButtonProps) {
     <Link
       href="/portal"
       className={cn(
-        "inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50",
+        headerActionButtonClassName,
         className
       )}
     >

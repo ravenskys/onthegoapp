@@ -6,7 +6,10 @@ import { normalizeEmail } from "@/lib/input-formatters";
 import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import {
+  BackToPortalButton,
+  headerActionButtonClassName,
+} from "@/components/portal/BackToPortalButton";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -114,10 +117,10 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <BackToPortalButton className="otg-btn otg-btn-secondary shadow-none" />
+              <BackToPortalButton />
               <button
                 onClick={handleLogout}
-                className="otg-btn otg-btn-secondary"
+                className={headerActionButtonClassName}
               >
                 Log Out
               </button>

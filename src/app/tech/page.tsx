@@ -25,7 +25,10 @@ import {
 import { vehicleCatalog, vehicleMakes } from "@/lib/vehicleCatalog";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import {
+  BackToPortalButton,
+  headerActionButtonClassName,
+} from "@/components/portal/BackToPortalButton";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
@@ -1316,13 +1319,13 @@ if (!isAuthorized) {
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <BackToPortalButton className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-none hover:bg-slate-100" />
+                    <BackToPortalButton className={headerActionButtonClassName} />
                     <button
                       onClick={async () => {
                         await supabase.auth.signOut();
                         window.location.href = "/customer/login";
                       }}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+                      className={headerActionButtonClassName}
                     >
                       Log Out
                     </button>

@@ -9,7 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Search, Filter } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
-import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import {
+  BackToPortalButton,
+  headerActionButtonClassName,
+} from "@/components/portal/BackToPortalButton";
 
 // Types matching your DB schema
 interface Job {
@@ -208,10 +211,17 @@ export default function ManagerJobsPage() {
           </div>
           <div className="flex flex-wrap gap-3">
             <BackToPortalButton />
-            <Button variant="outline" onClick={() => window.location.href = "/manager"}>
+            <Button
+              variant="outline"
+              className={headerActionButtonClassName}
+              onClick={() => window.location.href = "/manager"}
+            >
               Back to Manager Home
             </Button>
-            <Button onClick={() => window.location.href = "/manager/jobs/new"}>
+            <Button
+              className={headerActionButtonClassName}
+              onClick={() => window.location.href = "/manager/jobs/new"}
+            >
               <Plus className="mr-2 h-4 w-4" /> New Job
             </Button>
           </div>

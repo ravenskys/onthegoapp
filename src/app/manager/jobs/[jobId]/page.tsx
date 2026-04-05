@@ -13,7 +13,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
-import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import {
+  BackToPortalButton,
+  headerActionButtonClassName,
+} from "@/components/portal/BackToPortalButton";
 
 // Types
 interface Job {
@@ -944,6 +947,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             {job.customer_id && (
               <Button
                 variant="outline"
+                className={headerActionButtonClassName}
                 onClick={() => router.push(`/manager/customers/${job.customer_id}`)}
               >
                 View Customer
@@ -952,12 +956,17 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
             <Button
               variant="destructive"
+              className={headerActionButtonClassName}
               onClick={() => router.push("/manager/jobs")}
             >
               Cancel
             </Button>
 
-            <Button onClick={handleSaveJobDetails} disabled={saving}>
+            <Button
+              onClick={handleSaveJobDetails}
+              disabled={saving}
+              className={headerActionButtonClassName}
+            >
               {saving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

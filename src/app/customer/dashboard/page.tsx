@@ -8,7 +8,10 @@ import { workflowStepLabels } from "@/lib/inspection-workflow";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import {
+  BackToPortalButton,
+  headerActionButtonClassName,
+} from "@/components/portal/BackToPortalButton";
 
 const normalizeStoragePath = (value: string | null | undefined, bucket: string) => {
   if (!value) return null;
@@ -346,10 +349,10 @@ export default function CustomerDashboardPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <BackToPortalButton className="otg-btn otg-btn-secondary shadow-none" />
+              <BackToPortalButton />
               <button
                 onClick={handleLogout}
-                className="otg-btn otg-btn-secondary"
+                className={headerActionButtonClassName}
               >
                 Log Out
               </button>
