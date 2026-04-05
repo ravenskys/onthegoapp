@@ -1359,7 +1359,6 @@ if (!isAuthorized) {
                     ["Last Name", "lastName"],
                     ["Phone", "phone"],
                     ["Email", "email"],
-                    ["Year", "year"],
                     ["Mileage", "mileage"],
                     ["VIN", "vin"],
                     ["License Plate", "licensePlate"],
@@ -1378,7 +1377,7 @@ if (!isAuthorized) {
                         inputMode={
                           key === "phone"
                             ? "tel"
-                            : key === "year" || key === "mileage"
+                            : key === "mileage"
                               ? "numeric"
                               : "text"
                         }
@@ -1386,9 +1385,7 @@ if (!isAuthorized) {
                         maxLength={
                           key === "phone"
                             ? 14
-                            : key === "year"
-                              ? 4
-                              : key === "vin"
+                            : key === "vin"
                                 ? 17
                                 : undefined
                         }
@@ -1397,15 +1394,12 @@ if (!isAuthorized) {
                             ? "(555) 555-5555"
                             : key === "email"
                               ? "customer@example.com"
-                              : key === "year"
-                                ? String(MAX_MODEL_YEAR)
-                                : key === "mileage"
+                              : key === "mileage"
                                   ? "125,000"
                                   : key === "vin"
                                     ? "17-character VIN"
                                     : undefined
                         }
-                        max={key === "year" ? MAX_MODEL_YEAR : undefined}
                         className="bg-white"
                       />
                       {key === "email" && (
