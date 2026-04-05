@@ -13,6 +13,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 type Customer = {
   id: string;
@@ -129,7 +130,7 @@ export default function ManagerCustomersPage() {
   }
 
   return (
-    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
@@ -156,6 +157,8 @@ export default function ManagerCustomersPage() {
             </Button>
           </div>
         </div>
+
+        <PortalTopNav section="manager" />
 
         <Card>
           <CardContent className="p-4">

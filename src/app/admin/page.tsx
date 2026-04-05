@@ -10,6 +10,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -111,10 +112,10 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="otg-page">
+    <div className="otg-page otg-portal-dark">
       <div className="otg-container max-w-6xl space-y-6">
         <div className="otg-app-panel">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div>
               <BrandLogo priority />
               <h1 className="mt-2 text-3xl font-bold text-slate-900">
@@ -125,14 +126,19 @@ export default function AdminPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <BackToPortalButton />
-              <button
-                onClick={handleLogout}
-                className={headerActionButtonClassName}
-              >
-                Log Out
-              </button>
+            <div className="w-full max-w-2xl space-y-4">
+              <div className="flex justify-end">
+                <PortalTopNav section="admin" />
+              </div>
+              <div className="flex flex-wrap justify-end gap-3">
+                <BackToPortalButton />
+                <button
+                  onClick={handleLogout}
+                  className={headerActionButtonClassName}
+                >
+                  Log Out
+                </button>
+              </div>
             </div>
           </div>
         </div>

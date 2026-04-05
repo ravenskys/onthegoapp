@@ -12,6 +12,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { TECH_SAVED_DRAFTS_STORAGE_KEY } from "@/lib/tech-inspection";
 
@@ -178,11 +179,11 @@ export default function TechnicianJobsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
           <CardContent className="space-y-5 p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-slate-900">Technician Job Queue</h1>
                 <p className="mt-1 text-sm text-slate-600">
@@ -190,16 +191,21 @@ export default function TechnicianJobsPage() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-3">
-                <BackToPortalButton className={headerActionButtonClassName} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={headerActionButtonClassName}
-                  onClick={() => router.push("/tech")}
-                >
-                  Back to Tech Page
-                </Button>
+              <div className="w-full max-w-2xl space-y-4">
+                <div className="flex justify-end">
+                  <PortalTopNav section="tech" />
+                </div>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <BackToPortalButton className={headerActionButtonClassName} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={headerActionButtonClassName}
+                    onClick={() => router.push("/tech")}
+                  >
+                    Back to Tech Page
+                  </Button>
+                </div>
               </div>
             </div>
 

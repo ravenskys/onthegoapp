@@ -17,6 +17,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 // Types
 interface Job {
@@ -924,7 +925,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   if (!job) return <div className="p-8 text-center text-red-600">Job not found.</div>;
 
   return (
-    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         
         {/* Header */}
@@ -976,6 +977,8 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             </Button>
           </div>
         </div>
+
+        <PortalTopNav section="manager" />
 
         {/* Overview Tab (Always Visible at Top) */}
         <Card>

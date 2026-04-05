@@ -12,6 +12,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 const normalizeStoragePath = (value: string | null | undefined, bucket: string) => {
   if (!value) return null;
@@ -336,7 +337,7 @@ export default function CustomerDashboardPage() {
   }
 
   return (
-    <div className="otg-page">
+    <div className="otg-page otg-portal-dark">
       <div className="otg-container space-y-6">
         <div className="otg-card p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -359,6 +360,8 @@ export default function CustomerDashboardPage() {
             </div>
           </div>
         </div>
+
+        <PortalTopNav section="customer" />
 
         <div className="otg-card p-8">
           <h2 className="otg-section-title">Account Information</h2>

@@ -30,6 +30,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
@@ -1886,11 +1887,11 @@ if (!isAuthorized) {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8" onBlurCapture={saveDraftToLocal}>
+    <div className="otg-portal-dark min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8" onBlurCapture={saveDraftToLocal}>
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
-            <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
+            <CardContent className="flex flex-col gap-6 p-6 md:flex-row md:items-start md:justify-between">
               <div>
                   <BrandLogo priority />
                   <h1 className="text-3xl font-bold tracking-tight text-slate-900">
@@ -1899,49 +1900,46 @@ if (!isAuthorized) {
                   <p className="mt-1 text-sm text-slate-700">
                     Capture inspection results, upload photos, and prepare a customer-ready service report.
                   </p>
-
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <BackToPortalButton className={headerActionButtonClassName} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.location.href = "/tech/jobs";
-                      }}
-                      className={headerActionButtonClassName}
-                    >
-                      Job Queue
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleStartNewCustomer}
-                      className={headerActionButtonClassName}
-                    >
-                      Save Draft & New Customer
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await supabase.auth.signOut();
-                        window.location.href = "/customer/login";
-                      }}
-                      className={headerActionButtonClassName}
-                    >
-                      Log Out
-                    </button>
+                </div>
+              <div className="w-full max-w-2xl space-y-4">
+                <div className="flex justify-end">
+                  <PortalTopNav section="tech" />
+                </div>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <BackToPortalButton className={headerActionButtonClassName} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = "/tech/jobs";
+                    }}
+                    className={headerActionButtonClassName}
+                  >
+                    Job Queue
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      window.location.href = "/customer/login";
+                    }}
+                    className={headerActionButtonClassName}
+                  >
+                    Log Out
+                  </button>
+                </div>
+                <div className="ml-auto w-full max-w-xs space-y-2 rounded-2xl bg-slate-100 p-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">Inspection progress</span>
+                    <span className="font-semibold">{completion}%</span>
                   </div>
-                </div>
-              <div className="w-full max-w-xs space-y-2 rounded-2xl bg-slate-100 p-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700">Inspection progress</span>
-                  <span className="font-semibold">{completion}%</span>
-                </div>
-                <Progress value={completion} className="h-2" />
-                <div className="flex gap-2 pt-1">
-                  <Badge variant="secondary" className="rounded-full">OK: {summaryCounts.ok}</Badge>
-                  <Badge variant="secondary" className="rounded-full">Suggested: {summaryCounts.sug}</Badge>
-                  <Badge variant="secondary" className="rounded-full">Required: {summaryCounts.req}</Badge>
-                </div>
-                <div className="pt-2 text-sm text-slate-600">
-                  Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {workflowStepOrder.length}</span>
+                  <Progress value={completion} className="h-2" />
+                  <div className="flex gap-2 pt-1">
+                    <Badge variant="secondary" className="rounded-full">OK: {summaryCounts.ok}</Badge>
+                    <Badge variant="secondary" className="rounded-full">Suggested: {summaryCounts.sug}</Badge>
+                    <Badge variant="secondary" className="rounded-full">Required: {summaryCounts.req}</Badge>
+                  </div>
+                  <div className="pt-2 text-sm text-slate-600">
+                    Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {workflowStepOrder.length}</span>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -2017,7 +2015,16 @@ if (!isAuthorized) {
           <TabsContent value="vehicle">
             <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
               <CardContent className="space-y-6 p-6">
-                <SectionHeader icon={Car} title="Customer and vehicle information" subtitle="Start the inspection by capturing the service visit details." />
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <SectionHeader icon={Car} title="Customer and vehicle information" subtitle="Start the inspection by capturing the service visit details." />
+                  <button
+                    type="button"
+                    onClick={handleStartNewCustomer}
+                    className={headerActionButtonClassName}
+                  >
+                    Save Draft
+                  </button>
+                </div>
                 <StepCompletionToggle
                   checked={workflowSteps.vehicle}
                   onCheckedChange={(value) =>

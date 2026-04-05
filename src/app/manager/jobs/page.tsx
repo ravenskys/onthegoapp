@@ -13,6 +13,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 // Types matching your DB schema
 interface Job {
@@ -200,7 +201,7 @@ export default function ManagerJobsPage() {
   if (!authorized) return null;
 
   return (
-    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         
         {/* Header */}
@@ -226,6 +227,8 @@ export default function ManagerJobsPage() {
             </Button>
           </div>
         </div>
+
+        <PortalTopNav section="manager" />
 
         {/* Filters */}
         <Card>

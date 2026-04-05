@@ -33,6 +33,7 @@ import {
   BackToPortalButton,
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 type Customer = {
   id: string;
   first_name: string | null;
@@ -177,7 +178,7 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
@@ -212,6 +213,8 @@ export default function NewJobPage() {
             </Button>
           </div>
         </div>
+
+        <PortalTopNav section="manager" />
 
           <form
             id="new-job-form"

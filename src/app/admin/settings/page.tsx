@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -93,9 +94,9 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Admin Settings</h1>
             <p className="text-slate-600">
@@ -103,7 +104,14 @@ export default function AdminSettingsPage() {
             </p>
           </div>
 
-          <BackToPortalButton />
+          <div className="w-full max-w-2xl space-y-4">
+            <div className="flex justify-end">
+              <PortalTopNav section="admin" />
+            </div>
+            <div className="flex justify-end">
+              <BackToPortalButton />
+            </div>
+          </div>
         </div>
 
         <Card>

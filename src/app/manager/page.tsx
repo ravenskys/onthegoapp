@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
+import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import {
   Loader2,
   Users,
@@ -97,9 +98,9 @@ export default function ManagerHomePage() {
   }
 
   return (
-    <div className="otg-manager-shell min-h-screen bg-slate-50 p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Manager Dashboard</h1>
             <p className="mt-1 text-slate-600">
@@ -107,7 +108,14 @@ export default function ManagerHomePage() {
             </p>
           </div>
 
-          <BackToPortalButton />
+          <div className="w-full max-w-2xl space-y-4">
+            <div className="flex justify-end">
+              <PortalTopNav section="manager" />
+            </div>
+            <div className="flex justify-end">
+              <BackToPortalButton />
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
