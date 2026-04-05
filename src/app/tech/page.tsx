@@ -192,6 +192,11 @@ type BrakeFieldKey = keyof Omit<BrakeState, "brakeNotes" | "status">;
 type TireFieldKey = Exclude<keyof TireEntry, "flags">;
 type ChecklistFieldKey = keyof ChecklistEntry;
 
+type TechnicianOption = {
+  id: string;
+  label: string;
+};
+
 type UploadedPhoto = {
   id: string;
   name: string;
@@ -454,6 +459,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [useCustomMake, setUseCustomMake] = useState(false);
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
+  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(
@@ -1170,6 +1176,47 @@ useEffect(() => {
     }
 
     if (hasAnyRole(roleNames, ["technician", "manager", "admin"])) {
+      try {
+        const { data: rolesData, error: rolesError } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("role", "technician");
+
+        if (rolesError) throw rolesError;
+
+        const technicianIds = (rolesData ?? []).map((row) => row.user_id);
+
+        if (technicianIds.length > 0) {
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, first_name, last_name, email")
+            .in("id", technicianIds);
+
+          if (profileError) throw profileError;
+
+          const technicianOptions = (profileData ?? [])
+            .map((profile) => ({
+              id: profile.id,
+              label:
+                `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() ||
+                profile.email ||
+                "Unnamed technician",
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+
+          setTechnicians(technicianOptions);
+
+          const currentTech = technicianOptions.find((tech) => tech.id === user.id);
+          if (currentTech) {
+            setVehicle((prev) =>
+              prev.techName ? prev : { ...prev, techName: currentTech.label }
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load technicians:", error);
+      }
+
       setIsAuthorized(true);
       setAuthLoading(false);
       return;
@@ -1367,41 +1414,62 @@ if (!isAuthorized) {
                   ] as const satisfies readonly (readonly [string, VehicleFieldKey])[]).map(([label, key]) => (
                     <div key={key} className="space-y-2">
                       <Label>{label}</Label>
-                      <Input
-                        value={vehicle[key]}
-                        onChange={(e) => updateVehicle(key, e.target.value)}
-                        onBlur={(e) => {
-                          updateVehicle(key, e.target.value);
-                          handleVehicleProfileBlur();
-                        }}
-                        inputMode={
-                          key === "phone"
-                            ? "tel"
-                            : key === "mileage"
-                              ? "numeric"
-                              : "text"
-                        }
-                        autoCapitalize={key === "vin" ? "characters" : "none"}
-                        maxLength={
-                          key === "phone"
-                            ? 14
-                            : key === "vin"
-                                ? 17
-                                : undefined
-                        }
-                        placeholder={
-                          key === "phone"
-                            ? "(555) 555-5555"
-                            : key === "email"
-                              ? "customer@example.com"
+                      {key === "techName" && technicians.length > 0 ? (
+                        <Select
+                          value={vehicle.techName}
+                          onValueChange={(value) => {
+                            updateVehicle("techName", value);
+                            void handleVehicleProfileBlur();
+                          }}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="Select technician" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                            {technicians.map((tech) => (
+                              <SelectItem key={tech.id} value={tech.label}>
+                                {tech.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={vehicle[key]}
+                          onChange={(e) => updateVehicle(key, e.target.value)}
+                          onBlur={(e) => {
+                            updateVehicle(key, e.target.value);
+                            handleVehicleProfileBlur();
+                          }}
+                          inputMode={
+                            key === "phone"
+                              ? "tel"
                               : key === "mileage"
-                                  ? "125,000"
-                                  : key === "vin"
-                                    ? "17-character VIN"
-                                    : undefined
-                        }
-                        className="bg-white"
-                      />
+                                ? "numeric"
+                                : "text"
+                          }
+                          autoCapitalize={key === "vin" ? "characters" : "none"}
+                          maxLength={
+                            key === "phone"
+                              ? 14
+                              : key === "vin"
+                                  ? 17
+                                  : undefined
+                          }
+                          placeholder={
+                            key === "phone"
+                              ? "(555) 555-5555"
+                              : key === "email"
+                                ? "customer@example.com"
+                                : key === "mileage"
+                                    ? "125,000"
+                                    : key === "vin"
+                                      ? "17-character VIN"
+                                      : undefined
+                          }
+                          className="bg-white"
+                        />
+                      )}
                       {key === "email" && (
                         <p className="text-xs text-slate-500">
                           Required. Email is the main key we use to create and reconnect customer records.
