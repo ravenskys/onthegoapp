@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { getUserRoles } from "@/lib/portal-auth";
+import { getUserRoles, hasMultiplePortalAccess } from "@/lib/portal-auth";
 
 export function BackToPortalButton() {
   const [showButton, setShowButton] = useState(false);
@@ -18,7 +18,7 @@ export function BackToPortalButton() {
         return;
       }
 
-      setShowButton(roles.length > 1);
+      setShowButton(hasMultiplePortalAccess(roles));
     };
 
     void loadRoles();
