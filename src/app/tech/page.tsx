@@ -25,6 +25,7 @@ import {
 import { vehicleCatalog, vehicleMakes } from "@/lib/vehicleCatalog";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
 import { getPostLoginRoute, getUserRoles, hasAnyRole } from "@/lib/portal-auth";
@@ -1301,6 +1302,7 @@ if (!isAuthorized) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 p-4 text-slate-900 md:p-8" onBlurCapture={saveDraftToLocal}>
+      <BackToPortalButton />
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
@@ -1315,13 +1317,6 @@ if (!isAuthorized) {
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <a
-                      href="/portal"
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100"
-                    >
-                      Portal Home
-                    </a>
-
                     <button
                       onClick={async () => {
                         await supabase.auth.signOut();

@@ -10,7 +10,6 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
-  const [roles, setRoles] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [selectedRole, setSelectedRole] = useState("technician");
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +28,6 @@ export default function AdminPage() {
         window.location.href = "/customer/login";
         return;
       }
-      setRoles(roleNames);
 
       if (!roleNames.includes("admin")) {
         window.location.href = getPostLoginRoute(roleNames);
@@ -115,15 +113,6 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              {roles.length > 1 && (
-                <a
-                  href="/portal"
-                  className="otg-btn otg-btn-secondary"
-                >
-                  Portal Home
-                </a>
-              )}
-
               <button
                 onClick={handleLogout}
                 className="otg-btn otg-btn-secondary"

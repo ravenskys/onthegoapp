@@ -8,6 +8,7 @@ import { workflowStepLabels } from "@/lib/inspection-workflow";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 const normalizeStoragePath = (value: string | null | undefined, bucket: string) => {
   if (!value) return null;
@@ -41,7 +42,6 @@ export default function CustomerDashboardPage() {
   const [reports, setReports] = useState<any[]>([]);
   const [photosByInspection, setPhotosByInspection] = useState<Record<string, any[]>>({});
   const [latestInspection, setLatestInspection] = useState<any>(null);
-  const [roles, setRoles] = useState<string[]>([]);
 
   const [accountFirstName, setAccountFirstName] = useState("");
   const [accountLastName, setAccountLastName] = useState("");
@@ -62,8 +62,6 @@ export default function CustomerDashboardPage() {
           setLoading(false);
           return;
         }
-
-        setRoles(roleNames);
 
         if (!roleNames.includes("customer")) {
           window.location.href = getPostLoginRoute(roleNames);
@@ -336,6 +334,7 @@ export default function CustomerDashboardPage() {
 
   return (
     <div className="otg-page">
+      <BackToPortalButton />
       <div className="otg-container space-y-6">
         <div className="otg-card p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -348,15 +347,6 @@ export default function CustomerDashboardPage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              {roles.length > 1 && (
-                <a
-                  href="/portal"
-                  className="otg-btn otg-btn-secondary"
-                >
-                  Portal Home
-                </a>
-              )}
-
               <button
                 onClick={handleLogout}
                 className="otg-btn otg-btn-secondary"

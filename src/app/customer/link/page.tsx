@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 
 export default function CustomerLinkPage() {
   const [email, setEmail] = useState("");
@@ -77,6 +78,7 @@ export default function CustomerLinkPage() {
 
   return (
     <div className="otg-page">
+      <BackToPortalButton />
       <div className="otg-container max-w-md">
       <div className="otg-app-panel">
         <h1 className="text-2xl font-bold text-slate-900">Link Customer Account</h1>
