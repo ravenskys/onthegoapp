@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Search, Filter } from "lucide-react";
+import { Loader2, Plus, Search, Filter, Trash2 } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
+import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -68,6 +69,7 @@ export default function ManagerJobsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [techFilter, setTechFilter] = useState<string>("all");
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
 
   // 1. Auth Check
   useEffect(() => {
@@ -198,6 +200,31 @@ export default function ManagerJobsPage() {
     }
   };
 
+  const handleDeleteJob = async (job: Job) => {
+    const jobLabel = job.business_job_number || job.id.slice(0, 8);
+    const customerName = `${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim();
+    const confirmed = window.confirm(
+      `Delete job #${jobLabel}${customerName ? ` for ${customerName}` : ""}? This will also remove the linked estimate for this job and archive the deletion in the admin audit log.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingJobId(job.id);
+
+    try {
+      await deleteJobWithRelatedRecords(job.id);
+
+      setJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
+      setFilteredJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
+    } catch (error) {
+      console.error("Error deleting job:", error);
+      await fetchJobs();
+      alert(error instanceof Error ? error.message : "Failed to delete job.");
+    } finally {
+      setDeletingJobId(null);
+    }
+  };
+
   if (!authorized) return null;
 
   return (
@@ -303,9 +330,27 @@ export default function ManagerJobsPage() {
                         {job.vehicle?.license_plate && <span className="ml-2 font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">Plate: {job.vehicle.license_plate}</span>}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-start gap-2">
                       <Badge className={getStatusColor(job.status)}>{job.status.replace("_", " ").toUpperCase()}</Badge>
                       <Badge variant="outline" className={getPriorityColor(job.priority)}>{job.priority.toUpperCase()}</Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-700"
+                        disabled={deletingJobId === job.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleDeleteJob(job);
+                        }}
+                      >
+                        {deletingJobId === job.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>

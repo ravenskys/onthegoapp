@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
+import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -749,6 +750,41 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         }
       };
 
+      const handleDeleteJob = async () => {
+        if (!job) {
+          return;
+        }
+
+        const jobLabel = job.business_job_number || job.id.slice(0, 8);
+        const customerName = `${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim();
+        const confirmed = window.confirm(
+          `Delete job #${jobLabel}${customerName ? ` for ${customerName}` : ""}? This will also remove the linked estimate for this job and archive the deletion in the admin audit log.`
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        setSaving(true);
+
+        try {
+          await deleteJobWithRelatedRecords(job.id);
+          alert("Job deleted.");
+          router.push("/manager/jobs");
+        } catch (error: any) {
+          console.error("Error deleting job:", error);
+          const message =
+            error instanceof Error ? error.message : "Failed to delete job.";
+          alert(message);
+
+          if (message.startsWith("Job deleted,")) {
+            router.push("/manager/jobs");
+          }
+        } finally {
+          setSaving(false);
+        }
+      };
+
       const handleAddNote = async () => {
         if (!newNote.trim()) return;
 
@@ -939,7 +975,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                     Job #{job.business_job_number || job.id.slice(0, 8)}
                     </h1>
               <p className="text-slate-600">
-                {job.customer?.first_name} {job.customer?.last_name} â€¢ {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model}
+                {job.customer?.first_name} {job.customer?.last_name} • {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model}
               </p>
             </div>
           </div>
@@ -958,9 +994,23 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             <Button
               variant="destructive"
               className={headerActionButtonClassName}
+              onClick={handleDeleteJob}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete Job
+            </Button>
+
+            <Button
+              variant="outline"
+              className={headerActionButtonClassName}
               onClick={() => router.push("/manager/jobs")}
             >
-              Cancel
+              Back to Jobs
             </Button>
 
             <Button
@@ -1096,7 +1146,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Customer
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {`${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim() || "â€”"}
+                {`${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim() || "—"}
               </div>
             </div>
 
@@ -1105,7 +1155,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Email
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {job.customer?.email || "â€”"}
+                {job.customer?.email || "—"}
               </div>
             </div>
 
@@ -1114,7 +1164,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Phone
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {job.customer?.phone || "â€”"}
+                {job.customer?.phone || "—"}
               </div>
             </div>
 
@@ -1155,7 +1205,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Service Type
                     </div>
                     <div className="mt-1 text-sm text-slate-900">
-                      {job?.service_type || "â€”"}
+                      {job?.service_type || "—"}
                     </div>
                   </div>
 
@@ -1166,7 +1216,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                     <div className="mt-1 text-sm text-slate-900">
                       {job?.requested_date
                         ? new Date(job.requested_date).toLocaleDateString()
-                        : "â€”"}
+                        : "—"}
                     </div>
                   </div>
 
@@ -1194,7 +1244,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Service Description
                     </div>
                     <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.service_description || "â€”"}
+                      {job?.service_description || "—"}
                     </div>
                   </div>
 
@@ -1203,7 +1253,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Notes
                     </div>
                     <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.notes || "â€”"}
+                      {job?.notes || "—"}
                     </div>
                   </div>
                 </div>
@@ -1802,7 +1852,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Estimate Number
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            {estimate.estimate_number || "â€”"}
+                            {estimate.estimate_number || "—"}
                           </div>
                         </div>
 
@@ -1875,7 +1925,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                     {item.description}
                                   </div>
                                   <div className="mt-1 text-sm text-slate-500">
-                                    Type: {item.line_type} â€¢ Qty: {item.quantity}
+                                    Type: {item.line_type} • Qty: {item.quantity}
                                   </div>
                                   {item.notes && (
                                     <div className="mt-1 text-sm text-slate-600">
@@ -1909,3 +1959,4 @@ const [estimateLineItems, setEstimateLineItems] = useState<
     </div>
   );
 }
+

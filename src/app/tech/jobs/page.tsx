@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Loader2, Trash2 } from "lucide-react";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -15,6 +16,7 @@ import {
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { TECH_SAVED_DRAFTS_STORAGE_KEY } from "@/lib/tech-inspection";
+import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 
 const ACTIVE_JOB_STATUSES = ["new", "new_request", "in_progress", "draft"] as const;
 
@@ -68,6 +70,7 @@ export default function TechnicianJobsPage() {
   const [savedDrafts, setSavedDrafts] = useState<SavedTechDraft[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [view, setView] = useState<QueueView>("open");
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
 
   const loadSavedDrafts = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -181,6 +184,35 @@ export default function TechnicianJobsPage() {
       return `${draft.title} ${draft.subtitle}`.toLowerCase().includes(term);
     });
   }, [savedDrafts, searchTerm]);
+
+  const handleDeleteJob = useCallback(async (job: TechnicianJob) => {
+    if (job.status === "completed") {
+      alert("Completed jobs cannot be deleted by technicians.");
+      return;
+    }
+
+    const jobLabel = job.business_job_number || job.id.slice(0, 8);
+    const customerName = `${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim();
+    const confirmed = window.confirm(
+      `Delete job #${jobLabel}${customerName ? ` for ${customerName}` : ""}? This will be logged in the admin deleted job history.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingJobId(job.id);
+
+    try {
+      await deleteJobWithRelatedRecords(job.id);
+      setJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
+    } catch (error) {
+      console.error("Failed to delete technician job:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete job.");
+    } finally {
+      setDeletingJobId(null);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -306,9 +338,24 @@ export default function TechnicianJobsPage() {
                     </div>
                   </div>
 
-                  <Button type="button" variant="outline" onClick={() => router.push(`/tech?jobId=${job.id}`)}>
-                    Open on Tech Page
-                  </Button>
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="button" variant="outline" onClick={() => router.push(`/tech?jobId=${job.id}`)}>
+                      Open on Tech Page
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={deletingJobId === job.id || job.status === "completed"}
+                      onClick={() => void handleDeleteJob(job)}
+                    >
+                      {deletingJobId === job.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      Delete Job
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

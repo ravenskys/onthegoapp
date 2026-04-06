@@ -46,6 +46,7 @@ import {
   TECH_DRAFT_STORAGE_KEY,
   TECH_SAVED_DRAFTS_STORAGE_KEY,
 } from "@/lib/tech-inspection";
+import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 
 const conditionOptions = [
   { value: "ok", label: "OK" },
@@ -1165,6 +1166,48 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
+  const handleDeleteActiveJob = async () => {
+    if (!activeJobId) {
+      alert("Load a job before deleting it.");
+      return;
+    }
+
+    if (activeJobStatus === "completed") {
+      alert("Completed jobs cannot be deleted from the technician portal.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this incomplete job? This deletion will be logged in the admin deleted job history."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setJobUpdateSaving(true);
+
+    try {
+      await deleteJobWithRelatedRecords(activeJobId);
+      resetInspectionForm(vehicle.techName);
+      setSelectedJobId(null);
+
+      if (typeof window !== "undefined") {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("jobId");
+        window.history.replaceState({}, "", nextUrl.pathname + nextUrl.search);
+      }
+
+      setRecordSyncState("saved");
+      setRecordSyncMessage("Job deleted. The form is ready for a new customer.");
+    } catch (error) {
+      console.error("Failed to delete active job:", error);
+      alert(getErrorMessage(error, "Failed to delete the job."));
+    } finally {
+      setJobUpdateSaving(false);
+    }
+  };
+
   const ensureCustomerProfile = async (vehicleSnapshot = vehicle) => {
     const validationError = getCustomerProfileValidationError(vehicleSnapshot);
     if (validationError) {
@@ -2077,13 +2120,26 @@ if (!isAuthorized) {
                   />
                 </div>
 
-                <Button
-                  type="button"
-                  onClick={handleSaveActiveJob}
-                  disabled={jobUpdateSaving}
-                >
-                  {jobUpdateSaving ? "Saving Job..." : "Save Job"}
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  {activeJobStatus !== "completed" && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleDeleteActiveJob}
+                      disabled={jobUpdateSaving}
+                    >
+                      Delete Job
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    onClick={handleSaveActiveJob}
+                    disabled={jobUpdateSaving}
+                  >
+                    {jobUpdateSaving ? "Saving Job..." : "Save Job"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

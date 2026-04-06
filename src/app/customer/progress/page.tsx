@@ -7,6 +7,7 @@ import {
   buildVehicleLabel,
   CustomerPortalData,
   fetchCustomerPortalData,
+  getCustomerWorkflowStepState,
   getCustomerWorkflowSummary,
   getSingleRelation,
 } from "@/lib/customer-portal";
@@ -106,20 +107,20 @@ export default function CustomerProgressPage() {
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {Object.entries(workflowStepLabels).map(([stepKey, label]) => {
-                const complete = Boolean(workflowSummary.workflowSteps?.[stepKey]);
+                const stepState = getCustomerWorkflowStepState(
+                  latestInspection,
+                  stepKey,
+                  portalData?.latestInspectionPhotoCount ?? 0
+                );
 
                 return (
                   <div
                     key={stepKey}
-                    className={`rounded-[22px] border p-4 text-sm ${
-                      complete
-                        ? "border-lime-400/40 bg-lime-400/15 text-slate-900"
-                        : "border-slate-200 bg-slate-50 text-slate-600"
-                    }`}
+                    className={`rounded-[22px] border p-4 text-sm ${stepState.className}`}
                   >
                     <div className="font-semibold">{label}</div>
                     <div className="mt-1">
-                      {complete ? "Completed" : "Waiting on this step"}
+                      {stepState.label}
                     </div>
                   </div>
                 );

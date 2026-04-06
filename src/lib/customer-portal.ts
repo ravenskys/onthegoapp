@@ -25,9 +25,17 @@ export type CustomerPortalInspection = {
   id?: string;
   created_at?: string;
   tech_name?: string | null;
+  obd_code?: string | null;
   notes?: string | null;
+  brakes?: Record<string, unknown> | null;
+  tire_data?: Record<string, unknown> | null;
+  maintenance?: Record<string, unknown> | null;
+  undercar?: Record<string, unknown> | null;
   vehicles?: CustomerPortalVehicle | CustomerPortalVehicle[] | null;
   inspection_summary?: {
+    ok?: number;
+    suggested?: number;
+    required?: number;
     workflow_steps?: Record<string, boolean>;
     workflow_total_count?: number;
     workflow_completed_count?: number;
@@ -54,6 +62,7 @@ export type CustomerPortalData = {
   customer: CustomerPortalRecord | null;
   vehicles: CustomerPortalVehicle[];
   latestInspection: CustomerPortalInspection;
+  latestInspectionPhotoCount: number;
   reports: CustomerPortalReport[];
   reportGroups: {
     key: string;
@@ -182,6 +191,158 @@ export const getCustomerWorkflowSummary = (
   };
 };
 
+export const getCustomerServiceState = (
+  inspection: CustomerPortalInspection,
+  workflowLabels: Record<string, string>
+) => {
+  if (!inspection) {
+    return {
+      label: "Waiting",
+      detail: "Waiting on next visit",
+      toneClassName: "border-slate-200 bg-slate-100 text-slate-700",
+      isWorking: false,
+      isCompleted: false,
+    };
+  }
+
+  const workflowSummary = getCustomerWorkflowSummary(inspection, workflowLabels);
+  const inspectionSummary = inspection.inspection_summary || {};
+  const hasSavedFieldActivity =
+    Number(inspectionSummary.ok || 0) > 0 ||
+    Number(inspectionSummary.suggested || 0) > 0 ||
+    Number(inspectionSummary.required || 0) > 0 ||
+    Boolean(String(inspection.notes || "").trim());
+
+  if (
+    workflowSummary.workflowTotal > 0 &&
+    workflowSummary.workflowCompleted >= workflowSummary.workflowTotal
+  ) {
+    return {
+      label: "Completed",
+      detail: "Inspection workflow completed",
+      toneClassName: "border-lime-400/35 bg-lime-400 px-4 py-3 text-black",
+      isWorking: false,
+      isCompleted: true,
+    };
+  }
+
+  if (hasSavedFieldActivity) {
+    return {
+      label: "Working",
+      detail: "Technician is actively updating the inspection",
+      toneClassName: "border-amber-300/50 bg-amber-300 px-4 py-3 text-black",
+      isWorking: true,
+      isCompleted: false,
+    };
+  }
+
+  return {
+    label: "In Service",
+    detail: "Inspection has started",
+    toneClassName: "border-sky-300/45 bg-sky-300 px-4 py-3 text-slate-950",
+    isWorking: false,
+    isCompleted: false,
+  };
+};
+
+const hasMeaningfulInspectionContent = (value: unknown): boolean => {
+  if (value == null) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "number") {
+    return !Number.isNaN(value) && value !== 0;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => hasMeaningfulInspectionContent(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((item) =>
+      hasMeaningfulInspectionContent(item)
+    );
+  }
+
+  return false;
+};
+
+export const getCustomerWorkflowStepState = (
+  inspection: CustomerPortalInspection,
+  stepKey: string,
+  latestInspectionPhotoCount = 0
+) => {
+  const workflowSteps = inspection?.inspection_summary?.workflow_steps || {};
+
+  if (workflowSteps?.[stepKey]) {
+    return {
+      label: "Completed",
+      className: "border-lime-400 bg-lime-400 text-slate-950",
+    };
+  }
+
+  const isWorking = (() => {
+    if (!inspection) {
+      return false;
+    }
+
+    const inspectionVehicle = getSingleRelation(inspection.vehicles);
+
+    switch (stepKey) {
+      case "vehicle":
+        return (
+          hasMeaningfulInspectionContent(inspectionVehicle?.year) ||
+          hasMeaningfulInspectionContent(inspectionVehicle?.make) ||
+          hasMeaningfulInspectionContent(inspectionVehicle?.model) ||
+          hasMeaningfulInspectionContent(inspectionVehicle?.license_plate) ||
+          hasMeaningfulInspectionContent(inspectionVehicle?.vin) ||
+          hasMeaningfulInspectionContent(inspection.tech_name) ||
+          hasMeaningfulInspectionContent(inspection.obd_code)
+        );
+      case "tires":
+        return hasMeaningfulInspectionContent(inspection.tire_data);
+      case "brakes":
+        return hasMeaningfulInspectionContent(inspection.brakes);
+      case "maintenance":
+        return (
+          hasMeaningfulInspectionContent(inspection.maintenance) ||
+          hasMeaningfulInspectionContent(inspection.undercar)
+        );
+      case "photos":
+        return latestInspectionPhotoCount > 0;
+      case "customer-report":
+        return (
+          hasMeaningfulInspectionContent(inspection.notes) ||
+          Number(inspection.inspection_summary?.ok || 0) > 0 ||
+          Number(inspection.inspection_summary?.suggested || 0) > 0 ||
+          Number(inspection.inspection_summary?.required || 0) > 0
+        );
+      default:
+        return false;
+    }
+  })();
+
+  if (isWorking) {
+    return {
+      label: "Working",
+      className: "border-yellow-300/80 bg-[rgba(255,245,90,0.55)] text-slate-950 shadow-[0_0_18px_rgba(255,242,120,0.16)]",
+    };
+  }
+
+  return {
+    label: "Waiting on this step",
+    className: "border-red-400/60 bg-red-400/50 text-slate-900",
+  };
+};
+
 export const getCustomerRecommendedServices = (
   vehicle: CustomerPortalVehicle | null | undefined
 ) => {
@@ -209,6 +370,7 @@ export const fetchCustomerPortalData = async (
       customer: null,
       vehicles: [],
       latestInspection: null,
+      latestInspectionPhotoCount: 0,
       reports: [],
       reportGroups: [],
       photosByInspection: {},
@@ -244,7 +406,12 @@ export const fetchCustomerPortalData = async (
       id,
       created_at,
       tech_name,
+      obd_code,
       notes,
+      brakes,
+      tire_data,
+      maintenance,
+      undercar,
       inspection_summary,
       vehicles (
         id,
@@ -268,6 +435,21 @@ export const fetchCustomerPortalData = async (
   const latestInspection =
     (inspectionRows?.[0] as CustomerPortalInspection | undefined) ?? null;
 
+  let latestInspectionPhotoCount = 0;
+
+  if (latestInspection?.id) {
+    const { count, error: latestPhotoCountError } = await supabase
+      .from("inspection_photos")
+      .select("id", { count: "exact", head: true })
+      .eq("inspection_id", latestInspection.id);
+
+    if (latestPhotoCountError) {
+      throw latestPhotoCountError;
+    }
+
+    latestInspectionPhotoCount = count ?? 0;
+  }
+
   const { data: reportRows, error: reportError } = await supabase
     .from("inspection_reports")
     .select(`
@@ -278,7 +460,12 @@ export const fetchCustomerPortalData = async (
         id,
         created_at,
         tech_name,
+        obd_code,
         notes,
+        brakes,
+        tire_data,
+        maintenance,
+        undercar,
         inspection_summary,
         vehicles (
           id,
@@ -309,6 +496,7 @@ export const fetchCustomerPortalData = async (
       customer,
       vehicles,
       latestInspection,
+      latestInspectionPhotoCount,
       reports,
       reportGroups: groupReportsByVehicle(reports),
       photosByInspection: {},
@@ -362,6 +550,7 @@ export const fetchCustomerPortalData = async (
     customer,
     vehicles,
     latestInspection,
+    latestInspectionPhotoCount,
     reports,
     reportGroups: groupReportsByVehicle(reports),
     photosByInspection,
