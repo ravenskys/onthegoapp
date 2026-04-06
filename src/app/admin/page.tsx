@@ -377,7 +377,7 @@ export default function AdminPage() {
                         </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           {entry.customer_name || "Unknown customer"}
-                          {entry.vehicle_label ? ` â€¢ ${entry.vehicle_label}` : ""}
+                          {entry.vehicle_label ? ` • ${entry.vehicle_label}` : ""}
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
                           {entry.service_type || "General service"}
