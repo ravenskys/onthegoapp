@@ -286,7 +286,7 @@ export default function NewJobPage() {
                     variant="outline"
                     role="combobox"
                     aria-expanded={customerOpen}
-                    className="w-full justify-between font-normal"
+                    className="w-full justify-between font-normal text-slate-900"
                   >
                     {selectedCustomerId
                       ? (() => {
@@ -306,8 +306,8 @@ export default function NewJobPage() {
                   </Button>
                 </PopoverTrigger>
 
-                <PopoverContent className="w-[420px] p-0" align="start">
-                  <Command>
+                <PopoverContent className="w-[420px] border-slate-200 bg-white p-0 text-slate-900" align="start">
+                  <Command className="bg-white text-slate-900">
                     <CommandInput placeholder="Search customer..." />
                     <CommandList>
                       <CommandEmpty>No customer found.</CommandEmpty>
@@ -323,6 +323,7 @@ export default function NewJobPage() {
                             <CommandItem
                               key={customer.id}
                               value={`${name} ${customer.email ?? ""} ${customer.phone ?? ""}`}
+                              className="text-slate-900 data-[selected=true]:bg-slate-100 data-[selected=true]:text-slate-900"
                               onSelect={() => {
                                 setSelectedCustomerId(customer.id);
                                 setSelectedVehicleId("");

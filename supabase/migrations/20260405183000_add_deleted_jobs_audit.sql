@@ -10,6 +10,7 @@ create table if not exists public.deleted_jobs_audit (
   priority text,
   service_type text,
   service_description text,
+  quote_total numeric(10,2),
   requested_date date,
   scheduled_start timestamptz,
   scheduled_end timestamptz,
@@ -53,6 +54,7 @@ declare
   deleter_email text;
   customer_display text;
   vehicle_display text;
+  deleted_quote_total numeric(10,2);
 begin
   select
     nullif(trim(concat_ws(' ', p.first_name, p.last_name)), ''),
@@ -78,6 +80,13 @@ begin
   from public.vehicles v
   where v.id = old.vehicle_id;
 
+  select e.total_amount
+  into deleted_quote_total
+  from public.estimates e
+  where e.job_id = old.id
+  order by e.updated_at desc nulls last, e.created_at desc nulls last
+  limit 1;
+
   insert into public.deleted_jobs_audit (
     job_id,
     business_job_number,
@@ -89,6 +98,7 @@ begin
     priority,
     service_type,
     service_description,
+    quote_total,
     requested_date,
     scheduled_start,
     scheduled_end,
@@ -109,6 +119,7 @@ begin
     old.priority,
     old.service_type,
     old.service_description,
+    deleted_quote_total,
     old.requested_date,
     old.scheduled_start,
     old.scheduled_end,

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { normalizeEmail } from "@/lib/input-formatters";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
+import { Input } from "@/components/ui/input";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
   BackToPortalButton,
@@ -21,11 +22,14 @@ interface DeletedJobAuditEntry {
   status: string | null;
   priority: string | null;
   service_type: string | null;
+  quote_total: number | null;
   deleted_by_name: string | null;
   deleted_by_email: string | null;
   deleted_at: string;
   related_counts: Record<string, number> | null;
 }
+
+type DeletedJobsRange = "7d" | "30d" | "all";
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
@@ -36,6 +40,73 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [deletedJobs, setDeletedJobs] = useState<DeletedJobAuditEntry[]>([]);
   const [deletedJobsLoading, setDeletedJobsLoading] = useState(true);
+  const [deletedJobsMessage, setDeletedJobsMessage] = useState("");
+  const [deletedJobsSearch, setDeletedJobsSearch] = useState("");
+  const [deletedJobsRange, setDeletedJobsRange] = useState<DeletedJobsRange>("7d");
+
+  const fetchDeletedJobs = useCallback(async (range: DeletedJobsRange = deletedJobsRange) => {
+    setDeletedJobsLoading(true);
+    setDeletedJobsMessage("");
+
+    try {
+      let query = supabase
+        .from("deleted_jobs_audit")
+        .select(`
+          id,
+          job_id,
+          business_job_number,
+          customer_name,
+          vehicle_label,
+          status,
+          priority,
+          service_type,
+          quote_total,
+          deleted_by_name,
+          deleted_by_email,
+          deleted_at,
+          related_counts
+        `)
+        .order("deleted_at", { ascending: false })
+        .limit(20);
+
+      if (range !== "all") {
+        const days = range === "7d" ? 7 : 30;
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        query = query.gte("deleted_at", cutoffDate.toISOString());
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      setDeletedJobs(data ?? []);
+    } catch (error) {
+      const rawMessage = getErrorMessage(error, "");
+      const normalizedMessage = rawMessage.toLowerCase();
+      const migrationGuidance =
+        "Deleted job history is not available yet. Apply the Supabase migration `20260405183000_add_deleted_jobs_audit.sql` to this project database, then refresh the page.";
+
+      if (
+        !rawMessage ||
+        normalizedMessage.includes("deleted_jobs_audit") ||
+        normalizedMessage.includes("relation") ||
+        normalizedMessage.includes("does not exist") ||
+        normalizedMessage.includes("permission denied") ||
+        normalizedMessage.includes("not found")
+      ) {
+        setDeletedJobsMessage(migrationGuidance);
+      } else {
+        setDeletedJobsMessage(`Deleted job history could not be loaded: ${rawMessage}`);
+      }
+
+      setDeletedJobs([]);
+    } finally {
+      setDeletedJobsLoading(false);
+    }
+  }, [deletedJobsRange]);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -57,47 +128,35 @@ export default function AdminPage() {
       }
 
       setAuthorized(true);
-      await fetchDeletedJobs();
+      await fetchDeletedJobs("7d");
       setLoading(false);
     };
 
     checkAccess();
-  }, []);
+  }, [fetchDeletedJobs]);
 
-  const fetchDeletedJobs = async () => {
-    setDeletedJobsLoading(true);
+  const filteredDeletedJobs = deletedJobs.filter((entry) => {
+    const term = deletedJobsSearch.trim().toLowerCase();
 
-    try {
-      const { data, error } = await supabase
-        .from("deleted_jobs_audit")
-        .select(`
-          id,
-          job_id,
-          business_job_number,
-          customer_name,
-          vehicle_label,
-          status,
-          priority,
-          service_type,
-          deleted_by_name,
-          deleted_by_email,
-          deleted_at,
-          related_counts
-        `)
-        .order("deleted_at", { ascending: false })
-        .limit(20);
-
-      if (error) {
-        throw error;
-      }
-
-      setDeletedJobs(data ?? []);
-    } catch (error) {
-      console.error("Error fetching deleted jobs audit:", error);
-    } finally {
-      setDeletedJobsLoading(false);
+    if (!term) {
+      return true;
     }
-  };
+
+    return [
+      entry.business_job_number,
+      entry.job_id,
+      entry.customer_name,
+      entry.vehicle_label,
+      entry.status,
+      entry.priority,
+      entry.service_type,
+      entry.quote_total,
+      entry.deleted_by_name,
+      entry.deleted_by_email,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(term));
+  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -263,17 +322,43 @@ export default function AdminPage() {
             </button>
           </div>
 
+          <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+            <Input
+              value={deletedJobsSearch}
+              onChange={(e) => setDeletedJobsSearch(e.target.value)}
+              placeholder="Search job number, customer, vehicle, service, or deleted by"
+            />
+
+            <select
+              value={deletedJobsRange}
+              onChange={(e) => {
+                const nextRange = e.target.value as DeletedJobsRange;
+                setDeletedJobsRange(nextRange);
+                void fetchDeletedJobs(nextRange);
+              }}
+              className="otg-select"
+            >
+              <option value="7d">Previous 7 days</option>
+              <option value="30d">Previous 30 days</option>
+              <option value="all">All deletions</option>
+            </select>
+          </div>
+
           {deletedJobsLoading ? (
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               Loading deleted job history...
             </div>
-          ) : deletedJobs.length === 0 ? (
+          ) : deletedJobsMessage ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {deletedJobsMessage}
+            </div>
+          ) : filteredDeletedJobs.length === 0 ? (
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              No deleted jobs have been recorded yet.
+              No deleted jobs match the current filters.
             </div>
           ) : (
             <div className="mt-6 space-y-4">
-              {deletedJobs.map((entry) => {
+              {filteredDeletedJobs.map((entry) => {
                 const relatedCounts = entry.related_counts ?? {};
                 const relatedSummary = Object.entries(relatedCounts)
                   .filter(([, count]) => Number(count) > 0)
@@ -296,8 +381,11 @@ export default function AdminPage() {
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
                           {entry.service_type || "General service"}
-                          {entry.status ? ` â€¢ ${entry.status.replaceAll("_", " ")}` : ""}
-                          {entry.priority ? ` â€¢ ${entry.priority} priority` : ""}
+                          {entry.status ? ` • ${entry.status.replaceAll("_", " ")}` : ""}
+                          {entry.priority ? ` • ${entry.priority} priority` : ""}
+                          {typeof entry.quote_total === "number"
+                            ? ` • Quote total $${entry.quote_total.toFixed(2)}`
+                            : ""}
                         </p>
                       </div>
 
@@ -313,7 +401,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                      {relatedSummary || "No related child records were logged for this deletion."}
+                      {relatedSummary || "No job info logged for this deletion."}
                     </div>
                   </div>
                 );
@@ -325,3 +413,4 @@ export default function AdminPage() {
     </div>
   );
 }
+
