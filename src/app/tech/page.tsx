@@ -2,7 +2,6 @@
 // @ts-nocheck
 import { supabase } from "@/lib/supabase";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -537,8 +536,9 @@ function StepCompletionToggle({
 }
 
 export default function OnTheGoTechnicianAppPrototype() {
-  const searchParams = useSearchParams();
   const initializedSelectionRef = useRef<string | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<VehicleState>(createEmptyVehicleState());
 
   const [tireData, setTireData] = useState<TireDataState>(createEmptyTireDataState);
@@ -1891,8 +1891,16 @@ useEffect(() => {
 useEffect(() => {
   if (typeof window === "undefined") return;
 
-  const draftId = searchParams.get("draftId");
-  const jobId = searchParams.get("jobId");
+  const params = new URLSearchParams(window.location.search);
+  setSelectedDraftId(params.get("draftId"));
+  setSelectedJobId(params.get("jobId"));
+}, []);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const draftId = selectedDraftId;
+  const jobId = selectedJobId;
   const selectionKey = draftId ? `draft:${draftId}` : jobId ? `job:${jobId}` : "local-draft";
 
   if (initializedSelectionRef.current === selectionKey) {
@@ -1950,7 +1958,7 @@ useEffect(() => {
   } finally {
     setDraftLoaded(true);
   }
-}, [applyDraftState, currentUserId, getSavedDraftsFromStorage, loadJobById, searchParams]);
+}, [applyDraftState, currentUserId, getSavedDraftsFromStorage, loadJobById, selectedDraftId, selectedJobId]);
 
 useEffect(() => {
   if (!draftLoaded) return;
