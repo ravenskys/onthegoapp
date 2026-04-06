@@ -975,7 +975,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                     Job #{job.business_job_number || job.id.slice(0, 8)}
                     </h1>
               <p className="text-slate-600">
-                {job.customer?.first_name} {job.customer?.last_name} • {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model}
+                {job.customer?.first_name} {job.customer?.last_name} â€¢ {job.vehicle?.year} {job.vehicle?.make} {job.vehicle?.model}
               </p>
             </div>
           </div>
@@ -1146,7 +1146,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Customer
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {`${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim() || "—"}
+                {`${job.customer?.first_name ?? ""} ${job.customer?.last_name ?? ""}`.trim() || "â€”"}
               </div>
             </div>
 
@@ -1155,7 +1155,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Email
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {job.customer?.email || "—"}
+                {job.customer?.email || "â€”"}
               </div>
             </div>
 
@@ -1164,7 +1164,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Phone
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {job.customer?.phone || "—"}
+                {job.customer?.phone || "â€”"}
               </div>
             </div>
 
@@ -1205,7 +1205,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Service Type
                     </div>
                     <div className="mt-1 text-sm text-slate-900">
-                      {job?.service_type || "—"}
+                      {job?.service_type || "â€”"}
                     </div>
                   </div>
 
@@ -1216,7 +1216,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                     <div className="mt-1 text-sm text-slate-900">
                       {job?.requested_date
                         ? new Date(job.requested_date).toLocaleDateString()
-                        : "—"}
+                        : "â€”"}
                     </div>
                   </div>
 
@@ -1244,7 +1244,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Service Description
                     </div>
                     <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.service_description || "—"}
+                      {job?.service_description || "â€”"}
                     </div>
                   </div>
 
@@ -1253,7 +1253,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       Notes
                     </div>
                     <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.notes || "—"}
+                      {job?.notes || "â€”"}
                     </div>
                   </div>
                 </div>
@@ -1852,7 +1852,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Estimate Number
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            {estimate.estimate_number || "—"}
+                            {estimate.estimate_number || "â€”"}
                           </div>
                         </div>
 
@@ -1925,7 +1925,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                     {item.description}
                                   </div>
                                   <div className="mt-1 text-sm text-slate-500">
-                                    Type: {item.line_type} • Qty: {item.quantity}
+                                    Type: {item.line_type} â€¢ Qty: {item.quantity}
                                   </div>
                                   {item.notes && (
                                     <div className="mt-1 text-sm text-slate-600">
