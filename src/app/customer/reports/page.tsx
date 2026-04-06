@@ -1,8 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Download, FileText } from "lucide-react";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import {
@@ -16,11 +15,20 @@ import {
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { supabase } from "@/lib/supabase";
 
-export default function CustomerReportsPage() {
-  const searchParams = useSearchParams();
+function CustomerReportsPageContent() {
   const [loading, setLoading] = useState(true);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
+  const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setSelectedVehicleKey(params.get("vehicle"));
+  }, []);
 
   useEffect(() => {
     const loadPage = async () => {
@@ -114,7 +122,6 @@ export default function CustomerReportsPage() {
     return <div className="otg-page"><div className="otg-container"><div className="otg-card p-8"><p className="otg-body">Loading reports...</p></div></div></div>;
   }
 
-  const selectedVehicleKey = searchParams.get("vehicle");
   const visibleGroups = selectedVehicleKey
     ? (portalData?.reportGroups.filter((group) => group.key === selectedVehicleKey) || [])
     : portalData?.reportGroups || [];
@@ -274,4 +281,8 @@ export default function CustomerReportsPage() {
       </div>
     </CustomerPortalShell>
   );
+}
+
+export default function CustomerReportsPage() {
+  return <CustomerReportsPageContent />;
 }
