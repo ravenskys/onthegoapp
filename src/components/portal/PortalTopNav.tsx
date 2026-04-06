@@ -34,7 +34,10 @@ const portalNavGroups: PortalNavGroup[] = [
     destination: "customer",
     label: "Customer",
     items: [
-      { href: "/customer/dashboard", label: "Dashboard" },
+      { href: "/customer/dashboard", label: "Home" },
+      { href: "/customer/progress", label: "Service Progress" },
+      { href: "/customer/reports", label: "Customer Report History" },
+      { href: "/customer/account", label: "Account" },
     ],
   },
   {
@@ -73,21 +76,6 @@ const portalNavGroups: PortalNavGroup[] = [
     ],
   },
 ];
-
-const portalSectionAliases: Record<PortalNavSection, PortalDestination> = {
-  customer: [
-    "customer",
-  ][0],
-  tech: [
-    "tech",
-  ][0],
-  manager: [
-    "manager",
-  ][0],
-  admin: [
-    "admin",
-  ][0],
-};
 
 const isItemActive = (pathname: string, item: PortalNavItem) => {
   if (pathname === item.href) {
@@ -148,7 +136,7 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
 
   const availableGroups = useMemo(() => {
     if (skipLookup) {
-      return [];
+      return portalNavGroups.filter((group) => group.destination === "customer");
     }
 
     return portalNavGroups.filter((group) =>

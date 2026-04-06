@@ -17,13 +17,11 @@ import { Camera, Car, Check, CheckCircle2, ClipboardList, FileText, Upload, Wren
 import {
   formatMileage,
   formatPhoneNumber,
-  MAX_MODEL_YEAR,
   normalizeEmail,
   normalizeLicensePlate,
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
-import { vehicleCatalog, vehicleMakes } from "@/lib/vehicleCatalog";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -33,6 +31,10 @@ import {
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
+import {
+  getMaintenanceSchedulePreview,
+  type MaintenanceScheduleInterval,
+} from "@/lib/maintenance-suggestions";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   buildCustomerPayload,
@@ -316,6 +318,52 @@ type SavedTechDraft = {
   draft: ReturnType<typeof buildTechInspectionDraft>;
 };
 
+const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+};
+
+const normalizeDraftPhotos = (photos: unknown): UploadedPhoto[] => {
+  if (!Array.isArray(photos)) {
+    return [];
+  }
+
+  return photos.map((photo, index) => {
+    const photoRecord = photo as Record<string, unknown>;
+    return {
+      id: String(photoRecord.id || `draft-photo-${index}`),
+      name: String(photoRecord.name || ""),
+      preview: String(photoRecord.preview || ""),
+      note: String(photoRecord.note || ""),
+    };
+  });
+};
+
+const normalizeConditionPhotoState = (photos: unknown): ConditionPhotoState => {
+  const baseState = createEmptyConditionPhotoState();
+
+  if (!photos || typeof photos !== "object") {
+    return baseState;
+  }
+
+  return Object.entries(photos as Record<string, unknown>).reduce<ConditionPhotoState>(
+    (acc, [shot, photo]) => {
+      const photoRecord = (photo || {}) as Record<string, unknown>;
+      acc[shot] = {
+        ...acc[shot],
+        name: String(photoRecord.name || ""),
+        preview: String(photoRecord.preview || ""),
+        note: String(photoRecord.note || ""),
+      };
+      return acc;
+    },
+    baseState
+  );
+};
+
 function StatusPill({ value }: StatusPillProps) {
   const map = {
     ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -336,10 +384,10 @@ function StatusPill({ value }: StatusPillProps) {
 function ConditionSelect({ value, onChange }: ConditionSelectProps) {
   return (
     <Select value={value || ""} onValueChange={onChange}>
-      <SelectTrigger className="h-12 w-full bg-white px-4 text-base">
+      <SelectTrigger className="h-12 w-full px-4 text-base">
         <SelectValue placeholder="Select status" />
       </SelectTrigger>
-      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+      <SelectContent>
         {conditionOptions.map((option) => (
           <SelectItem key={option.value} value={option.value} className="min-h-12 px-4 py-3 text-base">
             {option.label}
@@ -364,12 +412,32 @@ function SectionHeader({ icon: Icon, title, subtitle }: SectionHeaderProps) {
   );
 }
 
+function formatMileageIntervalLabel(mileage: number) {
+  return `${new Intl.NumberFormat("en-US").format(mileage)} miles`;
+}
+
+function groupScheduleItems(interval: MaintenanceScheduleInterval | null) {
+  if (!interval) {
+    return [];
+  }
+
+  const grouped = interval.items.reduce<Record<string, typeof interval.items>>((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = [];
+    }
+    acc[item.category].push(item);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped);
+}
+
 function QuickConditionButtons({
   value,
   onChange,
 }: {
   value: InspectionStatus;
-  onChange: (value: InspectionStatus) => void;
+  onChange: (value: RecommendationStatus) => void;
 }) {
   const options: {
     value: Exclude<InspectionStatus, "" | null | undefined>;
@@ -669,6 +737,17 @@ export default function OnTheGoTechnicianAppPrototype() {
     [workflowSteps]
   );
 
+  const maintenanceSchedulePreview = useMemo(
+    () =>
+      getMaintenanceSchedulePreview({
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        mileage: vehicle.mileage,
+      }),
+    [vehicle.year, vehicle.make, vehicle.model, vehicle.mileage]
+  );
+
   const getMissingRequiredReasonMessage = useCallback(() => {
     const missingMaintenanceReason = maintenanceItems.find(
       (item) =>
@@ -715,11 +794,10 @@ export default function OnTheGoTechnicianAppPrototype() {
   const applyDraftState = useCallback((draft: ReturnType<typeof buildTechInspectionDraft>) => {
     const vehicleSnapshot = draft.vehicle || {};
     const vehicleCatalogModes = getVehicleCatalogModes({
+      year: vehicleSnapshot.year,
       make: vehicleSnapshot.make,
       model: vehicleSnapshot.model,
       engineSize: vehicleSnapshot.engineSize,
-      vehicleMakes,
-      vehicleCatalog,
     });
 
     setVehicle({
@@ -742,15 +820,9 @@ export default function OnTheGoTechnicianAppPrototype() {
       ...createEmptyChecklistState(undercarItems),
       ...(draft.undercar || {}),
     });
-    setPhotos(draft.photos || []);
-    setPreServicePhotos({
-      ...createEmptyConditionPhotoState(),
-      ...(draft.preServicePhotos || {}),
-    });
-    setPostWorkPhotos({
-      ...createEmptyConditionPhotoState(),
-      ...(draft.postWorkPhotos || {}),
-    });
+    setPhotos(normalizeDraftPhotos(draft.photos));
+    setPreServicePhotos(normalizeConditionPhotoState(draft.preServicePhotos));
+    setPostWorkPhotos(normalizeConditionPhotoState(draft.postWorkPhotos));
     setWorkflowSteps({
       ...createEmptyWorkflowSteps(),
       ...(draft.workflowSteps || {}),
@@ -853,11 +925,10 @@ export default function OnTheGoTechnicianAppPrototype() {
       setActiveJobNotes(job.notes || "");
 
       const vehicleCatalogModes = getVehicleCatalogModes({
+        year: vehicleData?.year,
         make: vehicleData?.make,
         model: vehicleData?.model,
         engineSize: vehicleData?.engine_size,
-        vehicleMakes,
-        vehicleCatalog,
       });
       setUseCustomMake(vehicleCatalogModes.useCustomMake);
       setUseCustomModel(vehicleCatalogModes.useCustomModel);
@@ -896,7 +967,11 @@ export default function OnTheGoTechnicianAppPrototype() {
       .single();
 
     if (error) throw error;
-    await handleLoadJob(data);
+    await handleLoadJob({
+      ...data,
+      customer: getSingleRelation(data.customer),
+      vehicle: getSingleRelation(data.vehicle),
+    });
   }, [handleLoadJob]);
 
   const hasMeaningfulDraftContent = useCallback(() => {
@@ -1297,7 +1372,9 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const handleVehicleProfileBlur = async () => {
+  const handleVehicleProfileBlur = async (
+    vehicleOverrides: Partial<VehicleState> = {}
+  ) => {
     if (
       !workflowSteps.vehicle &&
       !savedCustomerId &&
@@ -1307,8 +1384,18 @@ export default function OnTheGoTechnicianAppPrototype() {
       return;
     }
 
+    const vehicleSnapshot = {
+      ...vehicle,
+      ...vehicleOverrides,
+    };
+
+    if (getCustomerProfileValidationError(vehicleSnapshot)) {
+      return;
+    }
+
     try {
       await syncCustomerProfileAndInspection({
+        vehicleSnapshot,
         successMessage: "Customer profile updated.",
       });
     } catch (error) {
@@ -1556,7 +1643,6 @@ const handleGeneratePdf = async () => {
 
     const primary: RgbColor = [15, 23, 42];
     const lightGray: RgbColor = [241, 245, 249];
-    const midGray: RgbColor = [100, 116, 139];
     const darkText: RgbColor = [30, 41, 59];
     const green: RgbColor = [22, 163, 74];
     const amber: RgbColor = [217, 119, 6];
@@ -1581,10 +1667,14 @@ const handleGeneratePdf = async () => {
     };
 
     const addParagraph = (text: string, indent = margin) => {
+      const normalizedText = text
+        .replaceAll("â€”", "-")
+        .replaceAll("â€¢", "-")
+        .replaceAll("â†’", "->");
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(...darkText);
-      const wrapped = doc.splitTextToSize(text || "-", pageWidth - indent - margin);
+      const wrapped = doc.splitTextToSize(normalizedText || "-", pageWidth - indent - margin);
       wrapped.forEach((line: string) => {
         addPageIfNeeded(6);
         doc.text(line, indent, y);
@@ -1828,7 +1918,11 @@ useEffect(() => {
     }
   }
 
-  if (jobId && currentUserId) {
+  if (jobId) {
+    if (!currentUserId) {
+      return;
+    }
+
     initializedSelectionRef.current = selectionKey;
     void loadJobById(jobId)
       .catch((error) => {
@@ -1953,10 +2047,10 @@ if (!isAuthorized) {
                 <div className="space-y-2 md:w-56">
                   <Label>Active Job Status</Label>
                   <Select value={activeJobStatus} onValueChange={setActiveJobStatus}>
-                    <SelectTrigger className="bg-white">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-white">
+                    <SelectContent>
                       <SelectItem value="new">New</SelectItem>
                       <SelectItem value="new_request">New Request</SelectItem>
                       <SelectItem value="in_progress">In Progress</SelectItem>
@@ -2067,10 +2161,10 @@ if (!isAuthorized) {
                             void handleVehicleProfileBlur();
                           }}
                         >
-                          <SelectTrigger className="h-12 bg-white px-4 text-base">
+                          <SelectTrigger className="h-12 px-4 text-base">
                             <SelectValue placeholder="Select technician" />
                           </SelectTrigger>
-                          <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                          <SelectContent>
                             {technicians.map((tech) => (
                               <SelectItem key={tech.id} value={tech.label} className="min-h-12 px-4 py-3 text-base">
                                 {tech.label}
@@ -2155,20 +2249,20 @@ if (!isAuthorized) {
                   modelListId="vehicle-models"
                   engineListId="vehicle-engine-sizes"
                   className="grid gap-4 md:grid-cols-3"
-                  onYearCommit={() => handleVehicleProfileBlur()}
-                  onMakeCommit={() => handleVehicleProfileBlur()}
-                  onModelCommit={() => handleVehicleProfileBlur()}
-                  onEngineCommit={() => handleVehicleProfileBlur()}
-                  onPlateCommit={() => handleVehicleProfileBlur()}
-                  onVinCommit={() => handleVehicleProfileBlur()}
+                  onYearCommit={(value) => handleVehicleProfileBlur({ year: value })}
+                  onMakeCommit={(value) => handleVehicleProfileBlur({ make: value })}
+                  onModelCommit={(value) => handleVehicleProfileBlur({ model: value })}
+                  onEngineCommit={(value) => handleVehicleProfileBlur({ engineSize: value })}
+                  onPlateCommit={(value) => handleVehicleProfileBlur({ licensePlate: value })}
+                  onVinCommit={(value) => handleVehicleProfileBlur({ vin: value })}
                 />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Transmission</Label>
                     <Select value={vehicle.transmission} onValueChange={(value) => updateVehicle("transmission", value)}>
-                      <SelectTrigger className="h-12 bg-white px-4 text-base"><SelectValue placeholder="Select transmission" /></SelectTrigger>
-                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                      <SelectTrigger className="h-12 px-4 text-base"><SelectValue placeholder="Select transmission" /></SelectTrigger>
+                      <SelectContent>
                         <SelectItem value="automatic" className="min-h-12 px-4 py-3 text-base">Automatic</SelectItem>
                         <SelectItem value="manual" className="min-h-12 px-4 py-3 text-base">Manual</SelectItem>
                         <SelectItem value="cvt" className="min-h-12 px-4 py-3 text-base">CVT</SelectItem>
@@ -2178,8 +2272,8 @@ if (!isAuthorized) {
                   <div className="space-y-2">
                     <Label>Drivetrain</Label>
                     <Select value={vehicle.driveline} onValueChange={(value) => updateVehicle("driveline", value)}>
-                      <SelectTrigger className="h-12 bg-white px-4 text-base"><SelectValue placeholder="Select drivetrain" /></SelectTrigger>
-                      <SelectContent className="bg-white text-slate-900 border border-slate-200 shadow-lg">
+                      <SelectTrigger className="h-12 px-4 text-base"><SelectValue placeholder="Select drivetrain" /></SelectTrigger>
+                      <SelectContent>
                         <SelectItem value="fwd" className="min-h-12 px-4 py-3 text-base">FWD</SelectItem>
                         <SelectItem value="rwd" className="min-h-12 px-4 py-3 text-base">RWD</SelectItem>
                         <SelectItem value="awd" className="min-h-12 px-4 py-3 text-base">AWD</SelectItem>
@@ -2321,6 +2415,87 @@ if (!isAuthorized) {
                 }
                 label="Mark maintenance and undercar inspection as complete."
               />
+
+              <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+                <CardContent className="space-y-6 p-6">
+                  <SectionHeader
+                    icon={ClipboardList}
+                    title="Suggested maintenance"
+                    subtitle="Filtered to the current vehicle and mileage. Showing what is due now and what is coming next."
+                  />
+
+                  {!maintenanceSchedulePreview ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                      Enter the vehicle year, make, model, and mileage to see currently suggested maintenance and the next service interval.
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <Badge variant="secondary" className="rounded-full">
+                          {maintenanceSchedulePreview.source === "oem" ? "OEM schedule" : "Rules-based schedule"}
+                        </Badge>
+                        <span className="text-slate-600">
+                          {maintenanceSchedulePreview.vehicleLabel}
+                        </span>
+                        <span className="text-slate-500">|</span>
+                        <span className="text-slate-600">
+                          Mileage: {vehicle.mileage || "-"}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        {([
+                          ["Suggested Now", maintenanceSchedulePreview.current, "Due based on current mileage."],
+                          ["Next Interval", maintenanceSchedulePreview.next, "Next scheduled service interval after current mileage."],
+                        ] as const).map(([title, interval, subtitle]) => {
+                          const groupedItems = groupScheduleItems(interval);
+
+                          return (
+                            <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-lg font-semibold text-slate-900">{title}</div>
+                                  <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
+                                </div>
+                                <Badge className="rounded-full bg-slate-900 text-white hover:bg-slate-900">
+                                  {interval ? formatMileageIntervalLabel(interval.mileage) : "Unavailable"}
+                                </Badge>
+                              </div>
+
+                              {groupedItems.length > 0 ? (
+                                <div className="mt-5 space-y-4">
+                                  {groupedItems.map(([category, items]) => (
+                                    <div key={category} className="space-y-2 border-t border-slate-200 pt-4 first:border-t-0 first:pt-0">
+                                      <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                        {category}
+                                      </div>
+                                      <div className="space-y-2">
+                                        {items.map((item) => (
+                                          <div key={`${category}-${item.service}`} className="rounded-xl bg-white px-4 py-3 text-sm text-slate-800 shadow-sm">
+                                            <div className="font-medium text-slate-900">{item.service}</div>
+                                            {item.note ? (
+                                              <div className="mt-1 text-slate-600">{item.note}</div>
+                                            ) : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-5 rounded-xl bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+                                  No scheduled services found for this interval.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={ClipboardList} title="Maintenance inspection" subtitle="Record service recommendations and why each item needs attention." />
@@ -2652,7 +2827,7 @@ if (!isAuthorized) {
               <div className="mb-4 text-lg font-semibold text-slate-900">Tire Status</div>
               <div className="space-y-3">
                 {tires.map((tire) => {
-                  const t: any = tireData[tire];
+                  const t = tireData[tire];
                   const isSpareUnavailable = t.flags?.includes(spareUnavailableFlag);
                   const visibleFlags = isSpareUnavailable
                     ? (t.flags || []).filter((flag: string) => flag !== spareUnavailableFlag)
@@ -2669,7 +2844,7 @@ if (!isAuthorized) {
                         </div>
                       ) : (
                         <div className="mt-1 text-slate-600">
-                          PSI {t.psiIn || "-"} → {t.psiOut || "-"} | Tread {t.treadOuter || "-"} / {t.treadInner || "-"}
+                          PSI {t.psiIn || "-"} {"->"} {t.psiOut || "-"} | Tread {t.treadOuter || "-"} / {t.treadInner || "-"}
                         </div>
                       )}
                       {visibleFlags.length > 0 && (
@@ -2852,3 +3027,4 @@ if (!isAuthorized) {
     </div>
   );
 }
+

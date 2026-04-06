@@ -15,7 +15,12 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MAX_MODEL_YEAR } from "@/lib/input-formatters";
 import { cn } from "@/lib/utils";
-import { vehicleCatalog, vehicleMakes } from "@/lib/vehicleCatalog";
+import {
+  findVehicleCatalogMake,
+  getVehicleCatalogEngines,
+  getVehicleCatalogModels,
+  vehicleMakes,
+} from "@/lib/vehicleCatalog";
 
 type VehicleCatalogFieldsProps = {
   make: string;
@@ -64,6 +69,9 @@ type SearchableSelectProps = {
   emptyMessage: string;
   disabled?: boolean;
   onSelect: (value: string) => void;
+  allowCustom?: boolean;
+  customActionLabel?: string;
+  onCustomSelect?: (value: string) => void;
 };
 
 function SearchableSelect({
@@ -74,13 +82,36 @@ function SearchableSelect({
   emptyMessage,
   disabled = false,
   onSelect,
+  allowCustom = false,
+  customActionLabel = "Use as custom value",
+  onCustomSelect,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   const selectedOption = options.find((option) => option.value === value);
+  const trimmedQuery = query.trim();
+  const hasExactMatch = options.some(
+    (option) =>
+      option.label.toLowerCase() === trimmedQuery.toLowerCase() ||
+      option.value.toLowerCase() === trimmedQuery.toLowerCase()
+  );
+  const showCustomOption =
+    allowCustom &&
+    Boolean(trimmedQuery) &&
+    !hasExactMatch &&
+    typeof onCustomSelect === "function";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setQuery("");
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -88,20 +119,24 @@ function SearchableSelect({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="h-10 w-full justify-between border-slate-300 bg-white px-3 font-normal text-slate-900 hover:bg-slate-50"
+          className="otg-vehicle-combobox h-10 w-full justify-between border-slate-300 bg-white px-3 font-normal text-slate-900 hover:bg-slate-50"
         >
-          <span className={cn("truncate", !selectedOption && "text-slate-500")}>
+          <span className={cn("truncate", !selectedOption && "text-slate-500 otg-vehicle-combobox-placeholder")}>
             {selectedOption?.label ?? placeholder}
           </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-slate-500" />
+          <ChevronsUpDown className="otg-vehicle-combobox-icon h-4 w-4 shrink-0 text-slate-500" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0"
+        className="otg-vehicle-combobox-menu w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0"
       >
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command className="otg-vehicle-combobox-command">
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={query}
+            onValueChange={setQuery}
+          />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             {options.map((option) => (
@@ -122,6 +157,19 @@ function SearchableSelect({
                 <span>{option.label}</span>
               </CommandItem>
             ))}
+            {showCustomOption ? (
+              <CommandItem
+                value={`custom ${trimmedQuery}`}
+                onSelect={() => {
+                  onCustomSelect?.(trimmedQuery);
+                  setOpen(false);
+                  setQuery("");
+                }}
+              >
+                <span className="font-medium">{customActionLabel}:</span>
+                <span className="truncate">{trimmedQuery}</span>
+              </CommandItem>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -162,7 +210,7 @@ export function VehicleCatalogFields({
 }: VehicleCatalogFieldsProps) {
   const yearOptions = useMemo(
     () =>
-      Array.from({ length: MAX_MODEL_YEAR - 1979 }, (_, index) => {
+      Array.from({ length: MAX_MODEL_YEAR - 1984 }, (_, index) => {
         const yearValue = String(MAX_MODEL_YEAR - index);
         return { label: yearValue, value: yearValue };
       }),
@@ -175,25 +223,13 @@ export function VehicleCatalogFields({
   );
 
   const knownModelsForMake = (() => {
-    const exactMake = vehicleMakes.find(
-      (catalogMake) => catalogMake.toLowerCase() === String(make || "").toLowerCase()
-    );
-
-    return exactMake ? Object.keys(vehicleCatalog[exactMake] ?? {}) : [];
+    const exactMake = findVehicleCatalogMake(make);
+    return exactMake ? getVehicleCatalogModels(exactMake, year) : [];
   })();
 
   const knownEngineSizesForModel = (() => {
-    const exactMake = vehicleMakes.find(
-      (catalogMake) => catalogMake.toLowerCase() === String(make || "").toLowerCase()
-    );
-
-    if (!exactMake) return [];
-
-    const exactModel = Object.keys(vehicleCatalog[exactMake] ?? {}).find(
-      (catalogModel) => catalogModel.toLowerCase() === String(model || "").toLowerCase()
-    );
-
-    return exactModel ? vehicleCatalog[exactMake][exactModel] ?? [] : [];
+    const exactMake = findVehicleCatalogMake(make);
+    return exactMake ? getVehicleCatalogEngines(exactMake, model, year) : [];
   })();
 
   const modelOptions = useMemo(
@@ -202,9 +238,7 @@ export function VehicleCatalogFields({
   );
 
   const handleMakeChange = (value: string) => {
-    const matchedMake = vehicleMakes.find(
-      (catalogMake) => catalogMake.toLowerCase() === String(value || "").trim().toLowerCase()
-    );
+    const matchedMake = findVehicleCatalogMake(value);
 
     setUseCustomMake(() => false);
     setUseCustomModel(() => false);
@@ -219,6 +253,37 @@ export function VehicleCatalogFields({
     setUseCustomEngineSize(() => false);
     setModel(value);
     setEngineSize("");
+  };
+
+  const handleYearChange = (value: string) => {
+    const normalizedValue = normalizeYear(value);
+    const matchingMake = findVehicleCatalogMake(make);
+    const availableModels = matchingMake ? getVehicleCatalogModels(matchingMake, normalizedValue) : [];
+    const selectedModelIsStillValid = availableModels.some(
+      (catalogModel) => catalogModel.toLowerCase() === String(model || "").trim().toLowerCase()
+    );
+    const availableEngines =
+      matchingMake && selectedModelIsStillValid
+        ? getVehicleCatalogEngines(matchingMake, model, normalizedValue)
+        : [];
+    const selectedEngineIsStillValid = availableEngines.some(
+      (catalogEngine) =>
+        catalogEngine.toLowerCase() === String(engineSize || "").trim().toLowerCase()
+    );
+
+    setYear(normalizedValue);
+
+    if (!selectedModelIsStillValid) {
+      setUseCustomModel(() => false);
+      setUseCustomEngineSize(() => false);
+      setModel("");
+      setEngineSize("");
+    } else if (!selectedEngineIsStillValid) {
+      setUseCustomEngineSize(() => false);
+      setEngineSize("");
+    }
+
+    onYearCommit?.(normalizedValue);
   };
 
   const handleEngineSizeChange = (value: string) => {
@@ -242,11 +307,7 @@ export function VehicleCatalogFields({
           placeholder="Select year"
           searchPlaceholder="Search year..."
           emptyMessage="No matching year found."
-          onSelect={(value) => {
-            const normalizedValue = normalizeYear(value);
-            setYear(normalizedValue);
-            onYearCommit?.(normalizedValue);
-          }}
+          onSelect={handleYearChange}
         />
       </div>
 
@@ -281,8 +342,19 @@ export function VehicleCatalogFields({
             placeholder="Search or select make"
             searchPlaceholder="Search make..."
             emptyMessage="No matching make found."
+            allowCustom
+            customActionLabel="Use custom make"
             onSelect={(value) => {
               handleMakeChange(value);
+              onMakeCommit?.(value);
+            }}
+            onCustomSelect={(value) => {
+              setUseCustomMake(() => true);
+              setUseCustomModel(() => false);
+              setUseCustomEngineSize(() => false);
+              setMake(value);
+              setModel("");
+              setEngineSize("");
               onMakeCommit?.(value);
             }}
           />
@@ -320,13 +392,24 @@ export function VehicleCatalogFields({
             placeholder={
               knownModelsForMake.length
                 ? "Search or select model"
-                : "Choose a make first or use Other model"
+                : year
+                  ? "No catalog models for that year"
+                  : "Choose a make first or use Other model"
             }
             searchPlaceholder="Search model..."
             emptyMessage="No matching model found."
-            disabled={!knownModelsForMake.length}
+            disabled={!String(make || "").trim()}
+            allowCustom
+            customActionLabel="Use custom model"
             onSelect={(value) => {
               handleModelChange(value);
+              onModelCommit?.(value);
+            }}
+            onCustomSelect={(value) => {
+              setUseCustomModel(() => true);
+              setUseCustomEngineSize(() => false);
+              setModel(value);
+              setEngineSize("");
               onModelCommit?.(value);
             }}
           />
@@ -370,9 +453,11 @@ export function VehicleCatalogFields({
               placeholder={
                 knownEngineSizesForModel.length
                   ? "Search or select engine size"
-                  : "Choose a model first or use Other engine"
+                  : year
+                    ? "No catalog engines for that year"
+                    : "Choose a model first or use Other engine"
               }
-              disabled={!knownEngineSizesForModel.length}
+              disabled={!String(model || "").trim()}
             />
             <datalist id={engineListId}>
               {knownEngineSizesForModel.map((catalogEngine) => (

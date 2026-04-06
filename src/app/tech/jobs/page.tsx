@@ -53,6 +53,14 @@ type SavedTechDraft = {
 
 type QueueView = "open" | "unassigned" | "drafts";
 
+const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+};
+
 export default function TechnicianJobsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -99,7 +107,13 @@ export default function TechnicianJobsPage() {
 
     const { data, error } = await query;
     if (error) throw error;
-    setJobs(data ?? []);
+    setJobs(
+      (data ?? []).map((job) => ({
+        ...job,
+        customer: getSingleRelation(job.customer),
+        vehicle: getSingleRelation(job.vehicle),
+      }))
+    );
   }, []);
 
   useEffect(() => {

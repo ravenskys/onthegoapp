@@ -1,3 +1,9 @@
+import {
+  findVehicleCatalogMake,
+  getVehicleCatalogEngines,
+  getVehicleCatalogModels,
+} from "@/lib/vehicleCatalog";
+
 export const TECH_DRAFT_STORAGE_KEY = "otg-tech-inspection-draft";
 export const TECH_SAVED_DRAFTS_STORAGE_KEY = "otg-tech-inspection-saved-drafts";
 
@@ -185,32 +191,26 @@ export const buildTechInspectionDraft = ({
 });
 
 export const getVehicleCatalogModes = ({
+  year,
   make,
   model,
   engineSize,
-  vehicleMakes,
-  vehicleCatalog,
 }: {
+  year?: unknown;
   make?: unknown;
   model?: unknown;
   engineSize?: unknown;
-  vehicleMakes: string[];
-  vehicleCatalog: Record<string, Record<string, string[]>>;
 }) => {
-  const normalizedMake = String(make || "").toLowerCase();
   const normalizedModel = String(model || "").toLowerCase();
   const normalizedEngineSize = String(engineSize || "").toLowerCase();
 
-  const matchingMake = vehicleMakes.find(
-    (catalogMake) => catalogMake.toLowerCase() === normalizedMake
-  );
-
-  const knownModels = matchingMake ? Object.keys(vehicleCatalog[matchingMake] ?? {}) : [];
+  const matchingMake = findVehicleCatalogMake(make);
+  const knownModels = matchingMake ? getVehicleCatalogModels(matchingMake, year) : [];
   const matchingModel = knownModels.find(
     (catalogModel) => catalogModel.toLowerCase() === normalizedModel
   );
   const knownEngines =
-    matchingMake && matchingModel ? vehicleCatalog[matchingMake][matchingModel] ?? [] : [];
+    matchingMake && matchingModel ? getVehicleCatalogEngines(matchingMake, matchingModel, year) : [];
 
   return {
     useCustomMake: Boolean(make) && !matchingMake,

@@ -786,6 +786,55 @@ img {
   border-color: rgba(115, 145, 126, 0.35) !important;
 }
 
+.otg-portal-dark [data-slot="select-content"] *,
+.otg-portal-dark [data-slot="select-item"],
+.otg-portal-dark [data-slot="select-item"] span,
+.otg-portal-dark [data-slot="select-label"],
+.otg-portal-dark [data-slot="select-group"],
+.otg-portal-dark [data-slot="popover-content"]:not(.otg-portal-nav-menu) *,
+.otg-portal-dark [cmdk-root] *,
+.otg-portal-dark [cmdk-item],
+.otg-portal-dark [cmdk-group-heading] {
+  color: #f3fff4 !important;
+}
+
+.otg-portal-dark [data-slot="select-item"][data-highlighted],
+.otg-portal-dark [cmdk-item][data-selected="true"] {
+  background: rgba(57, 255, 20, 0.16) !important;
+  color: #f3fff4 !important;
+}
+
+.otg-portal-dark .otg-vehicle-combobox {
+  background: #121b14 !important;
+  color: #f3fff4 !important;
+  border-color: rgba(115, 145, 126, 0.35) !important;
+}
+
+.otg-portal-dark .otg-vehicle-combobox span {
+  color: #f3fff4 !important;
+}
+
+.otg-portal-dark .otg-vehicle-combobox .otg-vehicle-combobox-placeholder,
+.otg-portal-dark .otg-vehicle-combobox .otg-vehicle-combobox-icon {
+  color: #7f9988 !important;
+}
+
+.otg-portal-dark .otg-vehicle-combobox-menu[data-slot="popover-content"],
+.otg-portal-dark .otg-vehicle-combobox-command {
+  background: #121b14 !important;
+  color: #f3fff4 !important;
+  border-color: rgba(115, 145, 126, 0.35) !important;
+}
+
+.otg-portal-dark .otg-vehicle-combobox-menu [cmdk-input],
+.otg-portal-dark .otg-vehicle-combobox-menu [cmdk-item],
+.otg-portal-dark .otg-vehicle-combobox-menu [cmdk-empty],
+.otg-portal-dark .otg-vehicle-combobox-menu [cmdk-group-heading],
+.otg-portal-dark .otg-vehicle-combobox-menu span,
+.otg-portal-dark .otg-vehicle-combobox-menu svg {
+  color: #f3fff4 !important;
+}
+
 @media (max-width: 992px) {
   .otg-hero-wrap,
   .otg-content-split,
