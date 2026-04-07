@@ -42,6 +42,9 @@ type Vehicle = {
   vin: string | null;
 };
 
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Unknown error";
+
 export default function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -127,16 +130,13 @@ export default function CustomerDetailPage() {
     }
 
     setVehicles(vehicleData ?? []);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error loading customer:", {
-      message: error?.message,
-      details: error?.details,
-      hint: error?.hint,
-      code: error?.code,
+      message: getErrorMessage(error),
       full: error,
       customerId,
     });
-    alert(`Failed to load customer: ${error?.message || "Unknown error"}`);
+    alert(`Failed to load customer: ${getErrorMessage(error)}`);
   } finally {
     setLoading(false);
   }
@@ -169,7 +169,7 @@ export default function CustomerDetailPage() {
 
       alert("Customer updated.");
       fetchCustomer();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error saving customer:", error);
       alert("Failed to save customer.");
     } finally {
@@ -227,9 +227,9 @@ export default function CustomerDetailPage() {
     setUseCustomEngineSize(false);
 
     fetchCustomer();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error adding vehicle:", error);
-    alert(`Failed to add vehicle: ${error?.message || "Unknown error"}`);
+    alert(`Failed to add vehicle: ${getErrorMessage(error)}`);
   } finally {
     setSaving(false);
   }

@@ -851,6 +851,40 @@ img {
 }
 
 @media (max-width: 768px) {
+  .otg-page {
+    padding: 1rem 0.75rem;
+  }
+
+  .otg-container {
+    max-width: 100%;
+  }
+
+  .otg-card,
+  .otg-app-panel {
+    border-radius: 1.25rem;
+  }
+
+  .otg-portal-dark .otg-card,
+  .otg-portal-dark .otg-app-panel {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .otg-portal-dark,
+  .otg-portal-dark .otg-container {
+    overflow-x: hidden;
+  }
+
+  .otg-portal-dark .otg-portal-nav ul {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .otg-portal-dark .otg-portal-nav [data-slot="button"],
+  .otg-portal-dark .otg-portal-nav-menu[data-slot="popover-content"] {
+    width: min(100%, calc(100vw - 2rem));
+  }
+
   .otg-site-nav {
     flex-direction: column;
     align-items: flex-start;

@@ -16,8 +16,15 @@ import {
   hasPortalAccess,
 } from "@/lib/portal-auth";
 import {
+  buildVehicleLabel,
   buildVehicleReportKey,
+  formatVehicleMiles,
+  fetchCustomerPortalData,
   getCustomerRecommendedServices,
+  getCustomerWorkflowStepState,
+  getSingleRelation,
+  type CustomerPortalVehicle,
+  type CustomerPortalData,
 } from "@/lib/customer-portal";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
@@ -26,59 +33,7 @@ import {
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
-const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-
-  return value ?? null;
-};
-
-type DashboardVehicle = {
-  id?: string;
-  year?: number | null;
-  make?: string | null;
-  model?: string | null;
-  license_plate?: string | null;
-  mileage?: number | null;
-  vin?: string | null;
-};
-
-type CustomerPortalRecord = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-};
-
-type DashboardInspection = {
-  id?: string;
-  created_at?: string;
-  tech_name?: string | null;
-  notes?: string | null;
-  vehicles?: DashboardVehicle | DashboardVehicle[] | null;
-  inspection_summary?: {
-    workflow_steps?: Record<string, boolean>;
-    workflow_total_count?: number;
-    workflow_completed_count?: number;
-  } | null;
-} | null;
-
-type DashboardReport = {
-  id: string;
-  created_at: string;
-  pdf_path: string;
-  inspections?: DashboardInspection | DashboardInspection[];
-};
-
-const buildVehicleLabel = (vehicle: DashboardVehicle | null | undefined) =>
-  [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") ||
-  "Vehicle";
-
-const formatMiles = (mileage: number | null | undefined) =>
-  typeof mileage === "number"
-    ? `${mileage.toLocaleString("en-US")} miles`
-    : "Mileage not available";
+const EMPTY_VEHICLES: CustomerPortalVehicle[] = [];
 
 function DashboardMetric({
   icon: Icon,
@@ -93,7 +48,7 @@ function DashboardMetric({
   tone?: "default" | "success";
   onClick?: () => void;
 }) {
-  const className = `rounded-[24px] border border-slate-200 bg-slate-50 p-4 ${
+  const className = `w-full rounded-[24px] border border-slate-200 bg-slate-50 p-4 ${
     onClick
       ? "text-left transition-colors hover:border-lime-400/40 hover:bg-lime-400/10"
       : ""
@@ -150,11 +105,7 @@ function DashboardMetric({
 
 export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [customer, setCustomer] = useState<CustomerPortalRecord | null>(null);
-  const [vehicles, setVehicles] = useState<DashboardVehicle[]>([]);
-  const [reports, setReports] = useState<DashboardReport[]>([]);
-  const [latestInspection, setLatestInspection] =
-    useState<DashboardInspection>(null);
+  const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -175,81 +126,14 @@ export default function CustomerDashboardPage() {
           return;
         }
 
-        const { data: customerRow, error: customerError } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("auth_user_id", user.id)
-          .single();
+        const portalData = await fetchCustomerPortalData(user.id);
 
-        if (customerError || !customerRow) {
+        if (!portalData.customer) {
           setLoading(false);
           return;
         }
 
-        setCustomer(customerRow);
-
-        const { data: vehicleRows, error: vehicleError } = await supabase
-          .from("vehicles")
-          .select("id, year, make, model, mileage, vin, license_plate")
-          .eq("customer_id", customerRow.id)
-          .order("year", { ascending: false });
-
-        if (vehicleError) throw vehicleError;
-
-        setVehicles((vehicleRows || []) as DashboardVehicle[]);
-
-        const { data: inspectionRows, error: inspectionError } = await supabase
-          .from("inspections")
-          .select(`
-            id,
-            created_at,
-            tech_name,
-            inspection_summary,
-            vehicles (
-              year,
-              make,
-              model,
-              mileage,
-              vin
-            )
-          `)
-          .eq("customer_id", customerRow.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (inspectionError) throw inspectionError;
-
-        setLatestInspection(
-          inspectionRows && inspectionRows.length > 0 ? inspectionRows[0] : null
-        );
-
-        const { data: reportRows, error: reportError } = await supabase
-          .from("inspection_reports")
-          .select(`
-            id,
-            pdf_path,
-            created_at,
-            inspections (
-              id,
-              created_at,
-              tech_name,
-              notes,
-              inspection_summary,
-              vehicles (
-                year,
-                make,
-                model,
-                mileage,
-                vin
-              )
-            )
-          `)
-          .eq("customer_id", customerRow.id)
-          .order("created_at", { ascending: false });
-
-        if (reportError) throw reportError;
-
-        setReports((reportRows || []) as DashboardReport[]);
+        setPortalData(portalData);
       } catch (error) {
         console.error("Dashboard load failed:", error);
       } finally {
@@ -265,6 +149,12 @@ export default function CustomerDashboardPage() {
     window.location.href = "/customer/login";
   };
 
+  const customer = portalData?.customer ?? null;
+  const vehicles = portalData?.vehicles ?? EMPTY_VEHICLES;
+  const reports = portalData?.reports ?? [];
+  const latestInspection = portalData?.latestInspection ?? null;
+  const latestInspectionPhotoCount =
+    portalData?.latestInspectionPhotoCount ?? 0;
   const latestWorkflowSteps =
     latestInspection?.inspection_summary?.workflow_steps || {};
   const workflowTotal =
@@ -277,11 +167,24 @@ export default function CustomerDashboardPage() {
     () => getSingleRelation(latestInspection?.vehicles),
     [latestInspection]
   );
+  const primaryVehicle = useMemo<CustomerPortalVehicle | null>(() => {
+    if (!latestVehicle) {
+      return vehicles[0] ?? null;
+    }
+
+    const matchingVehicle = latestVehicle.id
+      ? vehicles.find((vehicle) => vehicle.id === latestVehicle.id)
+      : null;
+
+    return {
+      ...latestVehicle,
+      ...(matchingVehicle || {}),
+    };
+  }, [latestVehicle, vehicles]);
   const completedReportsCount = reports.length;
   const latestServiceDate = latestInspection?.created_at
     ? new Date(latestInspection.created_at).toLocaleDateString()
     : "No service yet";
-  const primaryVehicle = latestVehicle ?? vehicles[0] ?? null;
   const recommendedServices = getCustomerRecommendedServices(primaryVehicle);
   const reportCountsByVehicle = reports.reduce<Record<string, number>>((acc, report) => {
     const inspection = getSingleRelation(report.inspections);
@@ -324,14 +227,14 @@ export default function CustomerDashboardPage() {
   }
 
   return (
-    <div className="otg-page otg-portal-dark">
-      <div className="otg-container space-y-6">
-        <div className="otg-card overflow-hidden p-0">
-          <div className="flex flex-col gap-5 border-b border-lime-500/20 bg-[linear-gradient(135deg,rgba(57,255,20,0.18),rgba(7,17,10,0.88)_35%,rgba(7,17,10,0.96)_100%)] px-6 py-6 md:flex-row md:items-center md:justify-between md:px-8">
+    <div className="otg-page otg-portal-dark overflow-x-hidden">
+      <div className="otg-container min-w-0 space-y-4 sm:space-y-6">
+        <div className="otg-card min-w-0 overflow-hidden p-0">
+          <div className="flex flex-col gap-5 border-b border-lime-500/20 bg-[linear-gradient(135deg,rgba(57,255,20,0.18),rgba(7,17,10,0.88)_35%,rgba(7,17,10,0.96)_100%)] px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between md:px-8">
             <div className="space-y-3">
-              <BrandLogo priority className="max-w-[220px]" surface="dark" />
+              <BrandLogo priority className="max-w-[190px] sm:max-w-[220px]" surface="dark" />
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-white">
+                <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
                   Customer Vehicle Center
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm text-lime-50/85">
@@ -341,15 +244,15 @@ export default function CustomerDashboardPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <BackToPortalButton />
-              <button onClick={handleLogout} className={headerActionButtonClassName}>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
+              <BackToPortalButton className="w-full sm:w-auto" />
+              <button onClick={handleLogout} className={`${headerActionButtonClassName} w-full sm:w-auto`}>
                 Log Out
               </button>
             </div>
           </div>
 
-          <div className="px-6 py-4 md:px-8">
+          <div className="px-4 py-4 sm:px-6 md:px-8">
             <PortalTopNav
               section="customer"
               className="!border-lime-500/25 !bg-[#0d1610]"
@@ -357,16 +260,16 @@ export default function CustomerDashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="space-y-6">
-            <div className="otg-card overflow-hidden p-0">
-              <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(57,255,20,0.24),transparent_40%),linear-gradient(180deg,rgba(12,22,15,0.98),rgba(9,16,11,0.98))] p-6">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-[24px] bg-lime-400/90 p-4 text-black shadow-[0_0_24px_rgba(57,255,20,0.24)]">
-                    <CarFront className="h-9 w-9" />
+        <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="min-w-0 space-y-4 sm:space-y-6">
+            <div className="otg-card min-w-0 overflow-hidden p-0">
+              <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(57,255,20,0.24),transparent_40%),linear-gradient(180deg,rgba(12,22,15,0.98),rgba(9,16,11,0.98))] p-4 sm:p-6">
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="rounded-[22px] bg-lime-400/90 p-3 text-black shadow-[0_0_24px_rgba(57,255,20,0.24)] sm:rounded-[24px] sm:p-4">
+                    <CarFront className="h-7 w-7 sm:h-9 sm:w-9" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-2xl font-semibold text-white">
+                    <div className="text-xl font-semibold text-white sm:text-2xl">
                       {[customer.first_name, customer.last_name]
                         .filter(Boolean)
                         .join(" ") || "Customer"}
@@ -375,7 +278,7 @@ export default function CustomerDashboardPage() {
                       {vehicles.length} vehicle{vehicles.length === 1 ? "" : "s"} on
                       file
                     </div>
-                    <div className="mt-3 inline-flex rounded-full border border-lime-400/40 bg-lime-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-lime-200">
+                    <div className="mt-3 inline-flex max-w-full rounded-full border border-lime-400/40 bg-lime-400/10 px-3 py-1 text-[11px] font-semibold uppercase leading-5 tracking-[0.12em] text-lime-200 sm:text-xs sm:tracking-[0.18em]">
                       {completedReportsCount
                         ? "Report history available"
                         : "Awaiting first report"}
@@ -387,7 +290,7 @@ export default function CustomerDashboardPage() {
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-lime-200">
                     Vehicles on Your Account
                   </div>
-                  <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                  <div className="-mx-1 mt-3 flex max-w-full gap-3 overflow-x-auto px-1 pb-2">
                     {vehicles.length ? (
                       vehicles.map((vehicle) => (
                         <a
@@ -396,13 +299,13 @@ export default function CustomerDashboardPage() {
                             `${vehicle.year}-${vehicle.make}-${vehicle.model}-${vehicle.vin || vehicle.license_plate || ""}`
                           }
                           href={`/customer/reports?vehicle=${encodeURIComponent(buildVehicleReportKey(vehicle))}`}
-                          className="min-w-[220px] rounded-[22px] border border-lime-400/25 bg-white/10 p-4 backdrop-blur-sm transition-colors hover:border-lime-300/60 hover:bg-white/15"
+                          className="min-w-[170px] max-w-[78vw] rounded-[22px] border border-lime-400/25 bg-white/10 p-3 backdrop-blur-sm transition-colors hover:border-lime-300/60 hover:bg-white/15 sm:min-w-[220px] sm:p-4"
                         >
                           <div className="text-sm font-semibold text-white">
                             {buildVehicleLabel(vehicle)}
                           </div>
                           <div className="mt-2 text-xs text-lime-50/80">
-                            {formatMiles(vehicle.mileage)}
+                            {formatVehicleMiles(vehicle.mileage)}
                           </div>
                           <div className="mt-1 text-xs text-lime-50/80">
                             Plate: {vehicle.license_plate || "-"}
@@ -421,7 +324,7 @@ export default function CustomerDashboardPage() {
                 </div>
               </div>
 
-              <div className="space-y-4 p-5">
+              <div className="space-y-4 p-4 sm:p-5">
                 <DashboardMetric
                   icon={ClipboardList}
                   label="Latest Service"
@@ -460,15 +363,15 @@ export default function CustomerDashboardPage() {
             </div>
           </aside>
 
-          <main className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-              <div className="otg-card p-6">
-                <div className="flex items-start justify-between gap-4">
+          <main className="min-w-0 space-y-4 sm:space-y-6">
+            <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[1.25fr_0.95fr]">
+              <div className="otg-card min-w-0 p-4 sm:p-6">
+                <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-start">
                   <div>
                     <div className="inline-flex rounded-full border border-lime-400/35 bg-lime-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-lime-300">
                       {latestInspection ? "Inspection Active" : "No active service"}
                     </div>
-                    <h2 className="mt-4 text-3xl font-semibold text-slate-900">
+                    <h2 className="mt-4 text-2xl font-semibold text-slate-900 sm:text-3xl">
                       {latestInspection
                         ? "Your latest inspection is in progress"
                         : "Your vehicle overview starts here"}
@@ -478,7 +381,7 @@ export default function CustomerDashboardPage() {
                         ? "Track the latest technician workflow and jump straight into service progress or customer report history when you need more detail."
                         : "As soon as a technician starts your next inspection, service progress will show up here automatically."}
                     </p>
-                    <div className="mt-5 flex flex-wrap gap-3">
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                       <button
                         type="button"
                         onClick={() => {
@@ -486,20 +389,20 @@ export default function CustomerDashboardPage() {
                             ? "/customer/reports"
                             : "/customer/account";
                         }}
-                        className="otg-btn otg-btn-primary"
+                        className="otg-btn otg-btn-primary sm:w-auto"
                       >
                         {completedReportsCount
                           ? "Open Report History"
                           : "Update Account"}
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </button>
-                      <a href="/customer/progress" className="otg-btn otg-btn-secondary">
+                      <a href="/customer/progress" className="otg-btn otg-btn-secondary sm:w-auto">
                         See Service Progress
                       </a>
                     </div>
                   </div>
 
-                  <div className="rounded-[28px] border border-lime-400/30 bg-[radial-gradient(circle_at_top,rgba(57,255,20,0.22),rgba(17,27,20,0.9)_70%)] px-5 py-4 text-right shadow-[0_0_22px_rgba(57,255,20,0.12)]">
+                  <div className="rounded-[28px] border border-lime-400/30 bg-[radial-gradient(circle_at_top,rgba(57,255,20,0.22),rgba(17,27,20,0.9)_70%)] px-5 py-4 text-left shadow-[0_0_22px_rgba(57,255,20,0.12)] sm:text-right">
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-lime-200">
                       Customer Status
                     </div>
@@ -511,10 +414,10 @@ export default function CustomerDashboardPage() {
 
                 {latestInspection ? (
                   <div className="mt-6 space-y-4">
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <div className="text-2xl font-semibold text-slate-900">
+                          <div className="text-xl font-semibold text-slate-900 sm:text-2xl">
                             {buildVehicleLabel(latestVehicle)}
                           </div>
                           <div className="mt-2 text-sm text-slate-600">
@@ -534,29 +437,29 @@ export default function CustomerDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid min-w-0 gap-3 md:grid-cols-2">
                       {Object.entries(workflowStepLabels).map(([stepKey, label]) => {
-                        const complete = Boolean(latestWorkflowSteps?.[stepKey]);
+                        const stepState = getCustomerWorkflowStepState(
+                          latestInspection,
+                          stepKey,
+                          latestInspectionPhotoCount
+                        );
 
                         return (
                           <div
                             key={stepKey}
-                            className={`rounded-[22px] border p-4 text-sm ${
-                              complete
-                                ? "border-lime-400/40 bg-lime-400/15 text-slate-900"
-                                : "border-slate-200 bg-slate-50 text-slate-600"
-                            }`}
+                            className={`rounded-[22px] border p-4 text-sm ${stepState.className}`}
                           >
                             <div className="font-semibold">{label}</div>
                             <div className="mt-1">
-                              {complete ? "Completed" : "Waiting on this step"}
+                              {stepState.label}
                             </div>
                           </div>
                         );
                       })}
                     </div>
 
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Technician Notes
                       </div>
@@ -567,14 +470,14 @@ export default function CustomerDashboardPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-slate-600">
+                  <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-slate-600 sm:p-5">
                     No live service progress is available yet.
                   </div>
                 )}
               </div>
 
-              <div className="otg-card p-6">
-                <div className="flex items-center gap-3">
+              <div className="otg-card min-w-0 p-4 sm:p-6">
+                <div className="flex items-start gap-3 sm:items-center">
                   <div className="rounded-2xl bg-slate-200 p-2 text-slate-900">
                     <FileText className="h-5 w-5" />
                   </div>

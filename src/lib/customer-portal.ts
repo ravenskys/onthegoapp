@@ -72,6 +72,16 @@ export type CustomerPortalData = {
   photosByInspection: Record<string, CustomerPortalPhoto[]>;
 };
 
+const getEmptyCustomerPortalData = (): CustomerPortalData => ({
+  customer: null,
+  vehicles: [],
+  latestInspection: null,
+  latestInspectionPhotoCount: 0,
+  reports: [],
+  reportGroups: [],
+  photosByInspection: {},
+});
+
 export const normalizeStoragePath = (
   value: string | null | undefined,
   bucket: string
@@ -366,15 +376,7 @@ export const fetchCustomerPortalData = async (
     .single();
 
   if (customerError || !customerRow) {
-    return {
-      customer: null,
-      vehicles: [],
-      latestInspection: null,
-      latestInspectionPhotoCount: 0,
-      reports: [],
-      reportGroups: [],
-      photosByInspection: {},
-    };
+    return getEmptyCustomerPortalData();
   }
 
   const customer = customerRow as CustomerPortalRecord;
@@ -487,6 +489,7 @@ export const fetchCustomerPortalData = async (
   }
 
   const reports = (reportRows || []) as CustomerPortalReport[];
+  const reportGroups = groupReportsByVehicle(reports);
   const inspectionIds = reports
     .map((report) => getSingleRelation(report.inspections)?.id)
     .filter((id): id is string => Boolean(id));
@@ -498,7 +501,7 @@ export const fetchCustomerPortalData = async (
       latestInspection,
       latestInspectionPhotoCount,
       reports,
-      reportGroups: groupReportsByVehicle(reports),
+      reportGroups,
       photosByInspection: {},
     };
   }
@@ -552,7 +555,7 @@ export const fetchCustomerPortalData = async (
     latestInspection,
     latestInspectionPhotoCount,
     reports,
-    reportGroups: groupReportsByVehicle(reports),
+    reportGroups,
     photosByInspection,
   };
 };

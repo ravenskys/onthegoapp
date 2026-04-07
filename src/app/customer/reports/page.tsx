@@ -133,10 +133,10 @@ function CustomerReportsPageContent() {
       subtitle="Each vehicle keeps its own report history so customers can quickly open the right inspection record."
       onLogout={handleLogout}
     >
-      <div className="otg-card p-6">
-        <div className="flex items-center justify-between gap-4">
+      <div className="otg-card p-4 sm:p-6">
+        <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Customer Report History</h2>
+            <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">Customer Report History</h2>
             <p className="mt-2 text-sm text-slate-600">
               Report history is grouped by vehicle so each car keeps its own timeline of completed inspections.
             </p>
@@ -146,7 +146,7 @@ function CustomerReportsPageContent() {
               </div>
             ) : null}
           </div>
-          <div className="rounded-full border border-lime-400/35 bg-lime-400 px-4 py-2 text-sm font-semibold text-black">
+          <div className="self-start rounded-full border border-lime-400/35 bg-lime-400 px-4 py-2 text-sm font-semibold text-black sm:self-auto">
             {portalData?.reports.length || 0} report{(portalData?.reports.length || 0) === 1 ? "" : "s"}
           </div>
         </div>
@@ -166,7 +166,7 @@ function CustomerReportsPageContent() {
                 <div className="border-b border-slate-200 bg-[linear-gradient(135deg,rgba(57,255,20,0.12),rgba(10,18,12,0.98))] px-5 py-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <div className="text-2xl font-semibold text-slate-900">
+                      <div className="text-xl font-semibold text-slate-900 sm:text-2xl">
                         {buildVehicleLabel(group.vehicle)}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
@@ -201,8 +201,8 @@ function CustomerReportsPageContent() {
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-3">
-                            <button onClick={() => handleOpenPdf(report.pdf_path)} className="otg-btn otg-btn-primary">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                            <button onClick={() => handleOpenPdf(report.pdf_path)} className="otg-btn otg-btn-primary sm:w-auto">
                               <FileText className="mr-2 h-4 w-4" />
                               View PDF
                             </button>
@@ -210,7 +210,7 @@ function CustomerReportsPageContent() {
                             <button
                               onClick={() => handleDownloadPdf(report.id, report.pdf_path)}
                               disabled={downloadingReportId === report.id}
-                              className="otg-btn otg-btn-secondary disabled:opacity-60"
+                              className="otg-btn otg-btn-secondary disabled:opacity-60 sm:w-auto"
                             >
                               <Download className="mr-2 h-4 w-4" />
                               {downloadingReportId === report.id ? "Downloading..." : "Download PDF"}
@@ -233,7 +233,7 @@ function CustomerReportsPageContent() {
                               Photo Gallery
                             </div>
                             {inspectionPhotos.length > 0 ? (
-                              <div className="mt-4 grid grid-cols-2 gap-3">
+                              <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
                                 {inspectionPhotos.slice(0, 4).map((photo) =>
                                   photo.signedUrl ? (
                                     <button

@@ -171,6 +171,16 @@ const createEmptyConditionPhotoState = (): ConditionPhotoState =>
 const createEmptyWorkflowSteps = (): WorkflowStepsState =>
   Object.fromEntries(workflowStepOrder.map((step) => [step, false]));
 
+const techWorkflowTabLabels: Record<string, string> = {
+  vehicle: "Vehicle",
+  tires: "Tires",
+  brakes: "Brakes",
+  maintenance: "Maintenance",
+  photos: "Photos",
+  "customer-report": "Report",
+  review: "Review",
+};
+
 type InspectionStatus = "ok" | "sug" | "req" | "" | null | undefined;
 
 type StatusPillProps = {
@@ -413,6 +423,10 @@ function SectionHeader({ icon: Icon, title, subtitle }: SectionHeaderProps) {
 }
 
 function formatMileageIntervalLabel(mileage: number) {
+  if (mileage <= 0) {
+    return "Baseline check";
+  }
+
   return `${new Intl.NumberFormat("en-US").format(mileage)} miles`;
 }
 
@@ -498,23 +512,23 @@ function StepCompletionToggle({
     <button
       type="button"
       onClick={() => onCheckedChange(!checked)}
-      className={`w-full rounded-2xl border px-5 py-4 text-left shadow-sm transition-colors ${
+      className={`w-full rounded-2xl border px-4 py-4 text-left text-black shadow-sm transition-colors sm:px-5 ${
         checked
-          ? "border-emerald-300 bg-emerald-100"
-          : "border-red-200 bg-red-50"
+          ? "border-emerald-500 bg-emerald-100"
+          : "border-red-300 bg-red-50"
       }`}
     >
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-base font-semibold text-slate-900">Step completion</div>
-          <div className="mt-1 text-sm text-slate-700">{label}</div>
+      <div className="flex items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <div className="text-base font-bold text-black">Step completion</div>
+          <div className="mt-1 text-sm font-medium text-black">{label}</div>
         </div>
 
         <div
-          className={`flex min-h-12 min-w-12 items-center justify-center rounded-2xl border-2 ${
+          className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border-2 sm:min-h-12 sm:min-w-12 ${
             checked
-              ? "border-emerald-600 bg-emerald-600 text-white"
-              : "border-red-400 bg-white text-red-500"
+              ? "border-emerald-700 bg-emerald-200 text-black"
+              : "border-red-500 bg-white text-black"
           }`}
           aria-hidden="true"
         >
@@ -529,7 +543,7 @@ function StepCompletionToggle({
         </div>
       </div>
 
-      <div className="mt-3 text-sm font-medium text-slate-800">
+      <div className="mt-3 text-sm font-semibold text-black">
         {checked ? "Completed. Tap to mark incomplete." : "Tap anywhere in this box to mark complete."}
       </div>
     </button>
@@ -1235,14 +1249,32 @@ export default function OnTheGoTechnicianAppPrototype() {
         .from("customers")
         .select("*")
         .eq("email", normalizedEmail)
-        .limit(1);
+        .limit(2);
 
       if (findCustomerError) throw findCustomerError;
+      if ((existingCustomers?.length || 0) > 1) {
+        throw new Error(
+          "Multiple customer profiles use this email. Please open the customer record from the manager customer list or use a unique email before saving."
+        );
+      }
+
       customerData = existingCustomers && existingCustomers.length > 0 ? existingCustomers[0] : null;
     }
 
     if (customerData) {
       if (savedCustomerId && customerData.id !== savedCustomerId) {
+        throw new Error("This email is already linked to a different customer profile.");
+      }
+
+      const { data: emailConflicts, error: emailConflictError } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("email", normalizedEmail)
+        .neq("id", customerData.id)
+        .limit(1);
+
+      if (emailConflictError) throw emailConflictError;
+      if ((emailConflicts?.length || 0) > 0) {
         throw new Error("This email is already linked to a different customer profile.");
       }
 
@@ -1501,12 +1533,87 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const getStepTriggerClassName = (step: string) => {
+  const hasFilledInspectionContent = (value: unknown): boolean => {
+    if (value == null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number") return !Number.isNaN(value) && value !== 0;
+    if (typeof value === "boolean") return value;
+    if (Array.isArray(value)) return value.some(hasFilledInspectionContent);
+    if (typeof value === "object") {
+      return Object.values(value as Record<string, unknown>).some(
+        hasFilledInspectionContent
+      );
+    }
+    return false;
+  };
+
+  const getWorkflowStepStatus = (step: string) => {
     if (workflowSteps[step]) {
-      return "h-full w-full rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-center text-sm font-semibold leading-tight text-emerald-800 shadow-sm whitespace-normal break-words data-[state=active]:border-emerald-700 data-[state=active]:bg-emerald-700 data-[state=active]:text-white";
+      return "Complete";
     }
 
-    return "h-full w-full rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-center text-sm font-semibold leading-tight text-red-700 shadow-sm whitespace-normal break-words data-[state=active]:border-red-700 data-[state=active]:bg-red-700 data-[state=active]:text-white";
+    const isWorking = (() => {
+      switch (step) {
+        case "vehicle":
+          return [
+            vehicle.firstName,
+            vehicle.lastName,
+            vehicle.phone,
+            vehicle.email,
+            vehicle.year,
+            vehicle.make,
+            vehicle.model,
+            vehicle.mileage,
+            vehicle.vin,
+            vehicle.licensePlate,
+            vehicle.techName,
+          ].some(hasFilledInspectionContent);
+        case "tires":
+          return hasFilledInspectionContent(tireData);
+        case "brakes":
+          return hasFilledInspectionContent(brakes);
+        case "maintenance":
+          return (
+            hasFilledInspectionContent(maintenance) ||
+            hasFilledInspectionContent(undercar)
+          );
+        case "photos":
+          return (
+            photos.some((photo) => Boolean(photo.file || photo.preview)) ||
+            Object.values(preServicePhotos).some(hasFilledInspectionContent) ||
+            Object.values(postWorkPhotos).some(hasFilledInspectionContent)
+          );
+        case "customer-report":
+          return (
+            hasFilledInspectionContent(vehicle.notes) ||
+            summaryCounts.ok > 0 ||
+            summaryCounts.sug > 0 ||
+            summaryCounts.req > 0
+          );
+        case "review":
+          return completedWorkflowCount > 0;
+        default:
+          return false;
+      }
+    })();
+
+    return isWorking ? "Working" : "Waiting";
+  };
+
+  const getStepTriggerClassName = (step: string) => {
+    const status = getWorkflowStepStatus(step);
+    const baseClassName =
+      "group flex h-full min-h-[3.75rem] min-w-[5.25rem] flex-1 flex-col gap-0.5 rounded-xl border px-2 py-1.5 text-center font-semibold leading-tight text-black shadow-sm transition-all duration-200 whitespace-normal break-words sm:min-h-[4.25rem] sm:min-w-[6rem] sm:gap-1 sm:px-3 sm:py-2 lg:min-w-0 data-[state=active]:-translate-y-0.5 data-[state=active]:border-2 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:ring-2 data-[state=active]:ring-offset-1 data-[state=active]:ring-offset-slate-200 sm:data-[state=active]:ring-offset-2";
+
+    if (status === "Complete") {
+      return `${baseClassName} border-emerald-400 bg-emerald-100 data-[state=active]:border-emerald-700 data-[state=active]:bg-emerald-200 data-[state=active]:ring-emerald-300`;
+    }
+
+    if (status === "Working") {
+      return `${baseClassName} border-amber-400 bg-amber-100 data-[state=active]:border-amber-600 data-[state=active]:bg-amber-200 data-[state=active]:ring-amber-200`;
+    }
+
+    return `${baseClassName} border-red-300 bg-red-50 data-[state=active]:border-red-700 data-[state=active]:bg-red-100 data-[state=active]:ring-red-200`;
   };
 
   const saveDraftToLocal = useCallback(() => {
@@ -1581,71 +1688,103 @@ export default function OnTheGoTechnicianAppPrototype() {
 
     if (inspectionError) throw inspectionError;
 
-   const uploadedPhotoRows = [];
+   type UploadedPhotoRow = {
+     inspection_id: string;
+     photo_stage: string;
+     shot_label: string | null;
+     file_name: string;
+     file_url: string;
+     note: string | null;
+   };
+
+   const uploadedPhotoRows: UploadedPhotoRow[] = [];
+   const { data: existingPhotoRows, error: existingPhotoError } = await supabase
+     .from("inspection_photos")
+     .select("photo_stage, shot_label, file_name, note")
+     .eq("inspection_id", inspectionData.id);
+
+   if (existingPhotoError) throw existingPhotoError;
+
+   const buildPhotoDedupeKey = (
+     photoRow: Pick<UploadedPhotoRow, "photo_stage" | "shot_label" | "file_name" | "note">
+   ) =>
+     [
+       photoRow.photo_stage || "",
+       photoRow.shot_label || "",
+       photoRow.file_name || "",
+       photoRow.note || "",
+     ].join("::");
+
+   const existingPhotoKeys = new Set(
+     (existingPhotoRows || []).map((photoRow) => buildPhotoDedupeKey(photoRow))
+   );
+
+   const uploadPhotoIfNew = async ({
+     photo,
+     stage,
+     shotLabel,
+     folder,
+   }: {
+     photo: { file?: File; note?: string | null } | null | undefined;
+     stage: string;
+     shotLabel: string | null;
+     folder: string;
+   }) => {
+     if (!photo?.file) return;
+
+     const photoRow = {
+       inspection_id: inspectionData.id,
+       photo_stage: stage,
+       shot_label: shotLabel,
+       file_name: photo.file.name,
+       file_url: "",
+       note: photo.note || null,
+     };
+     const photoKey = buildPhotoDedupeKey(photoRow);
+
+     if (existingPhotoKeys.has(photoKey)) {
+       return;
+     }
+
+     const filePath = `${inspectionData.id}/${folder}/${shotLabel ? `${shotLabel}-` : ""}${Date.now()}-${photo.file.name}`;
+
+     const { error: uploadError } = await supabase.storage
+       .from("inspection-photos")
+       .upload(filePath, photo.file);
+
+     if (uploadError) throw uploadError;
+
+     uploadedPhotoRows.push({
+       ...photoRow,
+       file_url: filePath,
+     });
+   };
 
 for (const shot of requiredConditionShots) {
-  const photo = preServicePhotos[shot];
-  if (photo?.file) {
-    const filePath = `${inspectionData.id}/pre-service/${shot}-${Date.now()}-${photo.file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("inspection-photos")
-      .upload(filePath, photo.file);
-
-    if (uploadError) throw uploadError;
-
-    uploadedPhotoRows.push({
-      inspection_id: inspectionData.id,
-      photo_stage: "pre_service",
-      shot_label: shot,
-      file_name: photo.file.name,
-      file_url: filePath,
-      note: photo.note || null,
-    });
-  }
+  await uploadPhotoIfNew({
+    photo: preServicePhotos[shot],
+    stage: "pre_service",
+    shotLabel: shot,
+    folder: "pre-service",
+  });
 }
 
 for (const photo of photos) {
-  if (photo?.file) {
-    const filePath = `${inspectionData.id}/inspection/${Date.now()}-${photo.file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("inspection-photos")
-      .upload(filePath, photo.file);
-
-    if (uploadError) throw uploadError;
-
-    uploadedPhotoRows.push({
-      inspection_id: inspectionData.id,
-      photo_stage: "inspection",
-      shot_label: null,
-      file_name: photo.file.name,
-      file_url: filePath,
-      note: photo.note || null,
-    });
-  }
+  await uploadPhotoIfNew({
+    photo,
+    stage: "inspection",
+    shotLabel: null,
+    folder: "inspection",
+  });
 }
 
 for (const shot of requiredConditionShots) {
-  const photo = postWorkPhotos[shot];
-  if (photo?.file) {
-    const filePath = `${inspectionData.id}/post-work/${shot}-${Date.now()}-${photo.file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("inspection-photos")
-      .upload(filePath, photo.file);
-
-    if (uploadError) throw uploadError;
-
-    uploadedPhotoRows.push({
-      inspection_id: inspectionData.id,
-      photo_stage: "post_work",
-      shot_label: shot,
-      file_name: photo.file.name,
-      file_url: filePath,
-      note: photo.note || null,
-    });
-  }
+  await uploadPhotoIfNew({
+    photo: postWorkPhotos[shot],
+    stage: "post_work",
+    shotLabel: shot,
+    folder: "post-work",
+  });
 }
 
 if (uploadedPhotoRows.length > 0) {
@@ -2146,28 +2285,23 @@ if (!isAuthorized) {
         )}
 
         <Tabs defaultValue="vehicle" className="mt-6 space-y-6">
-          <TabsList className="grid w-full grid-cols-2 items-stretch gap-3 rounded-2xl border border-slate-200 bg-slate-200 p-2 shadow-sm md:grid-cols-7">
-            <TabsTrigger value="vehicle" className={getStepTriggerClassName("vehicle")}>
-              Vehicle
-            </TabsTrigger>
-            <TabsTrigger value="tires" className={getStepTriggerClassName("tires")}>
-              Tires
-            </TabsTrigger>
-            <TabsTrigger value="brakes" className={getStepTriggerClassName("brakes")}>
-              Brakes
-            </TabsTrigger>
-            <TabsTrigger value="maintenance" className={getStepTriggerClassName("maintenance")}>
-              Maintenance
-            </TabsTrigger>
-            <TabsTrigger value="photos" className={getStepTriggerClassName("photos")}>
-              Photos
-            </TabsTrigger>
-            <TabsTrigger value="customer-report" className={getStepTriggerClassName("customer-report")}>
-              Customer Report
-            </TabsTrigger>
-            <TabsTrigger value="review" className={getStepTriggerClassName("review")}>
-              Review
-            </TabsTrigger>
+          <TabsList className="flex h-auto w-full flex-nowrap items-stretch justify-start gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-200 p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:gap-3">
+            {workflowStepOrder.map((step) => (
+              <TabsTrigger
+                key={step}
+                value={step}
+                className={getStepTriggerClassName(step)}
+                aria-label={workflowStepLabels[step]}
+                title={workflowStepLabels[step]}
+              >
+                <span className="block text-[11px] font-extrabold text-black sm:text-[13px] group-data-[state=active]:text-[12px] sm:group-data-[state=active]:text-sm">
+                  {techWorkflowTabLabels[step] ?? workflowStepLabels[step]}
+                </span>
+                <span className="block text-[8px] font-bold uppercase tracking-[0.1em] text-black/80 sm:text-[10px] sm:tracking-[0.12em]">
+                  {getWorkflowStepStatus(step)}
+                </span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           <TabsContent value="vehicle">
@@ -2490,7 +2624,7 @@ if (!isAuthorized) {
 
                   {!maintenanceSchedulePreview ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-                      Enter the vehicle year, make, model, and mileage to see currently suggested maintenance and the next service interval.
+                      Enter vehicle information to see baseline suggested maintenance. Add mileage to calculate the current and next service intervals.
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -3048,40 +3182,41 @@ if (!isAuthorized) {
 
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-4 p-6">
-                  <SectionHeader icon={CheckCircle2} title="Next build steps" subtitle="This prototype is the front-end. The next step is wiring it to a real backend." />
+                  <SectionHeader
+                    icon={CheckCircle2}
+                    title="Inspection closeout"
+                    subtitle="Save the inspection, confirm the customer-facing report, and generate the final PDF when ready."
+                  />
                   <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
                     Internal closeout photos: <span className="font-semibold text-slate-900">{postWorkCompletionCount} / {requiredConditionShots.length}</span> captured.
                   </div>
                   <div className="space-y-3 text-sm text-slate-700">
-                    <div className="rounded-2xl bg-slate-100 p-4">1. Add Supabase auth for technician logins.</div>
-                    <div className="rounded-2xl bg-slate-100 p-4">2. Save inspections into database tables for customers, vehicles, inspections, and photos.</div>
-                    <div className="rounded-2xl bg-slate-100 p-4">3. Add customer report generation with branded PDF output.</div>
-                    <div className="rounded-2xl bg-slate-100 p-4">4. Add customer portal for service history and invoices.</div>
+                    <div className="rounded-2xl bg-slate-100 p-4">
+                      1. Save the inspection so the customer portal has the latest progress and notes.
+                    </div>
+                    <div className="rounded-2xl bg-slate-100 p-4">
+                      2. Review the customer summary, required items, and suggested maintenance.
+                    </div>
+                    <div className="rounded-2xl bg-slate-100 p-4">
+                      3. Generate the PDF report for the customer record when the inspection is ready.
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-3 pt-2">
-  <Button
-    className="rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
-    onClick={handleSaveInspection}
-  >
-    Save Inspection
-  </Button>
+                    <Button
+                      className="rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+                      onClick={handleSaveInspection}
+                    >
+                      Save Inspection
+                    </Button>
 
-  <Button
-  type="button"
-  className="rounded-2xl border border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
-  onClick={handleGeneratePdf}
->
-  Generate PDF Report
-</Button>
-
-  <Button
-    type="button"
-    className="rounded-2xl bg-blue-600 text-white hover:bg-blue-700"
-    onClick={() => alert("Customer sending is the next feature to wire up.")}
-  >
-    Send to Customer
-  </Button>
-</div>
+                    <Button
+                      type="button"
+                      className="rounded-2xl border border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
+                      onClick={handleGeneratePdf}
+                    >
+                      Generate PDF Report
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>

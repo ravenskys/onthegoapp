@@ -62,9 +62,19 @@ export default function CustomerSignupPage() {
       }
 
       const existingCustomer =
-        existingCustomers && existingCustomers.length > 0
-          ? existingCustomers[0]
-          : null;
+        existingCustomers?.find((customer) => customer.auth_user_id === user.id) ||
+        (() => {
+          const claimableCustomers =
+            existingCustomers?.filter((customer) => !customer.auth_user_id) || [];
+
+          if (claimableCustomers.length > 1) {
+            throw new Error(
+              "We found more than one customer record for this email. Please contact the shop so we can link the right profile."
+            );
+          }
+
+          return claimableCustomers[0] || null;
+        })();
 
       const { error: profileError } = await supabase
         .from("profiles")

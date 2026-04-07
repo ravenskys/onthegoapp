@@ -81,17 +81,38 @@ export default function CustomerAccountPage() {
         return;
       }
 
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw userError || new Error("You must be logged in to update your account.");
+      }
+
+      const authEmail = normalizeEmail(user.email || "");
+      if (!authEmail) {
+        throw new Error("Your login email could not be confirmed.");
+      }
+
+      const canUpdateCustomerEmail = normalizedCustomerEmail === authEmail;
+      const customerUpdate = {
+        first_name: trimmedFirstName,
+        last_name: trimmedLastName,
+        phone: trimmedPhone,
+        email: canUpdateCustomerEmail ? normalizedCustomerEmail : authEmail,
+      };
+
       const { error } = await supabase
         .from("customers")
-        .update({
-          first_name: trimmedFirstName,
-          last_name: trimmedLastName,
-          phone: trimmedPhone,
-          email: normalizedCustomerEmail,
-        })
+        .update(customerUpdate)
         .eq("id", customer.id);
 
       if (error) throw error;
+
+      const savedEmail = canUpdateCustomerEmail
+        ? normalizedCustomerEmail
+        : authEmail;
 
       setCustomer((prev) =>
         prev
@@ -100,12 +121,17 @@ export default function CustomerAccountPage() {
               first_name: trimmedFirstName,
               last_name: trimmedLastName,
               phone: trimmedPhone,
-              email: normalizedCustomerEmail,
+              email: savedEmail,
             }
           : prev
       );
+      setAccountEmail(savedEmail);
 
-      setAccountMessage("Account information updated.");
+      setAccountMessage(
+        canUpdateCustomerEmail
+          ? "Account information updated."
+          : "Contact information updated. Email was not changed because portal email changes must be handled through the login email first."
+      );
     } catch (error) {
       setAccountMessage(getErrorMessage(error, "Failed to update account information."));
     } finally {
@@ -123,8 +149,8 @@ export default function CustomerAccountPage() {
       subtitle="Use this page to update the account information connected to your customer record, portal access, and service history."
       onLogout={handleLogout}
     >
-      <div className="otg-card p-6">
-        <div className="flex items-center gap-3">
+      <div className="otg-card p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:items-center">
           <div className="rounded-2xl bg-slate-200 p-2 text-slate-900">
             <UserRound className="h-5 w-5" />
           </div>
@@ -157,7 +183,7 @@ export default function CustomerAccountPage() {
             setEmail={(value) => setAccountEmail(normalizeEmail(value))}
           />
 
-          <button type="submit" disabled={savingAccount} className="otg-btn otg-btn-primary disabled:opacity-50">
+          <button type="submit" disabled={savingAccount} className="otg-btn otg-btn-primary disabled:opacity-50 sm:w-auto">
             {savingAccount ? "Saving..." : "Save Account Information"}
           </button>
         </form>

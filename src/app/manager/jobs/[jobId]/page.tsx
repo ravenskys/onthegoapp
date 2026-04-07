@@ -100,6 +100,9 @@ interface Note {
   created_by_user_id: string | null;
 }
 
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Unknown error";
+
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -382,7 +385,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setServiceTaxRate(String(settingsData.default_service_tax_rate ?? 0));
         setPartsTaxRate(String(settingsData.default_parts_tax_rate ?? 0));
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching job:", error);
       alert("Failed to load job details.");
     } finally {
@@ -438,9 +441,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
             setServices((prev) => [...prev, insertedService]);
             setSelectedCatalogServiceId("");
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            alert(`Failed to add service: ${error.message || "Unknown error"}`);
+            alert(`Failed to add service: ${getErrorMessage(error)}`);
         } finally {
             setSaving(false);
         }
@@ -487,9 +490,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             setNewPartUnitPrice("");
             setNewPartSupplier("");
             setNewPartNotes("");
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            alert(`Failed to add part: ${error.message || "Unknown error"}`);
+            alert(`Failed to add part: ${getErrorMessage(error)}`);
         } finally {
             setSaving(false);
         }
@@ -510,9 +513,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             if (error) throw error;
 
             setParts((prev) => prev.filter((part) => part.id !== partId));
-          } catch (error: any) {
+          } catch (error: unknown) {
             console.error(error);
-            alert(`Failed to delete part: ${error.message || "Unknown error"}`);
+            alert(`Failed to delete part: ${getErrorMessage(error)}`);
           } finally {
             setSaving(false);
           }
@@ -533,9 +536,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           if (error) throw error;
 
           setServices((prev) => prev.filter((service) => service.id !== serviceId));
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
-          alert(`Failed to delete service: ${error.message || "Unknown error"}`);
+          alert(`Failed to delete service: ${getErrorMessage(error)}`);
         } finally {
           setSaving(false);
         }
@@ -599,9 +602,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           setEditServiceDescription("");
           setEditServiceEstimatedHours("");
           setEditServiceEstimatedPrice("");
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
-          alert(`Failed to update service: ${error.message || "Unknown error"}`);
+          alert(`Failed to update service: ${getErrorMessage(error)}`);
         } finally {
           setSaving(false);
         }
@@ -676,9 +679,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           setEditPartUnitPrice("");
           setEditPartSupplier("");
           setEditPartNotes("");
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
-          alert(`Failed to update part: ${error.message || "Unknown error"}`);
+          alert(`Failed to update part: ${getErrorMessage(error)}`);
         } finally {
           setSaving(false);
         }
@@ -696,6 +699,12 @@ const [estimateLineItems, setEstimateLineItems] = useState<
       };
 
       const handleSaveJobDetails = async () => {
+        if (!job) {
+          return;
+        }
+
+        const currentJob = job;
+
         setSaving(true);
         try {
           const { error: jobError } = await supabase
@@ -710,7 +719,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           if (jobError) throw jobError;
 
-          const customerId = (job as any)?.customer_id;
+          const customerId = currentJob.customer_id;
 
           if (customerId) {
             const { error: customerError } = await supabase
@@ -742,7 +751,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           alert("Job details updated!");
           fetchJobData();
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error("Error updating job:", error);
           alert("Failed to update job.");
         } finally {
@@ -771,7 +780,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           await deleteJobWithRelatedRecords(job.id);
           alert("Job deleted.");
           router.push("/manager/jobs");
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error("Error deleting job:", error);
           const message =
             error instanceof Error ? error.message : "Failed to delete job.";
@@ -800,7 +809,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           setNewNote("");
           fetchJobData();
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error("Error adding note:", error);
           alert("Failed to add note.");
         }
@@ -828,8 +837,8 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             .from("estimates")
             .insert({
               job_id: job.id,
-              customer_id: (job as any).customer_id ?? null,
-              vehicle_id: (job as any).vehicle_id ?? null,
+              customer_id: job.customer_id ?? null,
+              vehicle_id: job.vehicle_id ?? null,
               estimate_status: "draft",
               subtotal: jobSubtotal,
               tax_total: 0,
@@ -910,9 +919,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           setEstimateLineItems(lineItemsData ?? []);
 
           alert("Estimate created successfully.");
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
-          alert(`Failed to create estimate: ${error.message || "Unknown error"}`);
+          alert(`Failed to create estimate: ${getErrorMessage(error)}`);
         } finally {
           setSaving(false);
         }
@@ -942,9 +951,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           setEstimate(updatedEstimate);
           alert("Estimate taxes updated.");
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(error);
-          alert(`Failed to update estimate taxes: ${error.message || "Unknown error"}`);
+          alert(`Failed to update estimate taxes: ${getErrorMessage(error)}`);
         } finally {
           setSaving(false);
         }

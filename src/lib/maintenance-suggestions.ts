@@ -88,6 +88,17 @@ const repeatingMaintenanceRules: Array<{
   },
 ];
 
+const baselineMaintenanceItems: MaintenanceScheduleItem[] = [
+  { category: "Inspect", service: "Engine oil level and condition" },
+  { category: "Inspect", service: "Engine air filter" },
+  { category: "Inspect", service: "Cabin air filter" },
+  { category: "Inspect", service: "Brake system" },
+  { category: "Inspect", service: "Battery and charging system" },
+  { category: "Inspect", service: "Fluid levels" },
+  { category: "Inspect", service: "Steering and suspension components" },
+  { category: "Inspect", service: "Tire tread, pressure, and wear pattern" },
+];
+
 const buildVehicleKey = ({ year, make, model }: VehicleScheduleInput) => {
   const normalizedYear = String(year || "").trim();
   const normalizedMake = String(make || "").trim().toLowerCase();
@@ -136,7 +147,9 @@ const buildRuleInterval = (mileage: number, vehicleYear?: number | null): Mainte
 
   return {
     mileage,
-    items: dedupeScheduleItems(intervalItems),
+    items: dedupeScheduleItems(
+      intervalItems.length ? intervalItems : baselineMaintenanceItems
+    ),
   };
 };
 
@@ -158,12 +171,20 @@ export const getMaintenanceSchedulePreview = (
   const mileageValue = Number(String(input.mileage || "").replace(/,/g, "").trim());
   const yearValue = Number(String(input.year || "").trim());
 
-  if (!make || !model || Number.isNaN(mileageValue) || mileageValue <= 0) {
-    return null;
-  }
-
   const yearLabel = Number.isNaN(yearValue) ? "" : `${yearValue} `;
-  const vehicleLabel = `${yearLabel}${make} ${model}`.trim();
+  const vehicleLabel = `${yearLabel}${make} ${model}`.trim() || "Vehicle";
+
+  if (Number.isNaN(mileageValue) || mileageValue <= 0) {
+    return {
+      source: "rules",
+      current: {
+        mileage: 0,
+        items: baselineMaintenanceItems,
+      },
+      next: buildRuleInterval(5000, Number.isNaN(yearValue) ? null : yearValue),
+      vehicleLabel,
+    };
+  }
   const vehicleKey = buildVehicleKey(input);
   const oemSchedule = vehicleKey ? OEM_MAINTENANCE_SCHEDULES[vehicleKey] : null;
 

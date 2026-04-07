@@ -58,7 +58,28 @@ export default function CustomerLinkPage() {
       return;
     }
 
-    const customer = matchingCustomers[0];
+    const alreadyLinkedCustomer = matchingCustomers.find(
+      (customer) => customer.auth_user_id === user.id
+    );
+
+    if (alreadyLinkedCustomer) {
+      alert("Account is already linked.");
+      window.location.href = "/customer/dashboard";
+      return;
+    }
+
+    const claimableCustomers = matchingCustomers.filter(
+      (customer) => !customer.auth_user_id
+    );
+
+    if (claimableCustomers.length !== 1) {
+      alert(
+        "We found more than one customer row for this email. Please contact the shop so we can link the right profile."
+      );
+      return;
+    }
+
+    const customer = claimableCustomers[0];
 
     const { error: updateError } = await supabase
       .from("customers")
