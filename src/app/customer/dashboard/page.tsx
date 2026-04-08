@@ -17,6 +17,7 @@ import {
 } from "@/lib/portal-auth";
 import {
   buildVehicleLabel,
+  buildVehicleDetailLabel,
   buildVehicleReportKey,
   formatVehicleMiles,
   fetchCustomerPortalData,
@@ -308,7 +309,7 @@ export default function CustomerDashboardPage() {
                             {formatVehicleMiles(vehicle.mileage)}
                           </div>
                           <div className="mt-1 text-xs text-lime-50/80">
-                            Plate: {vehicle.license_plate || "-"}
+                            {buildVehicleDetailLabel(vehicle)}
                           </div>
                           <div className="mt-3 inline-flex rounded-full border border-lime-400/35 bg-lime-400 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-black">
                             {reportCountsByVehicle[buildVehicleReportKey(vehicle)] || 0} completed report{(reportCountsByVehicle[buildVehicleReportKey(vehicle)] || 0) === 1 ? "" : "s"}
@@ -382,6 +383,10 @@ export default function CustomerDashboardPage() {
                         : "As soon as a technician starts your next inspection, service progress will show up here automatically."}
                     </p>
                     <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                      <a href="/customer/schedule" className="otg-btn otg-btn-primary sm:w-auto">
+                        Schedule Service
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </a>
                       <button
                         type="button"
                         onClick={() => {
@@ -389,7 +394,7 @@ export default function CustomerDashboardPage() {
                             ? "/customer/reports"
                             : "/customer/account";
                         }}
-                        className="otg-btn otg-btn-primary sm:w-auto"
+                        className="otg-btn otg-btn-secondary sm:w-auto"
                       >
                         {completedReportsCount
                           ? "Open Report History"

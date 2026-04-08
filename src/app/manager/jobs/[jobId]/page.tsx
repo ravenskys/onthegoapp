@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft, Plus, Save, Trash2, User, Calendar, DollarSign, FileText, Clock, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 import {
@@ -30,12 +30,20 @@ interface Job {
   service_number: number | null;
   status: string;
   priority: string;
+  source: string | null;
   service_type: string;
   service_description: string | null;
   requested_date: string | null;
   scheduled_start: string | null;
   scheduled_end: string | null;
   assigned_tech_user_id: string | null;
+  service_duration_minutes: number | null;
+  travel_time_minutes: number | null;
+  service_location_name: string | null;
+  service_address: string | null;
+  service_city: string | null;
+  service_state: string | null;
+  service_zip: string | null;
   notes: string | null;
   customer: {
     first_name: string;
@@ -103,6 +111,17 @@ interface Note {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unknown error";
 
+const getServiceAddressLabel = (job: Job | null) =>
+  job
+    ? [
+        job.service_location_name,
+        job.service_address,
+        [job.service_city, job.service_state, job.service_zip].filter(Boolean).join(" "),
+      ]
+        .filter(Boolean)
+        .join(", ") || "—"
+    : "—";
+
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -136,7 +155,6 @@ export default function JobDetailPage() {
   const [editPartSupplier, setEditPartSupplier] = useState("");
   const [editPartNotes, setEditPartNotes] = useState("");
   const [estimateId, setEstimateId] = useState<string | null>(null);
-  const [estimateTotal, setEstimateTotal] = useState<number | null>(null);
   const [estimate, setEstimate] = useState<{
   id: string;
   estimate_number: string | null;
@@ -157,11 +175,6 @@ const [estimateLineItems, setEstimateLineItems] = useState<
     notes: string | null;
   }>
 >([]);
-
-  const [businessSettings, setBusinessSettings] = useState<{
-    default_service_tax_rate: number;
-    default_parts_tax_rate: number;
-  } | null>(null);
 
   const [serviceTaxRate, setServiceTaxRate] = useState("0");
   const [partsTaxRate, setPartsTaxRate] = useState("0");
@@ -211,30 +224,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   const combinedTaxTotal = serviceTaxTotal + partsTaxTotal;
   const jobGrandTotal = jobSubtotal + combinedTaxTotal;
 
-  useEffect(() => {
-    if (!jobId) return;
-
-    const checkAccessAndLoad = async () => {
-      const { user, roles } = await getUserRoles();
-
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (!hasPortalAccess(roles, "manager")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-
-      setAuthorized(true);
-      fetchJobData();
-    };
-
-    checkAccessAndLoad();
-  }, [jobId]);
-
-  const fetchJobData = async () => {
+  const fetchJobData = useCallback(async () => {
     setLoading(true);
     try {
           // 1. Fetch Job + Relations
@@ -381,7 +371,6 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
         if (settingsError) throw settingsError;
 
-        setBusinessSettings(settingsData);
         setServiceTaxRate(String(settingsData.default_service_tax_rate ?? 0));
         setPartsTaxRate(String(settingsData.default_parts_tax_rate ?? 0));
 
@@ -391,7 +380,30 @@ const [estimateLineItems, setEstimateLineItems] = useState<
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    const checkAccessAndLoad = async () => {
+      const { user, roles } = await getUserRoles();
+
+      if (!user) {
+        window.location.href = "/customer/login";
+        return;
+      }
+
+      if (!hasPortalAccess(roles, "manager")) {
+        window.location.href = getPostLoginRoute(roles);
+        return;
+      }
+
+      setAuthorized(true);
+      await fetchJobData();
+    };
+
+    void checkAccessAndLoad();
+  }, [fetchJobData, jobId]);
 
         const handleAddCatalogService = async () => {
         if (!selectedCatalogServiceId) {
@@ -1123,11 +1135,27 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               <Input 
                 type="date" 
                 value={job.requested_date || ""} 
-                onChange={(e) => {
-                  // You would need to add state for dates if you want to edit them here
-                  // For now, just showing the value
-                }} 
                 disabled 
+                className="bg-slate-100"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Scheduled Window</Label>
+              <Input
+                value={
+                  job.scheduled_start
+                    ? `${new Date(job.scheduled_start).toLocaleString()}${
+                        job.scheduled_end
+                          ? ` - ${new Date(job.scheduled_end).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}`
+                          : ""
+                      }`
+                    : "Unscheduled"
+                }
+                disabled
                 className="bg-slate-100"
               />
             </div>
@@ -1185,6 +1213,62 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 <Badge variant={customerTaxExempt ? "secondary" : "outline"}>
                   {customerTaxExempt ? "Tax Exempt" : "Taxable"}
                 </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Scheduled Visit Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Job Source
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {job?.source === "customer_portal" ? "Customer Portal" : job?.source || "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Scheduled Window
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {job?.scheduled_start
+                  ? `${new Date(job.scheduled_start).toLocaleString()}${
+                      job.scheduled_end
+                        ? ` - ${new Date(job.scheduled_end).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}`
+                        : ""
+                    }`
+                  : "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Time Breakdown
+              </div>
+              <div className="mt-1 text-sm text-slate-900">
+                {job?.service_duration_minutes || job?.travel_time_minutes
+                  ? `${job.service_duration_minutes ?? 0} min service${
+                      job.travel_time_minutes ? ` + ${job.travel_time_minutes} min travel` : ""
+                    }`
+                  : "—"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Service Address
+              </div>
+              <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+                {getServiceAddressLabel(job)}
               </div>
             </div>
           </CardContent>

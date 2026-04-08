@@ -21,6 +21,25 @@ export type CustomerPortalVehicle = {
   license_plate?: string | null;
 };
 
+export type CustomerPortalAddress = {
+  id?: string;
+  customer_id?: string | null;
+  address_type?: string | null;
+  is_default?: boolean;
+  label?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  gate_code?: string | null;
+  parking_notes?: string | null;
+  service_notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type CustomerPortalInspection = {
   id?: string;
   created_at?: string;
@@ -61,6 +80,7 @@ export type CustomerPortalPhoto = {
 export type CustomerPortalData = {
   customer: CustomerPortalRecord | null;
   vehicles: CustomerPortalVehicle[];
+  addresses: CustomerPortalAddress[];
   latestInspection: CustomerPortalInspection;
   latestInspectionPhotoCount: number;
   reports: CustomerPortalReport[];
@@ -75,6 +95,7 @@ export type CustomerPortalData = {
 const getEmptyCustomerPortalData = (): CustomerPortalData => ({
   customer: null,
   vehicles: [],
+  addresses: [],
   latestInspection: null,
   latestInspectionPhotoCount: 0,
   reports: [],
@@ -178,6 +199,20 @@ export const formatVehicleMiles = (mileage: number | null | undefined) =>
   typeof mileage === "number"
     ? `${mileage.toLocaleString("en-US")} miles`
     : "Mileage not available";
+
+export const buildVehicleDetailLabel = (
+  vehicle: CustomerPortalVehicle | null | undefined
+) => {
+  if (vehicle?.license_plate) {
+    return `Plate: ${vehicle.license_plate}`;
+  }
+
+  if (vehicle?.vin) {
+    return `VIN: ${vehicle.vin.slice(-6).toUpperCase()}`;
+  }
+
+  return "No plate or VIN on file";
+};
 
 export const getCustomerWorkflowSummary = (
   inspection: CustomerPortalInspection,
@@ -394,13 +429,48 @@ export const fetchCustomerPortalData = async (
       license_plate
     `)
     .eq("customer_id", customer.id)
-    .order("year", { ascending: false });
+    .order("year", { ascending: false })
+    .order("make", { ascending: true })
+    .order("model", { ascending: true })
+    .order("license_plate", { ascending: true })
+    .order("vin", { ascending: true })
+    .order("id", { ascending: true });
 
   if (vehicleError) {
     throw vehicleError;
   }
 
   const vehicles = (vehicleRows || []) as CustomerPortalVehicle[];
+
+  const { data: addressRows, error: addressError } = await supabase
+    .from("customer_addresses")
+    .select(`
+      id,
+      customer_id,
+      address_type,
+      is_default,
+      label,
+      contact_name,
+      contact_phone,
+      address,
+      city,
+      state,
+      zip,
+      gate_code,
+      parking_notes,
+      service_notes,
+      created_at,
+      updated_at
+    `)
+    .eq("customer_id", customer.id)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (addressError) {
+    throw addressError;
+  }
+
+  const addresses = (addressRows || []) as CustomerPortalAddress[];
 
   const { data: inspectionRows, error: inspectionError } = await supabase
     .from("inspections")
@@ -498,6 +568,7 @@ export const fetchCustomerPortalData = async (
     return {
       customer,
       vehicles,
+      addresses,
       latestInspection,
       latestInspectionPhotoCount,
       reports,
@@ -552,6 +623,7 @@ export const fetchCustomerPortalData = async (
   return {
     customer,
     vehicles,
+    addresses,
     latestInspection,
     latestInspectionPhotoCount,
     reports,

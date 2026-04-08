@@ -608,6 +608,86 @@ img {
   color: #e5eef7;
 }
 
+.otg-theme-light {
+  color: #0f172a;
+  color-scheme: light;
+}
+
+.otg-theme-dark {
+  color: #f8fafc;
+  color-scheme: dark;
+}
+
+.otg-surface-light,
+.otg-theme-light [data-slot="card"],
+.otg-theme-light .bg-white,
+.otg-theme-light .bg-slate-50,
+.otg-theme-light .bg-slate-100,
+.otg-theme-light .bg-lime-50,
+.otg-theme-light .bg-lime-100,
+.otg-theme-light .bg-sky-100,
+.otg-theme-light .bg-amber-100,
+.otg-theme-light .bg-emerald-100,
+.otg-theme-light .bg-red-50,
+.otg-theme-light .bg-red-100,
+.otg-theme-light .bg-indigo-100,
+.otg-theme-light .bg-fuchsia-100 {
+  color: #0f172a;
+}
+
+.otg-surface-light .text-white,
+.otg-theme-light .otg-surface-light .text-white {
+  color: #0f172a !important;
+}
+
+.otg-surface-light input,
+.otg-surface-light textarea,
+.otg-surface-light select,
+.otg-theme-light input,
+.otg-theme-light textarea,
+.otg-theme-light select,
+.otg-theme-light button[data-slot="select-trigger"] {
+  color: #0f172a;
+}
+
+.otg-surface-light input::placeholder,
+.otg-surface-light textarea::placeholder,
+.otg-theme-light input::placeholder,
+.otg-theme-light textarea::placeholder {
+  color: #64748b;
+}
+
+.otg-surface-dark,
+.otg-theme-dark [data-slot="card"],
+.otg-theme-dark .bg-slate-900,
+.otg-theme-dark .bg-slate-950,
+.otg-theme-dark .bg-black,
+.otg-theme-light .otg-surface-dark {
+  color: #f8fafc;
+}
+
+.otg-surface-dark .text-slate-950,
+.otg-surface-dark .text-slate-900,
+.otg-surface-dark .text-slate-800,
+.otg-surface-dark .text-black,
+.otg-theme-dark .text-slate-950,
+.otg-theme-dark .text-slate-900,
+.otg-theme-dark .text-slate-800,
+.otg-theme-dark .text-black {
+  color: #f8fafc !important;
+}
+
+.otg-surface-dark .text-slate-700,
+.otg-surface-dark .text-slate-600,
+.otg-surface-dark .text-slate-500,
+.otg-surface-dark .text-slate-400,
+.otg-theme-dark .text-slate-700,
+.otg-theme-dark .text-slate-600,
+.otg-theme-dark .text-slate-500,
+.otg-theme-dark .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
 .otg-portal-dark.otg-page,
 .otg-portal-dark.otg-manager-shell,
 .otg-portal-dark.min-h-screen {
@@ -635,11 +715,60 @@ img {
   border-color: rgba(115, 145, 126, 0.28) !important;
 }
 
+.otg-portal-dark .bg-lime-50,
+.otg-portal-dark .bg-lime-100,
+.otg-portal-dark .bg-emerald-50,
+.otg-portal-dark .bg-emerald-100,
+.otg-portal-dark .bg-sky-50,
+.otg-portal-dark .bg-sky-100,
+.otg-portal-dark .bg-amber-50,
+.otg-portal-dark .bg-amber-100,
+.otg-portal-dark .bg-red-50,
+.otg-portal-dark .bg-red-100,
+.otg-portal-dark .bg-indigo-50,
+.otg-portal-dark .bg-indigo-100,
+.otg-portal-dark .bg-fuchsia-50,
+.otg-portal-dark .bg-fuchsia-100 {
+  background: rgba(22, 36, 26, 0.96) !important;
+  color: #edf7ef !important;
+  border-color: rgba(163, 230, 53, 0.24) !important;
+}
+
+.otg-portal-dark .text-black,
+.otg-portal-dark .text-gray-950,
+.otg-portal-dark .text-gray-900,
+.otg-portal-dark .text-gray-800,
+.otg-portal-dark .text-zinc-950,
+.otg-portal-dark .text-zinc-900,
+.otg-portal-dark .text-zinc-800,
+.otg-portal-dark .text-neutral-950,
+.otg-portal-dark .text-neutral-900,
+.otg-portal-dark .text-neutral-800,
+.otg-portal-dark .text-stone-950,
+.otg-portal-dark .text-stone-900,
+.otg-portal-dark .text-stone-800,
+.otg-portal-dark .text-slate-950,
 .otg-portal-dark .text-slate-900,
 .otg-portal-dark .text-slate-800 {
   color: #f5fff6 !important;
 }
 
+.otg-portal-dark .text-gray-700,
+.otg-portal-dark .text-gray-600,
+.otg-portal-dark .text-gray-500,
+.otg-portal-dark .text-gray-400,
+.otg-portal-dark .text-zinc-700,
+.otg-portal-dark .text-zinc-600,
+.otg-portal-dark .text-zinc-500,
+.otg-portal-dark .text-zinc-400,
+.otg-portal-dark .text-neutral-700,
+.otg-portal-dark .text-neutral-600,
+.otg-portal-dark .text-neutral-500,
+.otg-portal-dark .text-neutral-400,
+.otg-portal-dark .text-stone-700,
+.otg-portal-dark .text-stone-600,
+.otg-portal-dark .text-stone-500,
+.otg-portal-dark .text-stone-400,
 .otg-portal-dark .text-slate-700,
 .otg-portal-dark .text-slate-600,
 .otg-portal-dark .text-slate-500,
@@ -709,18 +838,20 @@ img {
   border-color: #39ff14 !important;
 }
 
-.otg-portal-dark button.bg-white,
-.otg-portal-dark a.bg-white,
-.otg-portal-dark button.bg-lime-100,
-.otg-portal-dark a.bg-lime-100,
+.otg-portal-dark button.bg-lime-300,
+.otg-portal-dark a.bg-lime-300,
 .otg-portal-dark button.bg-lime-400,
 .otg-portal-dark a.bg-lime-400,
-.otg-portal-dark button.bg-emerald-50,
-.otg-portal-dark a.bg-emerald-50,
+.otg-portal-dark button.bg-emerald-300,
+.otg-portal-dark a.bg-emerald-300,
 .otg-portal-dark button.bg-emerald-600,
 .otg-portal-dark a.bg-emerald-600,
+.otg-portal-dark button.bg-amber-300,
+.otg-portal-dark a.bg-amber-300,
 .otg-portal-dark button.bg-amber-500,
 .otg-portal-dark a.bg-amber-500,
+.otg-portal-dark button.bg-red-300,
+.otg-portal-dark a.bg-red-300,
 .otg-portal-dark button.bg-red-600,
 .otg-portal-dark a.bg-red-600,
 .otg-portal-dark .text-white.bg-lime-400,
@@ -744,7 +875,6 @@ img {
   color: #08110a !important;
 }
 
-.otg-portal-dark .otg-portal-nav,
 .otg-portal-dark .otg-portal-nav .bg-white,
 .otg-portal-dark .otg-portal-nav .bg-lime-100,
 .otg-portal-dark .otg-portal-nav .bg-lime-400 {
@@ -832,6 +962,31 @@ img {
 .otg-portal-dark .otg-vehicle-combobox-menu [cmdk-group-heading],
 .otg-portal-dark .otg-vehicle-combobox-menu span,
 .otg-portal-dark .otg-vehicle-combobox-menu svg {
+  color: #f3fff4 !important;
+}
+
+.otg-portal-dark .otg-schedule-select-trigger,
+.otg-portal-dark .otg-schedule-select-trigger span,
+.otg-portal-dark .otg-schedule-select-trigger svg {
+  color: #f3fff4 !important;
+}
+
+.otg-schedule-select-content[data-slot="select-content"] {
+  background: #121b14 !important;
+  color: #f3fff4 !important;
+  border-color: rgba(115, 145, 126, 0.35) !important;
+}
+
+.otg-schedule-select-content[data-slot="select-content"] *,
+.otg-schedule-select-item[data-slot="select-item"],
+.otg-schedule-select-item[data-slot="select-item"] span,
+.otg-schedule-select-item[data-slot="select-item"] svg {
+  color: #f3fff4 !important;
+}
+
+.otg-schedule-select-item[data-highlighted],
+.otg-schedule-select-item[data-state="checked"] {
+  background: rgba(57, 255, 20, 0.16) !important;
   color: #f3fff4 !important;
 }
 

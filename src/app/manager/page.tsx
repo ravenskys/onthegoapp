@@ -13,6 +13,8 @@ import {
   PlusCircle,
   ClipboardList,
   Wrench,
+  CalendarDays,
+  CalendarClock,
 } from "lucide-react";
 
 export default function ManagerHomePage() {
@@ -118,7 +120,7 @@ export default function ManagerHomePage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <button
             type="button"
             onClick={() => router.push("/manager/jobs")}
@@ -176,6 +178,48 @@ export default function ManagerHomePage() {
                     {customersCount} total
                   </span>
                 </div>
+              </CardContent>
+            </Card>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/manager/schedule")}
+            className="text-left"
+          >
+            <Card className="h-full transition-shadow hover:shadow-md">
+              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-slate-900">
+                    <CalendarDays className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">Schedule</h2>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    View jobs on a calendar and spot unscheduled work.
+                  </p>
+                </div>
+                <div className="text-sm font-semibold text-slate-900">Open Calendar</div>
+              </CardContent>
+            </Card>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/manager/availability")}
+            className="text-left"
+          >
+            <Card className="h-full transition-shadow hover:shadow-md">
+              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-slate-900">
+                    <CalendarClock className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">Availability</h2>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    Build and update regular weekly employee availability.
+                  </p>
+                </div>
+                <div className="text-sm font-semibold text-slate-900">Set Hours</div>
               </CardContent>
             </Card>
           </button>
