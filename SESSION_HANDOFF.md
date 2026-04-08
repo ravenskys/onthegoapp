@@ -2,30 +2,19 @@
 
 ## Current Status
 - Branch: `main`
-- Latest pushed commit: `82b6d93 Stabilize customer portal and tech workflow`
-- There are uncommitted local changes for scheduling/availability work.
-- Not pushed yet.
+- Latest commit on this workspace: `02f5c29 Add customer portal scheduling updates`
+- Current work has been committed and pushed to the isolated `secondary` repo.
+- The deployed repo remains separate as `upstream`.
+
+## Git Remotes
+- `upstream` -> `https://github.com/onthegomaint-glitch/onthegoapp.git`
+- `secondary` -> `https://github.com/onthegomaint-glitch/https---github.com-onthegomaint-glitch-onthegoapp.git`
+- Push current in-progress work to `secondary` so Vercel stays untouched.
+- Merge back later from `secondary` into `upstream` when the feature is ready.
 
 ## Current Git Status
-- Modified tracked files:
-  - `SESSION_HANDOFF.md`
-  - `src/app/admin/settings/page.tsx`
-  - `src/app/customer/account/page.tsx`
-  - `src/app/customer/dashboard/page.tsx`
-  - `src/app/customer/schedule/page.tsx`
-  - `src/app/globals.css`
-  - `src/app/manager/jobs/[jobId]/page.tsx`
-  - `src/app/manager/page.tsx`
-  - `src/components/portal/PortalTopNav.tsx`
-  - `src/lib/customer-portal.ts`
-- New untracked source folders/files:
-  - `src/app/customer/schedule/`
-  - `src/app/manager/availability/`
-  - `src/app/manager/schedule/`
-  - `supabase/migrations/20260406120000_add_customer_scheduler_functions.sql`
-  - `supabase/migrations/20260407100000_add_customer_vehicle_write_rls.sql`
-  - `supabase/migrations/20260407113000_add_customer_unscheduled_request_function.sql`
-  - `supabase/migrations/20260407130000_add_service_catalog_parts_defaults.sql`
+- Working tree was clean immediately after pushing `02f5c29`, before this handoff update.
+- If `SESSION_HANDOFF.md` appears modified, that is expected from this update.
 - Untracked generated build folders, do not commit:
   - `.next-verify-accounting/`
   - `.next-verify-utf8/`
@@ -168,5 +157,8 @@ Use this when resuming:
 ## If Something Looks Broken Again
 - Check `git status --short` first.
 - Do not commit `.next-verify-accounting/` or `.next-verify-utf8/`.
+- Confirm the target remote before pushing:
+  - use `secondary` for isolated feature work
+  - use `upstream` only when intentionally updating the deployed repo
 - Confirm latest pushed commit before pushing.
 - If scheduling fails live, check Supabase migration state before debugging React code.
