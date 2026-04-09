@@ -88,14 +88,74 @@
   - sort order / internal notes
 - Added service-catalog parts/accounting defaults migration:
   - `supabase/migrations/20260407130000_add_service_catalog_parts_defaults.sql`
+- Manager job workflow now uses admin-edited service catalog defaults more directly:
+  - adding a catalog service to a job now copies default labor hours, labor price, and labor cost
+  - estimate generation now carries service labor cost into `estimate_line_items.unit_cost`
+  - manager job detail service editing now includes `Estimated Cost`
+- Added job-services labor-cost migration:
+  - `supabase/migrations/20260407133000_add_job_services_estimated_cost.sql`
+- Service catalog defaults are now more structured for parts:
+  - default part name
+  - default part number
+  - default part quantity
+  - default part supplier
+  - default parts price / cost / notes
+- Manager job detail now auto-creates a linked `job_parts` row from service-catalog defaults when a catalog service includes default part/accounting values.
+- Added structured default-part fields migration:
+  - `supabase/migrations/20260407134500_add_service_catalog_default_part_fields.sql`
+- Added starter service-catalog seed migration with common lube/tune and maintenance services:
+  - `supabase/migrations/20260408100000_seed_common_service_catalog.sql`
+  - updates known service codes and inserts missing starter services
+  - includes common services such as oil change, inspection, tire rotation, brake service, coolant flush, transmission fluid service, tune up, belts, battery, filters, and A/C performance service
+- Added labor-rate migration for active service-catalog defaults:
+  - `supabase/migrations/20260408110000_update_service_catalog_labor_rates.sql`
+  - default labor price now calculates from `default_duration_minutes` at `$120/hour`
+  - default labor cost now calculates from `default_duration_minutes` at `$30/hour`
+- Added reusable default-parts template table for services:
+  - `supabase/migrations/20260408113000_add_service_catalog_parts_table.sql`
+  - introduces `public.service_catalog_parts`
+  - seeds common generic parts per service, such as oil/filter/gasket, brake pads/rotors/hardware, coolant, transmission fluid/filter, spark plugs, battery, and wiper blades
+- Admin Settings service editor now supports a full `Default Parts List` per service in addition to the older single default-part fields.
+- Manager job detail catalog-service add flow now prefers the new `service_catalog_parts` templates:
+  - adding a catalog service creates editable `job_parts` placeholder rows from the generic parts list
+  - managers/techs can then fill in exact part numbers, suppliers, unit cost, and unit price case by case
+  - legacy single default-part fields still work as a backward-compatible fallback
+- Admin Settings now supports deleting services from the service catalog UI.
+- Service-sheet labor cost is no longer being treated as an admin-managed default on the service catalog page:
+  - the admin service form now auto-calculates only default labor price from duration
+  - manager job add-from-catalog no longer preloads `estimated_cost` from `service_catalog.default_cost`
+  - this leaves labor cost to be sourced from the technician pay / actual-cost workflow instead of a catalog default
+- Added service-catalog delete-policy migration:
+  - `supabase/migrations/20260408120000_add_service_catalog_delete_policy.sql`
+- Admin Settings `Services Offered` now has a more compact browsing experience:
+  - searchable service list
+  - compact saved-service cards
+  - full card acts as the details toggle
+  - only one service card expands at a time
+- Technician page now supports an abbreviated inspection mode for non-inspection jobs:
+  - full inspection remains for `Inspection` and `Oil Change + Inspection`
+  - abbreviated inspection is used for service jobs like oil changes, tune-ups, and repair work
+  - abbreviated jobs hide the separate tire and brake tabs and use a lighter maintenance/undercar workflow
+  - active job card now shows the current inspection mode
+- Standard inspection checklist was trimmed to better match a real mobile/no-lift workflow:
+  - removed `Timing Belt`
+  - removed `Spark Plugs`
+  - removed `Link Pins`, `Center Link`, `Control Arms`, `Hub / Bearings`, `Bushings`, `Ball Joints`, and `Intermediate Pipe`
 
 ## Verification From Latest Work
 - `npx.cmd tsc --noEmit` passed.
 - `npx.cmd eslint src\app\customer\schedule\page.tsx` passed.
 - `npx.cmd eslint src\app\admin\settings\page.tsx` passed.
+- `npx.cmd eslint src\app\admin\settings\page.tsx src\app\manager\jobs\[jobId]\page.tsx` passed.
 - `npx.cmd eslint src\app\customer\account\page.tsx src\app\customer\schedule\page.tsx src\lib\customer-portal.ts` passed.
 - `npx.cmd eslint src\app\manager\schedule\page.tsx src\app\manager\jobs\[jobId]\page.tsx` passed.
 - `npx.cmd eslint src\lib\customer-portal.ts src\app\customer\dashboard\page.tsx src\app\customer\schedule\page.tsx` passed.
+- `npx.cmd eslint src\app\manager\jobs\[jobId]\page.tsx` passed after the new default-parts-template flow was added.
+- `npx.cmd eslint src\app\admin\settings\page.tsx` passed after service delete / labor-cost UI cleanup.
+- `npx.cmd eslint src/app/manager/jobs/[jobId]/page.tsx` passed after catalog-service cost preload changes.
+- `npx.cmd eslint src\app\admin\settings\page.tsx` passed after searchable accordion-style service catalog updates.
+- `npx.cmd eslint src\app\tech\page.tsx` passed with existing image warnings only after abbreviated inspection mode and checklist cleanup.
+- `npx.cmd tsc --noEmit` passed after the abbreviated inspection mode and checklist cleanup.
 - Broader targeted checks passed earlier:
   - `npx.cmd eslint src\app\customer\schedule\page.tsx src\app\customer\dashboard\page.tsx src\components\portal\PortalTopNav.tsx src\app\manager\schedule\page.tsx src\app\manager\availability\page.tsx`
 - Full production builds may still hit Windows/OneDrive `EPERM` file-lock issues in `.next` output folders.
@@ -107,6 +167,16 @@
   - `supabase/migrations/20260407113000_add_customer_unscheduled_request_function.sql`
 - The new service-catalog parts/accounting fields migration must be applied before the Admin Settings service editor can persist default parts values live:
   - `supabase/migrations/20260407130000_add_service_catalog_parts_defaults.sql`
+- The new job-services labor-cost migration must be applied before manager job services can persist `estimated_cost` live:
+  - `supabase/migrations/20260407133000_add_job_services_estimated_cost.sql`
+- The new structured default-part fields migration must be applied before Admin Settings can persist default part name/number/qty/supplier live:
+  - `supabase/migrations/20260407134500_add_service_catalog_default_part_fields.sql`
+- The following service-catalog migrations were created and pushed live during this session:
+  - `supabase/migrations/20260408100000_seed_common_service_catalog.sql`
+  - `supabase/migrations/20260408110000_update_service_catalog_labor_rates.sql`
+  - `supabase/migrations/20260408113000_add_service_catalog_parts_table.sql`
+- The following migration was added locally but still needs to be pushed live:
+  - `supabase/migrations/20260408120000_add_service_catalog_delete_policy.sql`
 - If `/customer/schedule` shows no slots after applying code, check:
   - migration applied
   - employees have active `available` blocks in `technician_schedule_blocks`
@@ -126,8 +196,14 @@
   - consider replacing ZIP/city heuristic with a maps API later if real drive times are needed
 - Add a way to create regular jobs, separate from customer-requested scheduler jobs.
 - Connect service-catalog defaults into manager job workflow:
-  - use admin-edited service duration/price/cost defaults consistently
-  - consider auto-adding service-level parts/accounting defaults when catalog services are added to a job
+  - verify new default labor price / default part integration live after the new migrations are applied
+  - verify the new `service_catalog_parts` templates create the expected editable `job_parts` rows when a catalog service is added to a job
+  - verify service deletion works live after pushing `20260408120000_add_service_catalog_delete_policy.sql`
+  - decide whether to keep the older single default-part fields long term or eventually migrate fully to the new parts-list model
+  - decide how technician pay should flow into job/service cost calculations, since service-catalog labor cost has been de-emphasized
+- Verify the new abbreviated inspection mode live on `/tech`:
+  - confirm oil-change / tune-up / repair jobs load the shorter tab set
+  - confirm full inspection jobs still load the complete tire/brake workflow
 - Decide whether customer scheduling should also create `appointments` rows or continue using `jobs` only.
 
 ## Helpful Files For Resume
@@ -139,10 +215,18 @@
 - `supabase/migrations/20260407100000_add_customer_vehicle_write_rls.sql`
 - `supabase/migrations/20260407113000_add_customer_unscheduled_request_function.sql`
 - `supabase/migrations/20260407130000_add_service_catalog_parts_defaults.sql`
+- `supabase/migrations/20260407133000_add_job_services_estimated_cost.sql`
+- `supabase/migrations/20260407134500_add_service_catalog_default_part_fields.sql`
+- `supabase/migrations/20260408100000_seed_common_service_catalog.sql`
+- `supabase/migrations/20260408110000_update_service_catalog_labor_rates.sql`
+- `supabase/migrations/20260408113000_add_service_catalog_parts_table.sql`
+- `supabase/migrations/20260408120000_add_service_catalog_delete_policy.sql`
 - `src/app/manager/schedule/page.tsx`
 - `src/app/manager/availability/page.tsx`
 - `src/app/manager/jobs/new/page.tsx`
 - `src/app/manager/jobs/[jobId]/page.tsx`
+- `src/app/tech/page.tsx`
+- `src/lib/inspection-workflow.ts`
 - `src/components/portal/PortalTopNav.tsx`
 - `src/app/globals.css`
 - `supabase/migrations/20260406120000_add_customer_scheduler_functions.sql`
@@ -162,3 +246,18 @@ Use this when resuming:
   - use `upstream` only when intentionally updating the deployed repo
 - Confirm latest pushed commit before pushing.
 - If scheduling fails live, check Supabase migration state before debugging React code.
+
+## Supabase CLI Windows Notes
+- This repo is linked to Supabase project ref `vzshannrbrcllzzlhfju`.
+- On Windows PowerShell, use `npx.cmd supabase@latest ...` instead of `npx supabase@latest ...` because PowerShell may block `npx.ps1` with execution-policy errors.
+- Use a local environment variable for the Supabase personal access token:
+  - current shell only:
+    - `$env:SUPABASE_ACCESS_TOKEN="your_new_token_here"`
+  - persist for the current Windows user:
+    - `[System.Environment]::SetEnvironmentVariable("SUPABASE_ACCESS_TOKEN","your_new_token_here","User")`
+- Verify auth in the same PowerShell window with:
+  - `echo $env:SUPABASE_ACCESS_TOKEN`
+  - `npx.cmd supabase@latest migration list`
+- Typical commands:
+  - `npx.cmd supabase@latest link --project-ref vzshannrbrcllzzlhfju`
+  - `npx.cmd supabase@latest db push`

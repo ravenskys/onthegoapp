@@ -28,7 +28,11 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
-import { workflowStepLabels, workflowStepOrder } from "@/lib/inspection-workflow";
+import {
+  abbreviatedWorkflowStepOrder,
+  workflowStepLabels,
+  workflowStepOrder,
+} from "@/lib/inspection-workflow";
 import { getInspectionRecommendations } from "@/lib/inspection-recommendations";
 import {
   getMaintenanceSchedulePreview,
@@ -66,9 +70,7 @@ const maintenanceItems = [
   "Belt Tensioner",
   "Ignition Wires",
   "Leaks",
-  "Timing Belt",
   "Lift Supports",
-  "Spark Plugs",
   "Washer Fluid",
   "Brake Fluid Flush",
   "Coolant Hoses",
@@ -85,21 +87,35 @@ const maintenanceItems = [
 
 const undercarItems = [
   "U-Joint",
-  "Idler / Pitman Arm",
-  "Center Link",
-  "Link Pins",
   "Struts / Shocks",
-  "Control Arms",
-  "Hub / Bearings",
   "Strut Mounts",
   "Rack & Pinion Assembly",
   "CV Boots",
   "Tie Rod Ends",
-  "Bushings",
-  "Ball Joints",
   "Exhaust System",
   "Muffler",
-  "Intermediate Pipe",
+] as const;
+
+const abbreviatedMaintenanceItems = [
+  "Wiper Blades",
+  "Head Lights",
+  "Accessory Lights",
+  "Filters",
+  "Oil Level",
+  "Leaks",
+  "Washer Fluid",
+  "Brake Fluid Flush",
+  "Coolant Level / Flush",
+  "Battery Test",
+  "A/C",
+  "Belts",
+] as const;
+
+const abbreviatedUndercarItems = [
+  "Struts / Shocks",
+  "CV Boots",
+  "Tie Rod Ends",
+  "Exhaust System",
 ] as const;
 
 const tires = ["Left Front", "Right Front", "Right Rear", "Left Rear", "Spare"] as const;
@@ -170,6 +186,20 @@ const createEmptyConditionPhotoState = (): ConditionPhotoState =>
 
 const createEmptyWorkflowSteps = (): WorkflowStepsState =>
   Object.fromEntries(workflowStepOrder.map((step) => [step, false]));
+
+const getInspectionModeFromServiceType = (serviceType: string | null | undefined) => {
+  const normalizedServiceType = String(serviceType || "").toLowerCase();
+
+  if (
+    normalizedServiceType.includes("inspection") ||
+    normalizedServiceType.includes("oil change + inspection") ||
+    normalizedServiceType.includes("oil change and inspection")
+  ) {
+    return "full";
+  }
+
+  return "abbreviated";
+};
 
 const techWorkflowTabLabels: Record<string, string> = {
   vehicle: "Vehicle",
@@ -572,28 +602,6 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [preServicePhotos, setPreServicePhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
   const [postWorkPhotos, setPostWorkPhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
 
-  const completion = useMemo(() => {
-    let total = 0;
-    let completed = 0;
-
-    const requiredFields = [vehicle.firstName, vehicle.lastName, vehicle.year, vehicle.make, vehicle.model, vehicle.mileage, vehicle.techName];
-    requiredFields.forEach((field) => {
-      total += 1;
-      if (String(field).trim()) completed += 1;
-    });
-
-    tires.forEach((tire) => {
-      total += 1;
-      if (tireData[tire].status) completed += 1;
-    });
-
-    total += 2;
-    if (brakes.status) completed += 1;
-    if (vehicle.notes.trim()) completed += 1;
-
-    return Math.round((completed / total) * 100);
-  }, [vehicle, tireData, brakes]);
-
   const normalizeVehicleFieldValue = (key: VehicleFieldKey, value: string) => {
     switch (key) {
       case "phone":
@@ -662,9 +670,56 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [jobUpdateSaving, setJobUpdateSaving] = useState(false);
   const [activeJobStatus, setActiveJobStatus] = useState("new_request");
   const [activeJobNotes, setActiveJobNotes] = useState("");
+  const [activeJobServiceType, setActiveJobServiceType] = useState<string | null>(null);
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(createEmptyWorkflowSteps);
+
+  const inspectionMode = useMemo(
+    () => getInspectionModeFromServiceType(activeJobServiceType),
+    [activeJobServiceType]
+  );
+
+  const activeWorkflowStepOrder = useMemo(
+    () => (inspectionMode === "full" ? workflowStepOrder : abbreviatedWorkflowStepOrder),
+    [inspectionMode]
+  );
+
+  const activeMaintenanceItems = useMemo(
+    () => (inspectionMode === "full" ? maintenanceItems : abbreviatedMaintenanceItems),
+    [inspectionMode]
+  );
+
+  const activeUndercarItems = useMemo(
+    () => (inspectionMode === "full" ? undercarItems : abbreviatedUndercarItems),
+    [inspectionMode]
+  );
+
+  const completion = useMemo(() => {
+    let total = 0;
+    let completed = 0;
+
+    const requiredFields = [vehicle.firstName, vehicle.lastName, vehicle.year, vehicle.make, vehicle.model, vehicle.mileage, vehicle.techName];
+    requiredFields.forEach((field) => {
+      total += 1;
+      if (String(field).trim()) completed += 1;
+    });
+
+    if (inspectionMode === "full") {
+      tires.forEach((tire) => {
+        total += 1;
+        if (tireData[tire].status) completed += 1;
+      });
+
+      total += 1;
+      if (brakes.status) completed += 1;
+    }
+
+    total += 1;
+    if (vehicle.notes.trim()) completed += 1;
+
+    return Math.round((completed / total) * 100);
+  }, [vehicle, tireData, brakes, inspectionMode]);
   
   const onPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -734,22 +789,24 @@ export default function OnTheGoTechnicianAppPrototype() {
     const isRecommendationStatus = (value: InspectionStatus): value is RecommendationStatus =>
       value === "ok" || value === "sug" || value === "req";
 
-    Object.values(tireData).forEach((t) => {
-      if (isRecommendationStatus(t.status)) statuses[t.status] += 1;
+    if (inspectionMode === "full") {
+      Object.values(tireData).forEach((t) => {
+        if (isRecommendationStatus(t.status)) statuses[t.status] += 1;
+      });
+      if (isRecommendationStatus(brakes.status)) statuses[brakes.status] += 1;
+    }
+    activeMaintenanceItems.forEach((item) => {
+      if (isRecommendationStatus(maintenance[item].status)) statuses[maintenance[item].status] += 1;
     });
-    Object.values(maintenance).forEach((m) => {
-      if (isRecommendationStatus(m.status)) statuses[m.status] += 1;
+    activeUndercarItems.forEach((item) => {
+      if (isRecommendationStatus(undercar[item].status)) statuses[undercar[item].status] += 1;
     });
-    Object.values(undercar).forEach((u) => {
-      if (isRecommendationStatus(u.status)) statuses[u.status] += 1;
-    });
-    if (isRecommendationStatus(brakes.status)) statuses[brakes.status] += 1;
     return statuses;
-  }, [tireData, maintenance, undercar, brakes.status]);
+  }, [tireData, maintenance, undercar, brakes.status, inspectionMode, activeMaintenanceItems, activeUndercarItems]);
 
   const completedWorkflowCount = useMemo(
-    () => Object.values(workflowSteps).filter(Boolean).length,
-    [workflowSteps]
+    () => activeWorkflowStepOrder.filter((step) => workflowSteps[step]).length,
+    [activeWorkflowStepOrder, workflowSteps]
   );
 
   const maintenanceSchedulePreview = useMemo(
@@ -764,7 +821,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   );
 
   const getMissingRequiredReasonMessage = useCallback(() => {
-    const missingMaintenanceReason = maintenanceItems.find(
+    const missingMaintenanceReason = activeMaintenanceItems.find(
       (item) =>
         maintenance[item].status === "req" &&
         !String(maintenance[item].why || "").trim()
@@ -774,7 +831,7 @@ export default function OnTheGoTechnicianAppPrototype() {
       return `Add a reason for required maintenance item: ${missingMaintenanceReason}.`;
     }
 
-    const missingUndercarReason = undercarItems.find(
+    const missingUndercarReason = activeUndercarItems.find(
       (item) =>
         undercar[item].status === "req" &&
         !String(undercar[item].why || "").trim()
@@ -785,7 +842,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
 
     return null;
-  }, [maintenance, undercar]);
+  }, [maintenance, undercar, activeMaintenanceItems, activeUndercarItems]);
 
   const toggleWorkflowStep = (step: string, value: boolean) => {
     setWorkflowSteps((prev) => ({
@@ -938,6 +995,7 @@ export default function OnTheGoTechnicianAppPrototype() {
       setActiveJobId(job.id);
       setActiveJobStatus(job.status || "new_request");
       setActiveJobNotes(job.notes || "");
+      setActiveJobServiceType(job.service_type || null);
 
       const vehicleCatalogModes = getVehicleCatalogModes({
         year: vehicleData?.year,
@@ -1060,6 +1118,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     setActiveJobId(null);
     setActiveJobStatus("new_request");
     setActiveJobNotes("");
+    setActiveJobServiceType(null);
     setRecordSyncState("idle");
     setRecordSyncMessage("");
     setUseCustomMake(false);
@@ -1364,7 +1423,7 @@ export default function OnTheGoTechnicianAppPrototype() {
       undercar,
       summaryCounts,
       workflowState,
-      workflowTotalCount: workflowStepOrder.length,
+      workflowTotalCount: activeWorkflowStepOrder.length,
     });
 
     const { data: inspectionData, error: inspectionError } = savedInspectionId
@@ -1670,7 +1729,7 @@ export default function OnTheGoTechnicianAppPrototype() {
       undercar,
       summaryCounts,
       workflowState: workflowSteps,
-      workflowTotalCount: workflowStepOrder.length,
+      workflowTotalCount: activeWorkflowStepOrder.length,
     });
 
     const { data: inspectionData, error: inspectionError } = savedInspectionId
@@ -2222,7 +2281,7 @@ if (!isAuthorized) {
                     <Badge variant="secondary" className="rounded-full">Required: {summaryCounts.req}</Badge>
                   </div>
                   <div className="pt-2 text-sm text-slate-600">
-                    Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {workflowStepOrder.length}</span>
+                    Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {activeWorkflowStepOrder.length}</span>
                   </div>
                 </div>
               </div>
@@ -2247,6 +2306,20 @@ if (!isAuthorized) {
                       <SelectItem value="completed">Completed</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <Label>Inspection Mode</Label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <span className="font-semibold text-slate-900">
+                      {inspectionMode === "full" ? "Full Inspection" : "Abbreviated Inspection"}
+                    </span>
+                    <span className="ml-2">
+                      {inspectionMode === "full"
+                        ? "This job includes the full tire, brake, maintenance, photo, and report workflow."
+                        : "This job uses a quicker maintenance-style inspection for services like oil changes, tune-ups, and repair work."}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex-1 space-y-2">
@@ -2286,7 +2359,7 @@ if (!isAuthorized) {
 
         <Tabs defaultValue="vehicle" className="mt-6 space-y-6">
           <TabsList className="flex h-auto w-full flex-nowrap items-stretch justify-start gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-200 p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:gap-3">
-            {workflowStepOrder.map((step) => (
+            {activeWorkflowStepOrder.map((step) => (
               <TabsTrigger
                 key={step}
                 value={step}
@@ -2495,6 +2568,7 @@ if (!isAuthorized) {
             </Card>
           </TabsContent>
 
+          {inspectionMode === "full" ? (
           <TabsContent value="tires">
             <div className="space-y-6">
               <SectionHeader icon={ClipboardList} title="Tire inspection" subtitle="Record PSI, tread data, condition, and wear indicators for each tire." />
@@ -2560,7 +2634,9 @@ if (!isAuthorized) {
               </div>
             </div>
           </TabsContent>
+          ) : null}
 
+          {inspectionMode === "full" ? (
           <TabsContent value="brakes">
             <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
               <CardContent className="space-y-6 p-6">
@@ -2603,6 +2679,7 @@ if (!isAuthorized) {
               </CardContent>
             </Card>
           </TabsContent>
+          ) : null}
 
           <TabsContent value="maintenance">
             <div className="space-y-6">
@@ -2698,7 +2775,7 @@ if (!isAuthorized) {
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={ClipboardList} title="Maintenance inspection" subtitle="Record service recommendations and why each item needs attention." />
                   <div className="grid gap-4">
-                    {maintenanceItems.map((item) => (
+                    {activeMaintenanceItems.map((item) => (
                       <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_320px_1fr]">
                         <div className="flex items-center font-medium">{item}</div>
                         <QuickConditionButtons value={maintenance[item].status} onChange={(value) => updateMaintenance(item, "status", value)} />
@@ -2713,7 +2790,7 @@ if (!isAuthorized) {
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={ClipboardList} title="Steering, suspension, and undercar inspection" subtitle="Use this section for undercarriage and steering components from the inspection sheet." />
                   <div className="grid gap-4">
-                    {undercarItems.map((item) => (
+                    {activeUndercarItems.map((item) => (
                       <div key={item} className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:grid-cols-[1.2fr_320px_1fr]">
                         <div className="flex items-center font-medium">{item}</div>
                         <QuickConditionButtons value={undercar[item].status} onChange={(value) => updateUndercar(item, "status", value)} />

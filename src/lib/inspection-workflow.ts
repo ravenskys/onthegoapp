@@ -8,6 +8,14 @@ export const workflowStepOrder = [
   "review",
 ] as const;
 
+export const abbreviatedWorkflowStepOrder = [
+  "vehicle",
+  "maintenance",
+  "photos",
+  "customer-report",
+  "review",
+] as const;
+
 export const workflowStepLabels: Record<string, string> = {
   vehicle: "Customer and vehicle information",
   tires: "Tire inspection",

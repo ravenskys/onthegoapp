@@ -30,6 +30,7 @@ create index if not exists deleted_jobs_audit_job_id_idx
 
 alter table public.deleted_jobs_audit enable row level security;
 
+drop policy if exists "admins can view deleted jobs audit" on public.deleted_jobs_audit;
 create policy "admins can view deleted jobs audit"
 on public.deleted_jobs_audit
 for select
@@ -178,6 +179,7 @@ after delete on public.jobs
 for each row
 execute function public.cleanup_deleted_job_estimates();
 
+drop policy if exists "managers and admins can delete jobs" on public.jobs;
 create policy "managers and admins can delete jobs"
 on public.jobs
 for delete

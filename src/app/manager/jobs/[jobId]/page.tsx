@@ -61,6 +61,7 @@ interface JobService {
   service_description: string | null;
   estimated_hours: number | null;
   estimated_price: number | null;
+  estimated_cost: number | null;
   sort_order: number;
 }
 
@@ -71,6 +72,22 @@ interface CatalogService {
   service_description: string | null;
   default_duration_minutes: number | null;
   default_price: number | null;
+  default_part_name: string | null;
+  default_part_number: string | null;
+  default_part_quantity: number | null;
+  default_part_supplier: string | null;
+  default_parts_cost: number | null;
+  default_parts_price: number | null;
+  default_parts_notes: string | null;
+  service_catalog_parts?: CatalogServicePart[];
+}
+
+interface CatalogServicePart {
+  id: string;
+  part_name: string;
+  default_quantity: number | null;
+  notes: string | null;
+  sort_order: number;
 }
 
 interface Supplier {
@@ -138,6 +155,7 @@ export default function JobDetailPage() {
   const [editServiceDescription, setEditServiceDescription] = useState("");
   const [editServiceEstimatedHours, setEditServiceEstimatedHours] = useState("");
   const [editServiceEstimatedPrice, setEditServiceEstimatedPrice] = useState("");
+  const [editServiceEstimatedCost, setEditServiceEstimatedCost] = useState("");
   const [parts, setParts] = useState<JobPart[]>([]);
   const [newPartName, setNewPartName] = useState("");
   const [newPartNumber, setNewPartNumber] = useState("");
@@ -341,7 +359,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         const { data: catalogData, error: catalogError } = await supabase
             .from("service_catalog")
             .select(
-            "id, service_code, service_name, service_description, default_duration_minutes, default_price"
+            "id, service_code, service_name, service_description, default_duration_minutes, default_price, default_part_name, default_part_number, default_part_quantity, default_part_supplier, default_parts_cost, default_parts_price, default_parts_notes, service_catalog_parts(id, part_name, default_quantity, notes, sort_order)"
             )
             .eq("is_active", true)
             .order("sort_order", { ascending: true })
@@ -442,14 +460,70 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 service_description: catalogService.service_description,
                 estimated_hours: estimatedHours,
                 estimated_price: catalogService.default_price,
+                estimated_cost: null,
                 sort_order: nextSortOrder,
             })
             .select(
-                "id, service_name, service_description, estimated_hours, estimated_price, sort_order"
+                "id, service_name, service_description, estimated_hours, estimated_price, estimated_cost, sort_order"
             )
             .single();
 
             if (error) throw error;
+
+            const catalogPartTemplates = (catalogService.service_catalog_parts ?? [])
+              .filter((part) => (part.part_name ?? "").trim())
+              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+            if (catalogPartTemplates.length > 0) {
+              const { data: insertedParts, error: partError } = await supabase
+                .from("job_parts")
+                .insert(
+                  catalogPartTemplates.map((part) => ({
+                    job_id: jobId,
+                    job_service_id: insertedService.id,
+                    part_name: part.part_name.trim(),
+                    quantity: part.default_quantity ?? 1,
+                    notes: part.notes?.trim() || null,
+                    part_number: null,
+                    unit_cost: null,
+                    unit_price: null,
+                    supplier: null,
+                  })),
+                )
+                .select("id, part_name, part_number, quantity, unit_cost, unit_price, supplier");
+
+              if (partError) throw partError;
+
+              setParts((prev) => [...prev, ...(insertedParts ?? [])]);
+            } else if (
+              (catalogService.default_part_name ?? "").trim() ||
+              (catalogService.default_part_number ?? "").trim() ||
+              catalogService.default_part_quantity !== null ||
+              (catalogService.default_part_supplier ?? "").trim() ||
+              catalogService.default_parts_cost !== null ||
+              catalogService.default_parts_price !== null ||
+              (catalogService.default_parts_notes ?? "").trim()
+            ) {
+              const { data: insertedPart, error: partError } = await supabase
+                .from("job_parts")
+                .insert({
+                  job_id: jobId,
+                  job_service_id: insertedService.id,
+                  part_name: catalogService.default_part_name?.trim() || `${catalogService.service_name} Parts`,
+                  part_number: catalogService.default_part_number?.trim() || null,
+                  quantity: catalogService.default_part_quantity ?? 1,
+                  unit_cost: catalogService.default_parts_cost,
+                  unit_price: catalogService.default_parts_price,
+                  supplier: catalogService.default_part_supplier?.trim() || null,
+                  notes: catalogService.default_parts_notes?.trim() || null,
+                })
+                .select("id, part_name, part_number, quantity, unit_cost, unit_price, supplier")
+                .single();
+
+              if (partError) throw partError;
+
+              setParts((prev) => [...prev, insertedPart]);
+            }
 
             setServices((prev) => [...prev, insertedService]);
             setSelectedCatalogServiceId("");
@@ -570,6 +644,11 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             ? String(service.estimated_price)
             : ""
         );
+        setEditServiceEstimatedCost(
+          typeof service.estimated_cost === "number"
+            ? String(service.estimated_cost)
+            : ""
+        );
       };
 
       const handleSaveEditService = async () => {
@@ -594,10 +673,13 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               estimated_price: editServiceEstimatedPrice
                 ? Number(editServiceEstimatedPrice)
                 : null,
+              estimated_cost: editServiceEstimatedCost
+                ? Number(editServiceEstimatedCost)
+                : null,
             })
             .eq("id", editingServiceId)
             .select(
-              "id, service_name, service_description, estimated_hours, estimated_price, sort_order"
+              "id, service_name, service_description, estimated_hours, estimated_price, estimated_cost, sort_order"
             )
             .single();
 
@@ -614,6 +696,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           setEditServiceDescription("");
           setEditServiceEstimatedHours("");
           setEditServiceEstimatedPrice("");
+          setEditServiceEstimatedCost("");
         } catch (error: unknown) {
           console.error(error);
           alert(`Failed to update service: ${getErrorMessage(error)}`);
@@ -628,6 +711,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setEditServiceDescription("");
         setEditServiceEstimatedHours("");
         setEditServiceEstimatedPrice("");
+        setEditServiceEstimatedCost("");
       };
 
       const handleStartEditPart = (part: JobPart) => {
@@ -870,7 +954,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               description: service.service_name,
               quantity: 1,
               unit_price: service.estimated_price ?? 0,
-              unit_cost: null,
+              unit_cost: service.estimated_cost ?? null,
               taxable: true,
               sort_order: index,
               notes: service.service_description ?? null,
@@ -1371,6 +1455,16 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                       {catalogServices.map((service) => (
                         <SelectItem key={service.id} value={service.id}>
                           {service.service_name}
+                          {service.default_duration_minutes
+                            ? ` (${service.default_duration_minutes} min`
+                            : " ("}
+                          {service.default_price !== null ? `, $${service.default_price.toFixed(2)}` : ""}
+                          {(service.service_catalog_parts?.length ?? 0) > 0
+                            ? `, ${service.service_catalog_parts?.length} default part${service.service_catalog_parts?.length === 1 ? "" : "s"}`
+                            : service.default_part_name || service.default_parts_cost !== null || service.default_parts_price !== null
+                            ? ", includes legacy default part"
+                            : ""}
+                          )
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1432,6 +1526,17 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                   setEditServiceEstimatedPrice(e.target.value)
                                 }
                               />
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Estimated cost"
+                                value={editServiceEstimatedCost}
+                                onChange={(e) =>
+                                  setEditServiceEstimatedCost(e.target.value)
+                                }
+                              />
                             </div>
                           ) : (
                             <div>
@@ -1445,6 +1550,9 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                 <span>Est. Hours: {svc.estimated_hours || "-"}</span>
                                 <span>
                                   Est. Price: ${svc.estimated_price?.toFixed(2) || "-"}
+                                </span>
+                                <span>
+                                  Est. Cost: ${svc.estimated_cost?.toFixed(2) || "-"}
                                 </span>
                               </div>
                             </div>
