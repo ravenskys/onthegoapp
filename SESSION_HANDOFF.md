@@ -18,6 +18,8 @@
 - Untracked generated build folders, do not commit:
   - `.next-verify-accounting/`
   - `.next-verify-utf8/`
+- Supabase local CLI temp state is machine-local and should not be committed:
+  - `supabase/.temp/`
 
 ## Recently Finished
 - Created manager scheduling calendar at `/manager/schedule`.
