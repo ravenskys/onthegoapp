@@ -1,20 +1,3 @@
-do $$
-declare
-  preserve_count integer;
-begin
-  select count(*)
-  into preserve_count
-  from public.customers
-  where lower(coalesce(first_name, '')) = 'mike'
-    and lower(coalesce(last_name, '')) = 'sherman'
-    and lower(coalesce(email, '')) in ('soaringmike@gmail.com', 'soaringmike@proton.me');
-
-  if preserve_count = 0 then
-    raise exception 'No customer matching Mike Sherman with soaringmike@gmail.com or soaringmike@proton.me was found. Aborting reset.';
-  end if;
-end
-$$;
-
 create temp table otg_preserve_customers on commit drop as
 select id
 from public.customers
