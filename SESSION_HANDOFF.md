@@ -1,10 +1,42 @@
 # Session Handoff
 
+## Recorded product decisions (consolidated roadmap)
+
+- **Job source**: Customer scheduling RPCs set `jobs.source = customer_portal`. Shop jobs created from `/manager/jobs/new` set `source = manual` and `created_by_user_id` to the signed-in manager user. The jobs list supports filtering by source (shop vs customer portal).
+- **`appointments` vs `jobs`**: Customer-facing scheduling continues to write to `public.jobs` as the system of record. `public.appointments` remains in the schema and is referenced for conflict checks in scheduler SQL; automatically mirroring customer bookings into `appointments` is deferred until a dedicated calendar/appointments product pass.
+- **Technician pay vs job/service cost**: Still open—wire technician pay into job or line-item cost displays after you define the pay rules (service-catalog default labor cost stays de-emphasized).
+- **Default parts model**: Continue supporting both legacy single default-part fields and `service_catalog_parts` until you intentionally migrate and remove the legacy columns/UI.
+
+## Roadmap tooling (repo)
+
+- **Node**: `package.json` `engines.node` is `>=20`; see [README.md](./README.md) for new-machine steps.
+- **Supabase CLI**: `npm run supabase:link`, `npm run supabase:migration-list`, `npm run supabase:db-push`. Scripts use **`dotenv -o`** so values in **`.env.local` override** any `SUPABASE_*` variables already set in Windows (stale env vars were causing `28P01` even when `.env.local` was correct). Set **`SUPABASE_DB_PASSWORD`** to match **Project Settings → Database**. If `db push` says a local migration must be inserted before the last remote one, use **`npm run supabase:db-push:all`** (`--include-all`).
+- **Layouts**: Role checks live in `PortalRouteGuard` (`src/components/portal/PortalRouteGuard.tsx`) for `customer`, `tech`, `manager`, and `admin` segment layouts. Customer login/signup/reset-password routes skip the guard.
+- **Navigation**: Top nav items are defined in `src/lib/portal-nav-config.ts` and consumed by `PortalTopNav`.
+
+## Local Supabase baseline (when you need rebuildable local DB)
+
+Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md), [BASELINE_MIGRATION_PLAN.md](./BASELINE_MIGRATION_PLAN.md), [MANUAL_CORE_SCHEMA_REFERENCE.md](./MANUAL_CORE_SCHEMA_REFERENCE.md). Hosted Supabase remains the default dev path until this is done.
+
 ## Current Status
-- Branch: `main`
-- Latest commit on this workspace: `02f5c29 Add customer portal scheduling updates`
-- Current work has been committed and pushed to the isolated `secondary` repo.
-- The deployed repo remains separate as `upstream`.
+- Branch: `main` (local branch tracks **`secondary/main`** for routine pushes).
+- **Next convergence**: when you are ready to ship, plan a merge or PR from this line of work (**`secondary/main`**) into **`upstream/main`** (`onthegoapp`) so the primary deployed repo stays a deliberate promotion.
+- Push day-to-day work to **`secondary`**; use **`upstream`** only when intentionally updating the main app repo.
+- For the exact commit hash after the latest push, run `git log -1 --oneline` on `secondary/main`.
+
+## Session checkpoint — 2026-04-12 (evening)
+- **Customer portal UX**
+  - `/customer/book` — step-by-step **Get service** wizard (book vs request-first, vehicle, then continue to scheduler with query params).
+  - `/customer/schedule` — reads `?vehicle=&flow=book|request&guided=1` to prefill and show a guided banner; wrapped in `Suspense` for `useSearchParams`.
+  - `/customer/dashboard` — overview hub tiles; combined **Service center** card (visit + recommendations); reduced duplicate service-progress content on the home page.
+  - Customer top nav: **Get Service** → `/customer/book` (replaces a duplicate “Schedule only” entry); full scheduler still at `/customer/schedule`.
+- **Manager portal UX**
+  - `/manager/jobs` — **Jobs hub**: New customer → `/manager/jobs/new?flow=new`, Returning → `?flow=returning`, View all → `/manager/jobs/list`.
+  - `/manager/jobs/list` — previous all-jobs list UI (filters, cards, delete).
+  - `/manager/jobs/new` — optional **Add customer** block for `flow=new`; customer combobox auto-opens for `flow=returning`; `Suspense` wrapper for search params.
+  - Manager nav: single **Jobs** item (removed separate **New Job**). Job detail “back to list” targets `/manager/jobs/list`.
+  - Manager home: one **Jobs** tile (removed duplicate **New Job** tile); Customers header button goes to Jobs hub; schedule shortcut goes to hub.
+- **Shared / infra touched in this stretch** (see git history for full set): `src/lib/portal-nav-config.ts`, `PortalRouteGuard`, layouts, `service-other`, `technician-pay` + migration, manager employees, job source helpers, etc.
 
 ## Git Remotes
 - `upstream` -> `https://github.com/onthegomaint-glitch/onthegoapp.git`
@@ -13,7 +45,7 @@
 - Merge back later from `secondary` into `upstream` when the feature is ready.
 
 ## Current Git Status
-- Working tree was clean immediately after pushing `02f5c29`, before this handoff update.
+- After this handoff update, run `git status` to confirm a clean tree post-commit.
 - If `SESSION_HANDOFF.md` appears modified, that is expected from this update.
 - Untracked generated build folders, do not commit:
   - `.next-verify-accounting/`
@@ -145,21 +177,8 @@
   - removed `Link Pins`, `Center Link`, `Control Arms`, `Hub / Bearings`, `Bushings`, `Ball Joints`, and `Intermediate Pipe`
 
 ## Verification From Latest Work
-- `npx.cmd tsc --noEmit` passed.
-- `npx.cmd eslint src\app\customer\schedule\page.tsx` passed.
-- `npx.cmd eslint src\app\admin\settings\page.tsx` passed.
-- `npx.cmd eslint src\app\admin\settings\page.tsx src\app\manager\jobs\[jobId]\page.tsx` passed.
-- `npx.cmd eslint src\app\customer\account\page.tsx src\app\customer\schedule\page.tsx src\lib\customer-portal.ts` passed.
-- `npx.cmd eslint src\app\manager\schedule\page.tsx src\app\manager\jobs\[jobId]\page.tsx` passed.
-- `npx.cmd eslint src\lib\customer-portal.ts src\app\customer\dashboard\page.tsx src\app\customer\schedule\page.tsx` passed.
-- `npx.cmd eslint src\app\manager\jobs\[jobId]\page.tsx` passed after the new default-parts-template flow was added.
-- `npx.cmd eslint src\app\admin\settings\page.tsx` passed after service delete / labor-cost UI cleanup.
-- `npx.cmd eslint src/app/manager/jobs/[jobId]/page.tsx` passed after catalog-service cost preload changes.
-- `npx.cmd eslint src\app\admin\settings\page.tsx` passed after searchable accordion-style service catalog updates.
-- `npx.cmd eslint src\app\tech\page.tsx` passed with existing image warnings only after abbreviated inspection mode and checklist cleanup.
-- `npx.cmd tsc --noEmit` passed after the abbreviated inspection mode and checklist cleanup.
-- Broader targeted checks passed earlier:
-  - `npx.cmd eslint src\app\customer\schedule\page.tsx src\app\customer\dashboard\page.tsx src\components\portal\PortalTopNav.tsx src\app\manager\schedule\page.tsx src\app\manager\availability\page.tsx`
+- `npx.cmd tsc --noEmit` passed (including after abbreviated inspection / checklist work).
+- Targeted `npx.cmd eslint` passed on customer schedule/account/portal, manager schedule/jobs, admin settings (service catalog, delete flow, default parts), and `src\app\tech\page.tsx` (image warnings only there).
 - Full production builds may still hit Windows/OneDrive `EPERM` file-lock issues in `.next` output folders.
 
 ## Important Supabase Note
@@ -177,8 +196,6 @@
   - `supabase/migrations/20260408100000_seed_common_service_catalog.sql`
   - `supabase/migrations/20260408110000_update_service_catalog_labor_rates.sql`
   - `supabase/migrations/20260408113000_add_service_catalog_parts_table.sql`
-- The following migration was added locally but still needs to be pushed live:
-  - `supabase/migrations/20260408120000_add_service_catalog_delete_policy.sql`
 - If `/customer/schedule` shows no slots after applying code, check:
   - migration applied
   - employees have active `available` blocks in `technician_schedule_blocks`
@@ -196,11 +213,11 @@
   - verify required-field red states/inline helper text are visible in the live theme and not being overridden
   - verify permission-confirmation gating for condo/apartment/office/other locations
   - consider replacing ZIP/city heuristic with a maps API later if real drive times are needed
-- Add a way to create regular jobs, separate from customer-requested scheduler jobs.
+- Shop-created “regular” jobs (separate from customer portal bookings): start from **`/manager/jobs`** (hub) → **New customer** or **Returning customer** → **`/manager/jobs/new`** with optional `?flow=` (`jobs.source = manual`); full list and filters at **`/manager/jobs/list`**.
 - Connect service-catalog defaults into manager job workflow:
   - verify new default labor price / default part integration live after the new migrations are applied
   - verify the new `service_catalog_parts` templates create the expected editable `job_parts` rows when a catalog service is added to a job
-  - verify service deletion works live after pushing `20260408120000_add_service_catalog_delete_policy.sql`
+  - verify service deletion works live in Admin Settings (delete-policy migration is on hosted DB)
   - decide whether to keep the older single default-part fields long term or eventually migrate fully to the new parts-list model
   - decide how technician pay should flow into job/service cost calculations, since service-catalog labor cost has been de-emphasized
 - Verify the new abbreviated inspection mode live on `/tech`:
@@ -209,9 +226,16 @@
 - Decide whether customer scheduling should also create `appointments` rows or continue using `jobs` only.
 
 ## Helpful Files For Resume
-- `src/app/admin/settings/page.tsx`
+- `src/lib/portal-nav-config.ts`
+- `src/app/customer/book/page.tsx`
 - `src/app/customer/schedule/page.tsx`
 - `src/app/customer/dashboard/page.tsx`
+- `src/app/customer/layout.tsx`
+- `src/components/portal/PortalRouteGuard.tsx`
+- `src/app/manager/jobs/page.tsx` (hub)
+- `src/app/manager/jobs/list/page.tsx`
+- `src/app/manager/jobs/new/page.tsx`
+- `src/app/admin/settings/page.tsx`
 - `src/app/customer/account/page.tsx`
 - `src/lib/customer-portal.ts`
 - `supabase/migrations/20260407100000_add_customer_vehicle_write_rls.sql`
@@ -225,15 +249,18 @@
 - `supabase/migrations/20260408120000_add_service_catalog_delete_policy.sql`
 - `src/app/manager/schedule/page.tsx`
 - `src/app/manager/availability/page.tsx`
-- `src/app/manager/jobs/new/page.tsx`
 - `src/app/manager/jobs/[jobId]/page.tsx`
 - `src/app/tech/page.tsx`
 - `src/lib/inspection-workflow.ts`
+- `src/lib/service-other.ts`
+- `src/lib/job-source.ts`
 - `src/components/portal/PortalTopNav.tsx`
 - `src/app/globals.css`
 - `supabase/migrations/20260406120000_add_customer_scheduler_functions.sql`
 - `supabase/migrations/20260327214639_create_service_catalog_table.sql`
 - `supabase/migrations/20260327213751_create_customer_addresses_table.sql`
+- `supabase/migrations/20260415120000_create_technician_pay_rates.sql` (if present in tree; technician pay wiring)
+- `src/lib/technician-pay.ts`
 
 ## Good Resume Prompt
 Use this when resuming:

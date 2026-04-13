@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  CalendarDays,
   CarFront,
-  ClipboardList,
   FileText,
+  LayoutDashboard,
   UserRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -22,7 +23,6 @@ import {
   formatVehicleMiles,
   fetchCustomerPortalData,
   getCustomerRecommendedServices,
-  getCustomerWorkflowStepState,
   getSingleRelation,
   type CustomerPortalVehicle,
   type CustomerPortalData,
@@ -36,69 +36,72 @@ import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 const EMPTY_VEHICLES: CustomerPortalVehicle[] = [];
 
-function DashboardMetric({
+function OverviewHubTile({
   icon: Icon,
-  label,
-  value,
-  tone = "default",
-  onClick,
+  title,
+  subtitle,
+  href,
+  accent = "lime",
 }: {
   icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  tone?: "default" | "success";
-  onClick?: () => void;
+  title: string;
+  subtitle: string;
+  href: string;
+  accent?: "lime" | "slate";
 }) {
-  const className = `w-full rounded-[24px] border border-slate-200 bg-slate-50 p-4 ${
-    onClick
-      ? "text-left transition-colors hover:border-lime-400/40 hover:bg-lime-400/10"
-      : ""
-  }`;
-
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick} className={className}>
-        <div className="flex items-center gap-3">
-          <div
-            className={`rounded-2xl p-2 ${
-              tone === "success"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-slate-200 text-slate-800"
-            }`}
-          >
-            <Icon className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {label}
-            </div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">
-              {value}
-            </div>
-          </div>
-        </div>
-      </button>
-    );
-  }
-
   return (
-    <div className={className}>
-      <div className="flex items-center gap-3">
+    <a
+      href={href}
+      className={`group flex min-h-[120px] flex-col justify-between rounded-[24px] border p-4 transition sm:min-h-[128px] sm:p-5 ${
+        accent === "lime"
+          ? "border-lime-400/40 bg-[linear-gradient(145deg,rgba(57,255,20,0.14),rgba(12,22,15,0.92))] hover:border-lime-400/70 hover:shadow-[0_0_24px_rgba(57,255,20,0.12)]"
+          : "border-slate-200 bg-slate-50 hover:border-lime-300/60 hover:bg-white"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div
-          className={`rounded-2xl p-2 ${
-            tone === "success"
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-slate-200 text-slate-800"
+          className={`rounded-2xl p-2.5 ${
+            accent === "lime" ? "bg-lime-400/90 text-black" : "bg-slate-200 text-slate-900"
           }`}
         >
           <Icon className="h-5 w-5" />
         </div>
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {label}
-          </div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
+        <ArrowRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-lime-600" />
+      </div>
+      <div className="mt-4 min-w-0">
+        <div className="text-base font-semibold text-slate-900 sm:text-lg">{title}</div>
+        <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
+      </div>
+    </a>
+  );
+}
+
+function DashboardMainSectionHeader({
+  icon: Icon,
+  kicker,
+  title,
+  description,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  kicker: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+      <div className="shrink-0 rounded-2xl bg-slate-200 p-2.5 text-slate-900">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          {kicker}
         </div>
+        <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+          {title}
+        </h2>
+        {description ? (
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">{description}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -154,8 +157,6 @@ export default function CustomerDashboardPage() {
   const vehicles = portalData?.vehicles ?? EMPTY_VEHICLES;
   const reports = portalData?.reports ?? [];
   const latestInspection = portalData?.latestInspection ?? null;
-  const latestInspectionPhotoCount =
-    portalData?.latestInspectionPhotoCount ?? 0;
   const latestWorkflowSteps =
     latestInspection?.inspection_summary?.workflow_steps || {};
   const workflowTotal =
@@ -239,8 +240,8 @@ export default function CustomerDashboardPage() {
                   Customer Vehicle Center
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm text-lime-50/85">
-                  Your customer home page keeps vehicles, current service status,
-                  and maintenance recommendations in one place.
+                  Start with the overview cards below—each one opens the right area.
+                  Your vehicles and last visit stay in the panels underneath.
                 </p>
               </div>
             </div>
@@ -259,6 +260,42 @@ export default function CustomerDashboardPage() {
               className="!border-lime-500/25 !bg-[#0d1610]"
             />
           </div>
+        </div>
+
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <OverviewHubTile
+            icon={CalendarDays}
+            title="Get service"
+            subtitle="Step-by-step: book a time or send a request"
+            href="/customer/book"
+            accent="lime"
+          />
+          <OverviewHubTile
+            icon={LayoutDashboard}
+            title="Service progress"
+            subtitle={
+              latestInspection
+                ? `${workflowCompleted} of ${workflowTotal} steps · ${latestServiceDate}`
+                : "No active visit"
+            }
+            href="/customer/progress"
+          />
+          <OverviewHubTile
+            icon={FileText}
+            title="Reports"
+            subtitle={
+              completedReportsCount
+                ? `${completedReportsCount} completed report${completedReportsCount === 1 ? "" : "s"}`
+                : "History will appear here"
+            }
+            href="/customer/reports"
+          />
+          <OverviewHubTile
+            icon={UserRound}
+            title="Account"
+            subtitle="Phone, addresses, and profile"
+            href="/customer/account"
+          />
         </div>
 
         <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -326,23 +363,6 @@ export default function CustomerDashboardPage() {
               </div>
 
               <div className="space-y-4 p-4 sm:p-5">
-                <DashboardMetric
-                  icon={ClipboardList}
-                  label="Latest Service"
-                  value={latestServiceDate}
-                  onClick={() => {
-                    window.location.href = "/customer/progress";
-                  }}
-                />
-                <DashboardMetric
-                  icon={FileText}
-                  label="Completed Reports"
-                  value={String(completedReportsCount)}
-                  onClick={() => {
-                    window.location.href = "/customer/reports";
-                  }}
-                />
-
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Account Snapshot
@@ -364,161 +384,115 @@ export default function CustomerDashboardPage() {
             </div>
           </aside>
 
-          <main className="min-w-0 space-y-4 sm:space-y-6">
-            <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-              <div className="otg-card min-w-0 p-4 sm:p-6">
-                <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-start">
-                  <div>
-                    <div className="inline-flex rounded-full border border-lime-400/35 bg-lime-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-lime-300">
-                      {latestInspection ? "Inspection Active" : "No active service"}
-                    </div>
-                    <h2 className="mt-4 text-2xl font-semibold text-slate-900 sm:text-3xl">
-                      {latestInspection
-                        ? "Your latest inspection is in progress"
-                        : "Your vehicle overview starts here"}
-                    </h2>
-                    <p className="mt-3 max-w-2xl text-sm text-slate-600">
-                      {latestInspection
-                        ? "Track the latest technician workflow and jump straight into service progress or customer report history when you need more detail."
-                        : "As soon as a technician starts your next inspection, service progress will show up here automatically."}
-                    </p>
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                      <a href="/customer/schedule" className="otg-btn otg-btn-primary sm:w-auto">
-                        Schedule Service
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.location.href = completedReportsCount
-                            ? "/customer/reports"
-                            : "/customer/account";
-                        }}
-                        className="otg-btn otg-btn-secondary sm:w-auto"
-                      >
-                        {completedReportsCount
-                          ? "Open Report History"
-                          : "Update Account"}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </button>
-                      <a href="/customer/progress" className="otg-btn otg-btn-secondary sm:w-auto">
-                        See Service Progress
-                      </a>
-                    </div>
-                  </div>
+          <main className="min-w-0">
+            <div className="otg-card min-w-0 p-4 sm:p-6 md:p-8">
+              <DashboardMainSectionHeader
+                icon={LayoutDashboard}
+                kicker="Service center"
+                title="Your visit and maintenance ideas"
+                description="Track the job in progress and see suggestions for what to book next."
+              />
 
-                  <div className="rounded-[28px] border border-lime-400/30 bg-[radial-gradient(circle_at_top,rgba(57,255,20,0.22),rgba(17,27,20,0.9)_70%)] px-5 py-4 text-left shadow-[0_0_22px_rgba(57,255,20,0.12)] sm:text-right">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-lime-200">
-                      Customer Status
+              <div className="mt-8 rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5 md:p-6">
+                <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:gap-8">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {latestInspection ? "Current visit" : "Welcome"}
                     </div>
-                    <div className="mt-2 text-lg font-semibold text-white">
-                      {latestInspection ? "In service" : "Waiting on next visit"}
-                    </div>
+                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                      {latestInspection ? "Visit in progress" : "Plan your next service"}
+                    </h3>
+                    {latestInspection ? (
+                      <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                        All live details for this visit—steps, photos, and technician notes—are on{" "}
+                        <a
+                          href="/customer/progress"
+                          className="font-semibold text-lime-700 underline-offset-2 hover:underline"
+                        >
+                          Service progress
+                        </a>
+                        . The Service progress card above shows your step count at a glance.
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                        When a technician starts work on your vehicle, status will show on the Service progress
+                        card above. Book or request service with the actions on the right when you&apos;re ready.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-3 lg:justify-center">
+                    <a href="/customer/book" className="otg-btn otg-btn-primary w-full sm:w-auto lg:w-full">
+                      Get service
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </a>
+                    <a
+                      href="/customer/schedule"
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-800 transition hover:border-lime-300 hover:bg-lime-50 sm:w-auto lg:w-full"
+                    >
+                      Open full scheduler
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.location.href = completedReportsCount
+                          ? "/customer/reports"
+                          : "/customer/account";
+                      }}
+                      className="otg-btn otg-btn-secondary w-full sm:w-auto lg:w-full"
+                    >
+                      {completedReportsCount
+                        ? "Open Report History"
+                        : "Update Account"}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-
-                {latestInspection ? (
-                  <div className="mt-6 space-y-4">
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <div className="text-xl font-semibold text-slate-900 sm:text-2xl">
-                            {buildVehicleLabel(latestVehicle)}
-                          </div>
-                          <div className="mt-2 text-sm text-slate-600">
-                            Last updated:{" "}
-                            {latestInspection.created_at
-                              ? new Date(latestInspection.created_at).toLocaleString()
-                              : "-"}
-                          </div>
-                          <div className="mt-1 text-sm text-slate-600">
-                            Technician: {latestInspection.tech_name || "-"}
-                          </div>
-                        </div>
-
-                        <div className="rounded-[22px] border border-lime-400/35 bg-lime-400 px-4 py-3 text-sm font-semibold text-black">
-                          {workflowCompleted} of {workflowTotal} steps complete
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid min-w-0 gap-3 md:grid-cols-2">
-                      {Object.entries(workflowStepLabels).map(([stepKey, label]) => {
-                        const stepState = getCustomerWorkflowStepState(
-                          latestInspection,
-                          stepKey,
-                          latestInspectionPhotoCount
-                        );
-
-                        return (
-                          <div
-                            key={stepKey}
-                            className={`rounded-[22px] border p-4 text-sm ${stepState.className}`}
-                          >
-                            <div className="font-semibold">{label}</div>
-                            <div className="mt-1">
-                              {stepState.label}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Technician Notes
-                      </div>
-                      <div className="mt-3 text-sm leading-7 text-slate-700">
-                        {latestInspection.notes ||
-                          "No technician notes were added to the current inspection."}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-slate-600 sm:p-5">
-                    No live service progress is available yet.
-                  </div>
-                )}
               </div>
 
-              <div className="otg-card min-w-0 p-4 sm:p-6">
-                <div className="flex items-start gap-3 sm:items-center">
-                  <div className="rounded-2xl bg-slate-200 p-2 text-slate-900">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">
-                      Recommended Services
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Suggestions are based on the current primary vehicle and mileage on file.
-                    </p>
-                  </div>
+              <div className="mt-8 min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Recommendations
                 </div>
+                <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                  Suggested maintenance
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Based on your primary vehicle and mileage on file.
+                </p>
 
-                <div className="mt-5 space-y-3">
+                <div className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2">
                   {recommendedServices.length ? (
                     recommendedServices.map((item) => (
                       <div
                         key={`${item.category}-${item.service}`}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                        className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 sm:p-5"
                       >
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           {item.category}
                         </div>
-                        <div className="mt-2 text-lg font-semibold text-slate-900">
+                        <div className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
                           {item.service}
                         </div>
                         {item.note ? (
-                          <div className="mt-2 text-sm text-slate-600">{item.note}</div>
+                          <div className="mt-2 text-sm leading-relaxed text-slate-600">{item.note}</div>
                         ) : null}
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 sm:col-span-2 sm:p-5">
                       No recommended services are available yet for the current vehicle details.
                     </div>
                   )}
+                </div>
+
+                <div className="mt-6 border-t border-slate-200 pt-5">
+                  <a
+                    href="/customer/book"
+                    className="inline-flex items-center text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
+                  >
+                    Book or request one of these
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                  </a>
                 </div>
               </div>
             </div>

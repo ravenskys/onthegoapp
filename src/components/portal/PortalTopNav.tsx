@@ -7,90 +7,12 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getUserRoles, hasPortalAccess, type PortalRole } from "@/lib/portal-auth";
 import {
-  getUserRoles,
-  hasPortalAccess,
-  type PortalDestination,
-  type PortalRole,
-} from "@/lib/portal-auth";
-
-type PortalNavSection = "customer" | "tech" | "manager" | "admin";
-
-type PortalNavItem = {
-  href: string;
-  label: string;
-  matchPrefixes?: string[];
-  excludePrefixes?: string[];
-};
-
-type PortalNavGroup = {
-  destination: PortalDestination;
-  label: string;
-  items: PortalNavItem[];
-};
-
-const portalNavGroups: PortalNavGroup[] = [
-  {
-    destination: "customer",
-    label: "Customer",
-    items: [
-      { href: "/customer/dashboard", label: "Home" },
-      { href: "/customer/schedule", label: "Schedule Service" },
-      { href: "/customer/progress", label: "Service Progress" },
-      { href: "/customer/reports", label: "Customer Report History" },
-      { href: "/customer/account", label: "Account" },
-    ],
-  },
-  {
-    destination: "tech",
-    label: "Technician",
-    items: [
-      { href: "/tech", label: "Inspection" },
-      { href: "/tech/jobs", label: "Jobs" },
-    ],
-  },
-  {
-    destination: "manager",
-    label: "Manager",
-    items: [
-      { href: "/manager", label: "Dashboard" },
-      {
-        href: "/manager/jobs",
-        label: "Jobs",
-        matchPrefixes: ["/manager/jobs/"],
-        excludePrefixes: ["/manager/jobs/new"],
-      },
-      { href: "/manager/schedule", label: "Schedule" },
-      { href: "/manager/availability", label: "Employee Availability" },
-      { href: "/manager/jobs/new", label: "New Job" },
-      {
-        href: "/manager/customers",
-        label: "Customers",
-        matchPrefixes: ["/manager/customers/"],
-      },
-    ],
-  },
-  {
-    destination: "admin",
-    label: "Admin",
-    items: [
-      { href: "/admin", label: "Admin Home" },
-      { href: "/admin/settings", label: "Settings" },
-    ],
-  },
-];
-
-const isItemActive = (pathname: string, item: PortalNavItem) => {
-  if (pathname === item.href) {
-    return true;
-  }
-
-  if (item.excludePrefixes?.some((prefix) => pathname.startsWith(prefix))) {
-    return false;
-  }
-
-  return item.matchPrefixes?.some((prefix) => pathname.startsWith(prefix)) ?? false;
-};
+  isPortalNavItemActive,
+  portalNavGroups,
+  type PortalNavSection,
+} from "@/lib/portal-nav-config";
 
 type PortalTopNavProps = {
   section: PortalNavSection;
@@ -176,7 +98,7 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
         >
           {skipLookup
             ? customerItems.map((item) => {
-                const itemActive = isItemActive(pathname, item);
+                const itemActive = isPortalNavItemActive(pathname, item);
 
                 return (
                   <li key={item.href} className="shrink-0">
@@ -195,7 +117,9 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
                 );
               })
             : availableGroups.map((group) => {
-                const groupActive = group.items.some((item) => isItemActive(pathname, item));
+                const groupActive = group.items.some((item) =>
+                  isPortalNavItemActive(pathname, item),
+                );
                 const isOpen = openGroup === group.destination;
 
                 return (
@@ -230,7 +154,7 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
                         </div>
                         <div className="space-y-1">
                           {group.items.map((item) => {
-                            const itemActive = isItemActive(pathname, item);
+                            const itemActive = isPortalNavItemActive(pathname, item);
 
                             return (
                               <Link

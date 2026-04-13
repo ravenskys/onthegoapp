@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,12 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
+import { formatJobSourceLabel } from "@/lib/job-source";
+import {
+  CATALOG_OTHER_SERVICE_ID,
+  PART_SUPPLIER_OTHER_VALUE,
+  parseOptionalDecimal,
+} from "@/lib/service-other";
 
 // Types
 interface Job {
@@ -128,6 +134,69 @@ interface Note {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unknown error";
 
+/** Parse "Part #: … | …" from estimate line notes (matches create-estimate format). */
+function parsePartNotes(notes: string | null | undefined): {
+  partNumber: string;
+  extra: string;
+} {
+  if (!notes?.trim()) return { partNumber: "", extra: "" };
+  const s = notes.trim();
+  const m = s.match(/^Part\s*#\s*:\s*(.*)$/is);
+  if (!m) return { partNumber: "", extra: s };
+  const rest = m[1].trim();
+  const pipeIdx = rest.indexOf("|");
+  if (pipeIdx === -1) return { partNumber: rest, extra: "" };
+  return {
+    partNumber: rest.slice(0, pipeIdx).trim(),
+    extra: rest.slice(pipeIdx + 1).trim(),
+  };
+}
+
+function buildPartNotes(partNumber: string, extra: string): string | null {
+  const p = partNumber.trim();
+  const e = extra.trim();
+  if (!p && !e) return null;
+  if (p && e) return `Part #: ${p} | ${e}`;
+  if (p) return `Part #: ${p}`;
+  return e || null;
+}
+
+type EstimateLineTotalsInput = {
+  line_type: string;
+  quantity: number;
+  unit_price: number | null;
+};
+
+function computeEstimateTotalsFromLines(
+  items: EstimateLineTotalsInput[],
+  serviceTaxRate: string,
+  partsTaxRate: string,
+  isTaxExempt: boolean
+) {
+  let serviceSubtotal = 0;
+  let partsSubtotal = 0;
+  for (const line of items) {
+    const amt = (Number(line.quantity) || 0) * (Number(line.unit_price) ?? 0);
+    if (line.line_type === "part") partsSubtotal += amt;
+    else serviceSubtotal += amt;
+  }
+  const subtotal = serviceSubtotal + partsSubtotal;
+  const sr = Number(serviceTaxRate || "0") / 100;
+  const pr = Number(partsTaxRate || "0") / 100;
+  const serviceTaxTotal = isTaxExempt ? 0 : serviceSubtotal * sr;
+  const partsTaxTotal = isTaxExempt ? 0 : partsSubtotal * pr;
+  const taxTotal = serviceTaxTotal + partsTaxTotal;
+  return {
+    serviceSubtotal,
+    partsSubtotal,
+    subtotal,
+    serviceTaxTotal,
+    partsTaxTotal,
+    taxTotal,
+    grandTotal: subtotal + taxTotal,
+  };
+}
+
 const getServiceAddressLabel = (job: Job | null) =>
   job
     ? [
@@ -145,6 +214,14 @@ export default function JobDetailPage() {
   const jobId = params.jobId as string;
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [selectedCatalogServiceId, setSelectedCatalogServiceId] = useState("");
+  const [catalogOtherDescription, setCatalogOtherDescription] = useState("");
+  const [catalogOtherEstHours, setCatalogOtherEstHours] = useState("");
+  const [catalogOtherEstPrice, setCatalogOtherEstPrice] = useState("");
+  const [catalogOtherEstCost, setCatalogOtherEstCost] = useState("");
+  const [catalogOtherPartName, setCatalogOtherPartName] = useState("");
+  const [catalogOtherPartQty, setCatalogOtherPartQty] = useState("1");
+  const [catalogOtherPartUnitCost, setCatalogOtherPartUnitCost] = useState("");
+  const [catalogOtherPartUnitPrice, setCatalogOtherPartUnitPrice] = useState("");
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -163,6 +240,7 @@ export default function JobDetailPage() {
   const [newPartUnitCost, setNewPartUnitCost] = useState("");
   const [newPartUnitPrice, setNewPartUnitPrice] = useState("");
   const [newPartSupplier, setNewPartSupplier] = useState("");
+  const [newPartSupplierOther, setNewPartSupplierOther] = useState("");
   const [newPartNotes, setNewPartNotes] = useState("");
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editPartName, setEditPartName] = useState("");
@@ -171,6 +249,7 @@ export default function JobDetailPage() {
   const [editPartUnitCost, setEditPartUnitCost] = useState("");
   const [editPartUnitPrice, setEditPartUnitPrice] = useState("");
   const [editPartSupplier, setEditPartSupplier] = useState("");
+  const [editPartSupplierOther, setEditPartSupplierOther] = useState("");
   const [editPartNotes, setEditPartNotes] = useState("");
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<{
@@ -191,8 +270,17 @@ const [estimateLineItems, setEstimateLineItems] = useState<
     unit_price: number | null;
     unit_cost: number | null;
     notes: string | null;
+    sort_order?: number | null;
   }>
 >([]);
+
+  const [editingEstimateLineId, setEditingEstimateLineId] = useState<string | null>(null);
+  const [editEstLineDescription, setEditEstLineDescription] = useState("");
+  const [editEstLineQty, setEditEstLineQty] = useState("1");
+  const [editEstLineUnitPrice, setEditEstLineUnitPrice] = useState("");
+  const [editEstLineUnitCost, setEditEstLineUnitCost] = useState("");
+  const [editEstLinePartNumber, setEditEstLinePartNumber] = useState("");
+  const [editEstLineNotesExtra, setEditEstLineNotesExtra] = useState("");
 
   const [serviceTaxRate, setServiceTaxRate] = useState("0");
   const [partsTaxRate, setPartsTaxRate] = useState("0");
@@ -242,6 +330,46 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   const combinedTaxTotal = serviceTaxTotal + partsTaxTotal;
   const jobGrandTotal = jobSubtotal + combinedTaxTotal;
 
+  const estimateQuoteTotals = useMemo(
+    () =>
+      computeEstimateTotalsFromLines(
+        estimateLineItems,
+        serviceTaxRate,
+        partsTaxRate,
+        isTaxExempt
+      ),
+    [estimateLineItems, serviceTaxRate, partsTaxRate, isTaxExempt]
+  );
+
+  const persistEstimateTotals = useCallback(
+    async (
+      items: EstimateLineTotalsInput[],
+      overrideEstimateId?: string
+    ) => {
+      const eid = overrideEstimateId ?? estimateId;
+      if (!eid) return;
+      const t = computeEstimateTotalsFromLines(
+        items,
+        serviceTaxRate,
+        partsTaxRate,
+        isTaxExempt
+      );
+      const { data, error } = await supabase
+        .from("estimates")
+        .update({
+          subtotal: t.subtotal,
+          tax_total: t.taxTotal,
+          total_amount: t.grandTotal,
+        })
+        .eq("id", eid)
+        .select("id, estimate_number, estimate_status, subtotal, tax_total, total_amount")
+        .single();
+      if (error) throw error;
+      setEstimate(data);
+    },
+    [estimateId, serviceTaxRate, partsTaxRate, isTaxExempt, supabase]
+  );
+
   const fetchJobData = useCallback(async () => {
     setLoading(true);
     try {
@@ -281,7 +409,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
         const { data: lineItemsData, error: lineItemsError } = await supabase
           .from("estimate_line_items")
-          .select("id, line_type, description, quantity, unit_price, unit_cost, notes")
+          .select("id, line_type, description, quantity, unit_price, unit_cost, notes, sort_order")
           .eq("estimate_id", jobData.estimate_id)
           .order("sort_order", { ascending: true });
 
@@ -429,6 +557,80 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             return;
         }
 
+        if (selectedCatalogServiceId === CATALOG_OTHER_SERVICE_ID) {
+          if (!catalogOtherDescription.trim()) {
+            alert("Please describe the service needed.");
+            return;
+          }
+
+          setSaving(true);
+
+          try {
+            const nextSortOrder =
+              services.length > 0
+                ? Math.max(...services.map((svc) => svc.sort_order || 0)) + 1
+                : 0;
+
+            const { data: insertedService, error } = await supabase
+              .from("job_services")
+              .insert({
+                job_id: jobId,
+                service_code: null,
+                service_name: "Other",
+                service_description: catalogOtherDescription.trim(),
+                estimated_hours: parseOptionalDecimal(catalogOtherEstHours),
+                estimated_price: parseOptionalDecimal(catalogOtherEstPrice),
+                estimated_cost: parseOptionalDecimal(catalogOtherEstCost),
+                sort_order: nextSortOrder,
+              })
+              .select(
+                "id, service_name, service_description, estimated_hours, estimated_price, estimated_cost, sort_order"
+              )
+              .single();
+
+            if (error) throw error;
+
+            if (catalogOtherPartName.trim() && insertedService) {
+              const qty = parseOptionalDecimal(catalogOtherPartQty) ?? 1;
+              const { data: insertedPart, error: partError } = await supabase
+                .from("job_parts")
+                .insert({
+                  job_id: jobId,
+                  job_service_id: insertedService.id,
+                  part_name: catalogOtherPartName.trim(),
+                  quantity: qty > 0 ? qty : 1,
+                  unit_cost: parseOptionalDecimal(catalogOtherPartUnitCost),
+                  unit_price: parseOptionalDecimal(catalogOtherPartUnitPrice),
+                })
+                .select(
+                  "id, part_name, part_number, quantity, unit_cost, unit_price, supplier"
+                )
+                .single();
+
+              if (partError) throw partError;
+
+              setParts((prev) => [...prev, insertedPart]);
+            }
+
+            setServices((prev) => [...prev, insertedService]);
+            setSelectedCatalogServiceId("");
+            setCatalogOtherDescription("");
+            setCatalogOtherEstHours("");
+            setCatalogOtherEstPrice("");
+            setCatalogOtherEstCost("");
+            setCatalogOtherPartName("");
+            setCatalogOtherPartQty("1");
+            setCatalogOtherPartUnitCost("");
+            setCatalogOtherPartUnitPrice("");
+          } catch (error: unknown) {
+            console.error(error);
+            alert(`Failed to add service: ${getErrorMessage(error)}`);
+          } finally {
+            setSaving(false);
+          }
+          return;
+        }
+
         const catalogService = catalogServices.find(
             (svc) => svc.id === selectedCatalogServiceId
         );
@@ -547,6 +749,15 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             return;
         }
 
+        const supplierResolved =
+          newPartSupplier === PART_SUPPLIER_OTHER_VALUE
+            ? newPartSupplierOther.trim() || null
+            : newPartSupplier.trim() || null;
+        if (newPartSupplier === PART_SUPPLIER_OTHER_VALUE && !newPartSupplierOther.trim()) {
+          alert("Enter a supplier name, or pick one from the list.");
+          return;
+        }
+
         setSaving(true);
 
         try {
@@ -559,7 +770,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 quantity,
                 unit_cost: newPartUnitCost ? Number(newPartUnitCost) : null,
                 unit_price: newPartUnitPrice ? Number(newPartUnitPrice) : null,
-                supplier: newPartSupplier || null,
+                supplier: supplierResolved,
                 notes: newPartNotes.trim() || null,
             })
             .select("id, part_name, part_number, quantity, unit_cost, unit_price, supplier")
@@ -575,6 +786,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             setNewPartUnitCost("");
             setNewPartUnitPrice("");
             setNewPartSupplier("");
+            setNewPartSupplierOther("");
             setNewPartNotes("");
         } catch (error: unknown) {
             console.error(error);
@@ -725,7 +937,15 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setEditPartUnitPrice(
           typeof part.unit_price === "number" ? String(part.unit_price) : ""
         );
-        setEditPartSupplier(part.supplier || "");
+        const supplierNames = new Set(suppliers.map((s) => s.name));
+        const raw = (part.supplier || "").trim();
+        if (raw && !supplierNames.has(raw)) {
+          setEditPartSupplier(PART_SUPPLIER_OTHER_VALUE);
+          setEditPartSupplierOther(raw);
+        } else {
+          setEditPartSupplier(raw);
+          setEditPartSupplierOther("");
+        }
         setEditPartNotes("");
       };
 
@@ -743,6 +963,15 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           return;
         }
 
+        const supplierResolvedEdit =
+          editPartSupplier === PART_SUPPLIER_OTHER_VALUE
+            ? editPartSupplierOther.trim() || null
+            : editPartSupplier.trim() || null;
+        if (editPartSupplier === PART_SUPPLIER_OTHER_VALUE && !editPartSupplierOther.trim()) {
+          alert("Enter a supplier name, or pick one from the list.");
+          return;
+        }
+
         setSaving(true);
 
         try {
@@ -754,7 +983,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               quantity,
               unit_cost: editPartUnitCost ? Number(editPartUnitCost) : null,
               unit_price: editPartUnitPrice ? Number(editPartUnitPrice) : null,
-              supplier: editPartSupplier || null,
+              supplier: supplierResolvedEdit,
               notes: editPartNotes.trim() || null,
             })
             .eq("id", editingPartId)
@@ -774,6 +1003,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           setEditPartUnitCost("");
           setEditPartUnitPrice("");
           setEditPartSupplier("");
+          setEditPartSupplierOther("");
           setEditPartNotes("");
         } catch (error: unknown) {
           console.error(error);
@@ -791,6 +1021,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setEditPartUnitCost("");
         setEditPartUnitPrice("");
         setEditPartSupplier("");
+        setEditPartSupplierOther("");
         setEditPartNotes("");
       };
 
@@ -875,7 +1106,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         try {
           await deleteJobWithRelatedRecords(job.id);
           alert("Job deleted.");
-          router.push("/manager/jobs");
+          router.push("/manager/jobs/list");
         } catch (error: unknown) {
           console.error("Error deleting job:", error);
           const message =
@@ -883,7 +1114,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           alert(message);
 
           if (message.startsWith("Job deleted,")) {
-            router.push("/manager/jobs");
+            router.push("/manager/jobs/list");
           }
         } finally {
           setSaving(false);
@@ -908,6 +1139,96 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         } catch (error: unknown) {
           console.error("Error adding note:", error);
           alert("Failed to add note.");
+        }
+      };
+
+      const handleStartEditEstimateLine = (item: (typeof estimateLineItems)[number]) => {
+        setEditingEstimateLineId(item.id);
+        setEditEstLineDescription(item.description ?? "");
+        setEditEstLineQty(String(item.quantity ?? 1));
+        setEditEstLineUnitPrice(item.unit_price != null ? String(item.unit_price) : "");
+        setEditEstLineUnitCost(item.unit_cost != null ? String(item.unit_cost) : "");
+        const { partNumber, extra } = parsePartNotes(item.notes);
+        setEditEstLinePartNumber(partNumber);
+        setEditEstLineNotesExtra(extra);
+      };
+
+      const handleCancelEditEstimateLine = () => {
+        setEditingEstimateLineId(null);
+      };
+
+      const handleSaveEstimateLine = async () => {
+        if (!editingEstimateLineId || !estimateId) return;
+        if (!editEstLineDescription.trim()) {
+          alert("Description is required.");
+          return;
+        }
+        setSaving(true);
+        try {
+          const notes = buildPartNotes(editEstLinePartNumber, editEstLineNotesExtra);
+          const qty = Number(editEstLineQty);
+          const { data, error } = await supabase
+            .from("estimate_line_items")
+            .update({
+              description: editEstLineDescription.trim(),
+              quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+              unit_price: editEstLineUnitPrice.trim()
+                ? Number(editEstLineUnitPrice)
+                : null,
+              unit_cost: editEstLineUnitCost.trim() ? Number(editEstLineUnitCost) : null,
+              notes,
+            })
+            .eq("id", editingEstimateLineId)
+            .select("id, line_type, description, quantity, unit_price, unit_cost, notes, sort_order")
+            .single();
+          if (error) throw error;
+          const next = estimateLineItems.map((row) =>
+            row.id === data.id ? { ...row, ...data } : row
+          );
+          setEstimateLineItems(next);
+          await persistEstimateTotals(next);
+          setEditingEstimateLineId(null);
+        } catch (error: unknown) {
+          console.error(error);
+          alert(`Failed to save line: ${getErrorMessage(error)}`);
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const handleAddEstimateLine = async () => {
+        if (!estimateId) return;
+        setSaving(true);
+        try {
+          const maxSort = estimateLineItems.reduce(
+            (m, l) => Math.max(m, l.sort_order ?? 0),
+            0
+          );
+          const { data, error } = await supabase
+            .from("estimate_line_items")
+            .insert({
+              estimate_id: estimateId,
+              line_type: "part",
+              description: "Part line",
+              quantity: 1,
+              unit_price: null,
+              unit_cost: null,
+              taxable: true,
+              sort_order: maxSort + 1,
+              notes: null,
+            })
+            .select("id, line_type, description, quantity, unit_price, unit_cost, notes, sort_order")
+            .single();
+          if (error) throw error;
+          const next = [...estimateLineItems, data];
+          setEstimateLineItems(next);
+          await persistEstimateTotals(next);
+          handleStartEditEstimateLine(data);
+        } catch (error: unknown) {
+          console.error(error);
+          alert(`Failed to add line: ${getErrorMessage(error)}`);
+        } finally {
+          setSaving(false);
         }
       };
 
@@ -1006,13 +1327,15 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           const { data: lineItemsData, error: lineItemsFetchError } = await supabase
             .from("estimate_line_items")
-            .select("id, line_type, description, quantity, unit_price, unit_cost, notes")
+            .select("id, line_type, description, quantity, unit_price, unit_cost, notes, sort_order")
             .eq("estimate_id", createdEstimate.id)
             .order("sort_order", { ascending: true });
 
           if (lineItemsFetchError) throw lineItemsFetchError;
 
-          setEstimateLineItems(lineItemsData ?? []);
+          const lines = lineItemsData ?? [];
+          setEstimateLineItems(lines);
+          await persistEstimateTotals(lines, createdEstimate.id);
 
           alert("Estimate created successfully.");
         } catch (error: unknown) {
@@ -1032,20 +1355,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         setSaving(true);
 
         try {
-          const { data: updatedEstimate, error } = await supabase
-            .from("estimates")
-            .update({
-              subtotal: jobSubtotal,
-              tax_total: combinedTaxTotal,
-              total_amount: jobGrandTotal,
-            })
-            .eq("id", estimateId)
-            .select("id, estimate_number, estimate_status, subtotal, tax_total, total_amount")
-            .single();
-
-          if (error) throw error;
-
-          setEstimate(updatedEstimate);
+          await persistEstimateTotals(estimateLineItems);
           alert("Estimate taxes updated.");
         } catch (error: unknown) {
           console.error(error);
@@ -1113,7 +1423,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
             <Button
               variant="outline"
               className={headerActionButtonClassName}
-              onClick={() => router.push("/manager/jobs")}
+              onClick={() => router.push("/manager/jobs/list")}
             >
               Back to Jobs
             </Button>
@@ -1312,7 +1622,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 Job Source
               </div>
               <div className="mt-1 text-sm text-slate-900">
-                {job?.source === "customer_portal" ? "Customer Portal" : job?.source || "—"}
+                {formatJobSourceLabel(job?.source)}
               </div>
             </div>
 
@@ -1441,39 +1751,146 @@ const [estimateLineItems, setEstimateLineItems] = useState<
           {/* Services Tab */}
           <TabsContent value="services" className="mt-6">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Services Performed</CardTitle>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Select
-                    value={selectedCatalogServiceId}
-                    onValueChange={setSelectedCatalogServiceId}
-                  >
-                    <SelectTrigger className="w-full sm:w-[320px]">
-                      <SelectValue placeholder="Select service from catalog" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {catalogServices.map((service) => (
-                        <SelectItem key={service.id} value={service.id}>
-                          {service.service_name}
-                          {service.default_duration_minutes
-                            ? ` (${service.default_duration_minutes} min`
-                            : " ("}
-                          {service.default_price !== null ? `, $${service.default_price.toFixed(2)}` : ""}
-                          {(service.service_catalog_parts?.length ?? 0) > 0
-                            ? `, ${service.service_catalog_parts?.length} default part${service.service_catalog_parts?.length === 1 ? "" : "s"}`
-                            : service.default_part_name || service.default_parts_cost !== null || service.default_parts_price !== null
-                            ? ", includes legacy default part"
-                            : ""}
-                          )
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <CardHeader>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <CardTitle>Services Performed</CardTitle>
+                  <div className="flex min-w-0 flex-1 flex-col gap-3 lg:max-w-2xl">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Select
+                        value={selectedCatalogServiceId}
+                        onValueChange={(value) => {
+                          setSelectedCatalogServiceId(value);
+                          if (value !== CATALOG_OTHER_SERVICE_ID) {
+                            setCatalogOtherDescription("");
+                            setCatalogOtherEstHours("");
+                            setCatalogOtherEstPrice("");
+                            setCatalogOtherEstCost("");
+                            setCatalogOtherPartName("");
+                            setCatalogOtherPartQty("1");
+                            setCatalogOtherPartUnitCost("");
+                            setCatalogOtherPartUnitPrice("");
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full sm:w-[320px]">
+                          <SelectValue placeholder="Select service from catalog" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {catalogServices.map((service) => (
+                            <SelectItem key={service.id} value={service.id}>
+                              {service.service_name}
+                              {service.default_duration_minutes
+                                ? ` (${service.default_duration_minutes} min`
+                                : " ("}
+                              {service.default_price !== null ? `, $${service.default_price.toFixed(2)}` : ""}
+                              {(service.service_catalog_parts?.length ?? 0) > 0
+                                ? `, ${service.service_catalog_parts?.length} default part${service.service_catalog_parts?.length === 1 ? "" : "s"}`
+                                : service.default_part_name || service.default_parts_cost !== null || service.default_parts_price !== null
+                                ? ", includes legacy default part"
+                                : ""}
+                              )
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={CATALOG_OTHER_SERVICE_ID}>
+                            Other — custom (describe labor and parts below)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
 
-                  <Button size="sm" onClick={handleAddCatalogService} disabled={saving}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Service
-                  </Button>
+                      <Button size="sm" onClick={handleAddCatalogService} disabled={saving}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Service
+                      </Button>
+                    </div>
+
+                    {selectedCatalogServiceId === CATALOG_OTHER_SERVICE_ID ? (
+                      <div className="w-full space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left">
+                        <div className="space-y-2">
+                          <Label>Describe the service needed</Label>
+                          <Textarea
+                            value={catalogOtherDescription}
+                            onChange={(e) => setCatalogOtherDescription(e.target.value)}
+                            placeholder="What work is needed?"
+                            rows={3}
+                          />
+                        </div>
+                        <div className="text-sm font-medium text-slate-800">Labor</div>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Est. hours</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherEstHours}
+                              onChange={(e) => setCatalogOtherEstHours(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Est. sell</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherEstPrice}
+                              onChange={(e) => setCatalogOtherEstPrice(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Est. cost</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherEstCost}
+                              onChange={(e) => setCatalogOtherEstCost(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-sm font-medium text-slate-800">Parts (optional)</div>
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-2 md:col-span-2">
+                            <Label className="text-xs text-slate-600">Part name</Label>
+                            <Input
+                              value={catalogOtherPartName}
+                              onChange={(e) => setCatalogOtherPartName(e.target.value)}
+                              placeholder="Part description"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Qty</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherPartQty}
+                              onChange={(e) => setCatalogOtherPartQty(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Unit cost</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherPartUnitCost}
+                              onChange={(e) => setCatalogOtherPartUnitCost(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-600">Unit price</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={catalogOtherPartUnitPrice}
+                              onChange={(e) => setCatalogOtherPartUnitPrice(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </CardHeader>
 
@@ -1657,18 +2074,36 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                         onChange={(e) => setNewPartQuantity(e.target.value)}
                     />
 
-                    <Select value={newPartSupplier} onValueChange={setNewPartSupplier}>
+                    <div className="flex flex-col gap-2 lg:col-span-2">
+                      <Select
+                        value={newPartSupplier}
+                        onValueChange={(v) => {
+                          setNewPartSupplier(v);
+                          if (v !== PART_SUPPLIER_OTHER_VALUE) setNewPartSupplierOther("");
+                        }}
+                      >
                         <SelectTrigger>
-                        <SelectValue placeholder="Source / Supplier" />
+                          <SelectValue placeholder="Source / Supplier" />
                         </SelectTrigger>
                         <SelectContent>
-                            {suppliers.map((supplier) => (
-                                <SelectItem key={supplier.id} value={supplier.name}>
-                                {supplier.name}
-                                </SelectItem>
-                            ))}
-                            </SelectContent>
-                    </Select>
+                          {suppliers.map((supplier) => (
+                            <SelectItem key={supplier.id} value={supplier.name}>
+                              {supplier.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={PART_SUPPLIER_OTHER_VALUE}>
+                            Other — type supplier name below
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {newPartSupplier === PART_SUPPLIER_OTHER_VALUE ? (
+                        <Input
+                          placeholder="Supplier name (one-off)"
+                          value={newPartSupplierOther}
+                          onChange={(e) => setNewPartSupplierOther(e.target.value)}
+                        />
+                      ) : null}
+                    </div>
 
                     <Input
                         type="number"
@@ -1735,18 +2170,36 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                 onChange={(e) => setEditPartQuantity(e.target.value)}
                               />
 
-                              <Select value={editPartSupplier} onValueChange={setEditPartSupplier}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Source / Supplier" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {suppliers.map((supplier) => (
-                                    <SelectItem key={supplier.id} value={supplier.name}>
-                                      {supplier.name}
+                              <div className="flex flex-col gap-2 md:col-span-2">
+                                <Select
+                                  value={editPartSupplier}
+                                  onValueChange={(v) => {
+                                    setEditPartSupplier(v);
+                                    if (v !== PART_SUPPLIER_OTHER_VALUE) setEditPartSupplierOther("");
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Source / Supplier" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {suppliers.map((supplier) => (
+                                      <SelectItem key={supplier.id} value={supplier.name}>
+                                        {supplier.name}
+                                      </SelectItem>
+                                    ))}
+                                    <SelectItem value={PART_SUPPLIER_OTHER_VALUE}>
+                                      Other — type supplier name below
                                     </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                  </SelectContent>
+                                </Select>
+                                {editPartSupplier === PART_SUPPLIER_OTHER_VALUE ? (
+                                  <Input
+                                    placeholder="Supplier name (one-off)"
+                                    value={editPartSupplierOther}
+                                    onChange={(e) => setEditPartSupplierOther(e.target.value)}
+                                  />
+                                ) : null}
+                              </div>
 
                               <Input
                                 type="number"
@@ -2062,7 +2515,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Subtotal
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            ${(estimate.subtotal ?? 0).toFixed(2)}
+                            ${estimateQuoteTotals.subtotal.toFixed(2)}
                           </div>
                         </div>
 
@@ -2071,7 +2524,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Tax
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            ${combinedTaxTotal.toFixed(2)}
+                            ${estimateQuoteTotals.taxTotal.toFixed(2)}
                           </div>
                         </div>
 
@@ -2080,7 +2533,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Total
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            ${jobGrandTotal.toFixed(2)}
+                            ${estimateQuoteTotals.grandTotal.toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -2091,7 +2544,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Service Tax Total
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            ${serviceTaxTotal.toFixed(2)}
+                            ${estimateQuoteTotals.serviceTaxTotal.toFixed(2)}
                           </div>
                         </div>
 
@@ -2100,14 +2553,26 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                             Parts Tax Total
                           </div>
                           <div className="mt-2 text-lg font-semibold text-slate-900">
-                            ${partsTaxTotal.toFixed(2)}
+                            ${estimateQuoteTotals.partsTaxTotal.toFixed(2)}
                           </div>
                         </div>
                       </div>
 
                       <div>
-                        <div className="mb-3 text-sm font-semibold text-slate-900">
-                          Estimate Line Items
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="text-sm font-semibold text-slate-900">
+                            Estimate Line Items
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleAddEstimateLine}
+                            disabled={saving || !estimateId}
+                          >
+                            <Plus className="mr-1 h-4 w-4" />
+                            Add part line
+                          </Button>
                         </div>
 
                         {estimateLineItems.length === 0 ? (
@@ -2116,36 +2581,193 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {estimateLineItems.map((item) => (
+                            {estimateLineItems.map((item) => {
+                              const lineNotes = parsePartNotes(item.notes);
+                              return (
                               <div
                                 key={item.id}
-                                className="flex items-start justify-between rounded-lg border bg-slate-50 p-4"
+                                className="rounded-lg border bg-slate-50 p-4"
                               >
-                                <div>
-                                  <div className="font-medium text-slate-900">
-                                    {item.description}
-                                  </div>
-                                  <div className="mt-1 text-sm text-slate-500">
-                                    Type: {item.line_type} • Qty: {item.quantity}
-                                  </div>
-                                  {item.notes && (
-                                    <div className="mt-1 text-sm text-slate-600">
-                                      {item.notes}
+                                {editingEstimateLineId === item.id ? (
+                                  <div className="space-y-3">
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      <div className="sm:col-span-2">
+                                        <Label htmlFor={`est-line-desc-${item.id}`}>
+                                          Description
+                                        </Label>
+                                        <Input
+                                          id={`est-line-desc-${item.id}`}
+                                          value={editEstLineDescription}
+                                          onChange={(e) =>
+                                            setEditEstLineDescription(e.target.value)
+                                          }
+                                          className="mt-1"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor={`est-line-qty-${item.id}`}>
+                                          Qty
+                                        </Label>
+                                        <Input
+                                          id={`est-line-qty-${item.id}`}
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={editEstLineQty}
+                                          onChange={(e) => setEditEstLineQty(e.target.value)}
+                                          className="mt-1"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor={`est-line-type-${item.id}`}>
+                                          Line type
+                                        </Label>
+                                        <div
+                                          id={`est-line-type-${item.id}`}
+                                          className="mt-3 text-sm text-slate-600"
+                                        >
+                                          {item.line_type}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <Label htmlFor={`est-line-price-${item.id}`}>
+                                          Unit price
+                                        </Label>
+                                        <Input
+                                          id={`est-line-price-${item.id}`}
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={editEstLineUnitPrice}
+                                          onChange={(e) =>
+                                            setEditEstLineUnitPrice(e.target.value)
+                                          }
+                                          className="mt-1"
+                                          placeholder="0.00"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor={`est-line-cost-${item.id}`}>
+                                          Unit cost
+                                        </Label>
+                                        <Input
+                                          id={`est-line-cost-${item.id}`}
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={editEstLineUnitCost}
+                                          onChange={(e) =>
+                                            setEditEstLineUnitCost(e.target.value)
+                                          }
+                                          className="mt-1"
+                                          placeholder="COGS"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor={`est-line-pn-${item.id}`}>
+                                          Part #
+                                        </Label>
+                                        <Input
+                                          id={`est-line-pn-${item.id}`}
+                                          value={editEstLinePartNumber}
+                                          onChange={(e) =>
+                                            setEditEstLinePartNumber(e.target.value)
+                                          }
+                                          className="mt-1"
+                                          placeholder="SKU / part number"
+                                        />
+                                      </div>
+                                      <div className="sm:col-span-2">
+                                        <Label htmlFor={`est-line-extra-${item.id}`}>
+                                          Notes (supplier, source, etc.)
+                                        </Label>
+                                        <Input
+                                          id={`est-line-extra-${item.id}`}
+                                          value={editEstLineNotesExtra}
+                                          onChange={(e) =>
+                                            setEditEstLineNotesExtra(e.target.value)
+                                          }
+                                          className="mt-1"
+                                        />
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleSaveEstimateLine}
+                                        disabled={saving}
+                                      >
+                                        <Save className="mr-1 h-4 w-4" />
+                                        Save line
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleCancelEditEstimateLine}
+                                        disabled={saving}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-medium text-slate-900">
+                                        {item.description}
+                                      </div>
+                                      <div className="mt-1 text-sm text-slate-500">
+                                        Type: {item.line_type} • Qty: {item.quantity}
+                                      </div>
+                                      {lineNotes.partNumber && (
+                                        <div className="mt-1 text-sm text-slate-600">
+                                          Part #: {lineNotes.partNumber}
+                                        </div>
+                                      )}
+                                      {lineNotes.extra && (
+                                        <div className="mt-1 text-sm text-slate-600">
+                                          {lineNotes.extra}
+                                        </div>
+                                      )}
+                                    </div>
 
-                                <div className="text-right text-sm text-slate-700">
-                                  <div>
-                                    Unit Price: ${(item.unit_price ?? 0).toFixed(2)}
+                                    <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                                      <div className="text-right text-sm text-slate-700">
+                                        <div>
+                                          Unit price: $
+                                          {(item.unit_price ?? 0).toFixed(2)}
+                                        </div>
+                                        <div>
+                                          Unit cost:{" "}
+                                          {item.unit_cost != null
+                                            ? `$${item.unit_cost.toFixed(2)}`
+                                            : "—"}
+                                        </div>
+                                        <div className="font-medium">
+                                          Line total: $
+                                          {(
+                                            (item.unit_price ?? 0) *
+                                            (Number(item.quantity) || 0)
+                                          ).toFixed(2)}
+                                        </div>
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleStartEditEstimateLine(item)}
+                                        disabled={saving}
+                                      >
+                                        Edit
+                                      </Button>
+                                    </div>
                                   </div>
-                                  <div>
-                                    Line Total: $
-                                    {((item.unit_price ?? 0) * (item.quantity ?? 0)).toFixed(2)}
-                                  </div>
-                                </div>
+                                )}
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         )}
                       </div>

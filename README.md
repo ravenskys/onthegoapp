@@ -30,6 +30,7 @@ Role-based mobile maintenance platform built with:
   - `/customer/signup`
   - `/customer/dashboard`
   - `/customer/account`
+  - `/customer/book` (guided **Get service** → scheduler)
   - `/customer/schedule`
   - `/customer/progress`
   - `/customer/reports`
@@ -38,17 +39,25 @@ Role-based mobile maintenance platform built with:
   - `/tech/jobs`
 - Manager:
   - `/manager`
-  - `/manager/jobs`
+  - `/manager/jobs` (hub: new / returning / open list)
+  - `/manager/jobs/list`
   - `/manager/jobs/new`
   - `/manager/jobs/[jobId]`
   - `/manager/customers`
   - `/manager/schedule`
   - `/manager/availability`
+  - `/manager/employees`
 - Admin:
   - `/admin`
   - `/admin/settings`
 
 ## Local Development
+
+Use **Node.js 20 LTS or newer** (see `engines` in `package.json`).
+
+On a **new machine**: clone the repo, copy [`.env.example`](./.env.example) to `.env.local`, fill in secrets from Supabase and your vault (never commit `.env.local`), then install and run. See [CENTRALIZED_DEV_SETUP.md](./CENTRALIZED_DEV_SETUP.md) and [DEV_MACHINE_REQUIREMENTS.md](./DEV_MACHINE_REQUIREMENTS.md).
+
+If Windows shows file-lock errors on `.next` builds, clone outside OneDrive when possible.
 
 Install dependencies:
 
@@ -71,6 +80,19 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
+
+Optional for Supabase CLI (migrations): in `.env.local` set **`SUPABASE_ACCESS_TOKEN`** (Supabase account token) and, for commands that connect to the hosted database, **`SUPABASE_DB_PASSWORD`** (the **Database** password for the `postgres` role—Supabase dashboard → **Project Settings** → **Database**). The `npm run supabase:*` scripts load `.env.local` via **`dotenv-cli`** with **`-o` / `--override`**, so file values **win over** any `SUPABASE_*` variables already set in Windows (otherwise a stale `SUPABASE_DB_PASSWORD` in your user environment can override `.env.local` and cause `28P01`). You do not need to export variables manually in PowerShell.
+
+Then from this folder:
+
+```powershell
+npm run supabase:migration-list
+npm run supabase:db-push
+```
+
+If `migration list` or `db push` fails with **`password authentication failed` (SQLSTATE 28P01)**, the value in `.env.local` does not match the current database password: use **Reset database password** in the same Database settings page, then paste the new password into **`SUPABASE_DB_PASSWORD`** and retry.
+
+See [SESSION_HANDOFF.md](./SESSION_HANDOFF.md) (Windows `npx.cmd` notes and project ref `vzshannrbrcllzzlhfju`).
 
 ## Supabase Notes
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CalendarDays, Clock, Loader2, MapPin, Wrench } from "lucide-react";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,11 @@ import {
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { supabase } from "@/lib/supabase";
 import { getErrorMessage } from "@/lib/tech-inspection";
+import {
+  CUSTOMER_OTHER_SERVICE_ID,
+  REPAIR_OTHER_SERVICE_CODE,
+  isCustomerUnscheduledServiceRequest,
+} from "@/lib/service-other";
 
 type AvailableSlot = {
   technician_user_id: string;
@@ -39,7 +45,8 @@ type CatalogService = {
   default_duration_minutes: number | null;
 };
 
-const fallbackServices: CatalogService[] = [
+/** Used only if the service_catalog query fails or returns no bookable rows. */
+const FALLBACK_CATALOG_SERVICES: CatalogService[] = [
   {
     id: "oil_change",
     service_code: "oil_change",
@@ -70,7 +77,19 @@ const fallbackServices: CatalogService[] = [
   },
 ];
 
-const REPAIR_OTHER_SERVICE_ID = "repair_other";
+const formatServiceDurationLabel = (service: CatalogService) => {
+  if (service.service_code === REPAIR_OTHER_SERVICE_CODE) {
+    return "review first";
+  }
+  const name = (service.service_name || "").trim().toLowerCase();
+  if (name.includes("repair") && name.includes("other")) {
+    return "review first";
+  }
+  if (service.default_duration_minutes == null || service.default_duration_minutes <= 0) {
+    return "varies";
+  }
+  return `${service.default_duration_minutes} min`;
+};
 
 const ADDRESS_LOCATION_OPTIONS = [
   { value: "house", label: "House" },
@@ -214,17 +233,19 @@ const markManualAddressEditing = (
   }
 };
 
-export default function CustomerSchedulePage() {
+function CustomerSchedulePageContent() {
+  const searchParams = useSearchParams();
+  const appliedQueryRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
-  const services = fallbackServices;
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
-  const [selectedServiceId, setSelectedServiceId] = useState(fallbackServices[0].id);
+  const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedAddressId, setSelectedAddressId] = useState("manual");
   const [locationType, setLocationType] = useState("house");
   const [customLocationLabel, setCustomLocationLabel] = useState("");
@@ -237,13 +258,103 @@ export default function CustomerSchedulePage() {
   const [message, setMessage] = useState("");
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
+  const services = useMemo(() => {
+    const base =
+      catalogServices.length > 0 ? catalogServices : FALLBACK_CATALOG_SERVICES;
+    if (base.some((s) => s.service_code === REPAIR_OTHER_SERVICE_CODE)) {
+      return base;
+    }
+    return [
+      ...base,
+      {
+        id: CUSTOMER_OTHER_SERVICE_ID,
+        service_code: REPAIR_OTHER_SERVICE_CODE,
+        service_name: "Other — describe the service needed",
+        service_description:
+          "Tell us what you need. The shop will review your request and contact you before scheduling.",
+        default_duration_minutes: null,
+      },
+    ];
+  }, [catalogServices]);
+
+  useEffect(() => {
+    if (loading || appliedQueryRef.current) return;
+
+    const vehicleParam = searchParams.get("vehicle");
+    const flow = searchParams.get("flow");
+    const hasQuery = Boolean(vehicleParam || flow);
+    if (!hasQuery) {
+      appliedQueryRef.current = true;
+      return;
+    }
+
+    const vehList = (portalData?.vehicles ?? []).filter((vehicle) => Boolean(vehicle.id));
+    if (vehicleParam && vehList.some((vehicle) => vehicle.id === vehicleParam)) {
+      setSelectedVehicleId(vehicleParam);
+    }
+
+    const base =
+      catalogServices.length > 0 ? catalogServices : FALLBACK_CATALOG_SERVICES;
+    const withOther: CatalogService[] = base.some(
+      (service) => service.service_code === REPAIR_OTHER_SERVICE_CODE,
+    )
+      ? base
+      : [
+          ...base,
+          {
+            id: CUSTOMER_OTHER_SERVICE_ID,
+            service_code: REPAIR_OTHER_SERVICE_CODE,
+            service_name: "Other — describe the service needed",
+            service_description:
+              "Tell us what you need. The shop will review your request and contact you before scheduling.",
+            default_duration_minutes: null,
+          },
+        ];
+
+    if (flow === "request") {
+      const otherSvc =
+        withOther.find(
+          (service) =>
+            service.id === CUSTOMER_OTHER_SERVICE_ID ||
+            service.service_code === REPAIR_OTHER_SERVICE_CODE,
+        ) || null;
+      if (otherSvc) {
+        setSelectedServiceId(otherSvc.id);
+        setSelectedSlotKey("");
+      }
+    } else if (flow === "book") {
+      const firstBookable = withOther.find(
+        (service) => !isCustomerUnscheduledServiceRequest(service.id, service),
+      );
+      if (firstBookable) {
+        setSelectedServiceId(firstBookable.id);
+        setSelectedSlotKey("");
+      }
+    }
+
+    appliedQueryRef.current = true;
+  }, [loading, catalogServices, portalData, searchParams]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (searchParams.get("guided") !== "1") return;
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById("customer-schedule-details")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [loading, searchParams]);
+
   const selectedService =
-    services.find((service) => service.id === selectedServiceId) || services[0];
-  const isRepairOtherRequest = selectedServiceId === REPAIR_OTHER_SERVICE_ID;
-  const selectedServiceDuration = Math.max(
-    0,
-    selectedService?.default_duration_minutes || 0,
+    services.find((service) => service.id === selectedServiceId) ?? null;
+  const isUnscheduledServiceRequest = isCustomerUnscheduledServiceRequest(
+    selectedServiceId,
+    selectedService ?? undefined,
   );
+  const selectedServiceDuration = isUnscheduledServiceRequest
+    ? 0
+    : Math.max(0, selectedService?.default_duration_minutes ?? 60);
   const selectedSlotTravelMinutes = slots.find(
     (slot) => getSlotKey(slot) === selectedSlotKey,
   )?.travel_time_minutes;
@@ -255,7 +366,7 @@ export default function CustomerSchedulePage() {
       : ADDRESS_LOCATION_OPTIONS.find((option) => option.value === locationType)?.label || "House";
 
   const loadAvailableSlots = async () => {
-    if (isRepairOtherRequest) {
+    if (isUnscheduledServiceRequest) {
       setSlots([]);
       setLoadingSlots(false);
       return;
@@ -330,6 +441,26 @@ export default function CustomerSchedulePage() {
         setPortalData(nextPortalData);
         setSelectedVehicleId(nextPortalData.vehicles[0]?.id || "");
 
+        const { data: catalogData, error: catalogError } = await supabase
+          .from("service_catalog")
+          .select("id, service_code, service_name, service_description, default_duration_minutes")
+          .eq("is_active", true)
+          .eq("is_bookable_online", true)
+          .order("sort_order", { ascending: true })
+          .order("service_name", { ascending: true });
+
+        if (catalogError) {
+          console.warn("Service catalog load failed, using fallback list:", catalogError);
+        }
+
+        const nextCatalog: CatalogService[] =
+          catalogData && catalogData.length > 0
+            ? (catalogData as CatalogService[])
+            : FALLBACK_CATALOG_SERVICES;
+
+        setCatalogServices(nextCatalog);
+        setSelectedServiceId(nextCatalog[0]?.id || "");
+
         const nextAddresses = (nextPortalData.addresses || []) as CustomerPortalAddress[];
         const defaultAddress = nextAddresses.find((address) => address.is_default) || nextAddresses[0];
         if (defaultAddress) {
@@ -360,7 +491,7 @@ export default function CustomerSchedulePage() {
     setSelectedSlotKey("");
     void loadAvailableSlots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, isRepairOtherRequest, selectedServiceDuration, serviceCity, serviceState, serviceZip]);
+  }, [loading, isUnscheduledServiceRequest, selectedServiceDuration, serviceCity, serviceState, serviceZip]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -407,7 +538,7 @@ export default function CustomerSchedulePage() {
   const hasRequiredLocationConfirmation =
     !showLocationPermissionWarning || hasLocationPermissionConfirmation;
   const canShowScheduler =
-    !isRepairOtherRequest &&
+    !isUnscheduledServiceRequest &&
     Boolean(selectedVehicleId) &&
     hasLocationDetails &&
     hasRequiredLocationConfirmation;
@@ -420,8 +551,10 @@ export default function CustomerSchedulePage() {
   const serviceZipRequiredError = attemptedSubmit && !serviceZip.trim();
   const permissionConfirmationError =
     attemptedSubmit && showLocationPermissionWarning && !hasLocationPermissionConfirmation;
-  const requestDetailsRequiredError = attemptedSubmit && isRepairOtherRequest && !notes.trim();
-  const selectedSlotRequiredError = attemptedSubmit && !isRepairOtherRequest && !selectedSlot;
+  const requestDetailsRequiredError =
+    attemptedSubmit && isUnscheduledServiceRequest && !notes.trim();
+  const selectedSlotRequiredError =
+    attemptedSubmit && !isUnscheduledServiceRequest && !selectedSlot;
 
   useEffect(() => {
     if (selectedAddressId === "manual") {
@@ -565,7 +698,12 @@ export default function CustomerSchedulePage() {
       return;
     }
 
-    if (!isRepairOtherRequest && !selectedSlot) {
+    if (!selectedServiceId || !selectedService) {
+      setMessage("Choose the type of service you need.");
+      return;
+    }
+
+    if (!isUnscheduledServiceRequest && !selectedSlot) {
       setMessage("Choose an available service time.");
       return;
     }
@@ -585,7 +723,7 @@ export default function CustomerSchedulePage() {
       return;
     }
 
-    if (isRepairOtherRequest && !notes.trim()) {
+    if (isUnscheduledServiceRequest && !notes.trim()) {
       setMessage("Add a few details about the repair or service request so the team can follow up.");
       return;
     }
@@ -595,7 +733,7 @@ export default function CustomerSchedulePage() {
     try {
       await saveAddressIfNew();
 
-      const { error } = isRepairOtherRequest
+      const { error } = isUnscheduledServiceRequest
         ? await supabase.rpc("create_customer_unscheduled_job_request", {
             p_vehicle_id: selectedVehicleId,
             p_service_type: selectedService?.service_code || selectedService?.service_name || "repair_other",
@@ -627,14 +765,14 @@ export default function CustomerSchedulePage() {
       if (error) throw error;
 
       setMessage(
-        isRepairOtherRequest
-          ? "Your repair request was sent. The team can review the details and contact you to schedule it."
+        isUnscheduledServiceRequest
+          ? "Your service request was sent. The team can review the details and contact you to schedule it."
           : "Your service request was scheduled. The team can now see it on the manager calendar.",
       );
       setAttemptedSubmit(false);
       setSelectedSlotKey("");
       setNotes("");
-      if (!isRepairOtherRequest) {
+      if (!isUnscheduledServiceRequest) {
         await loadAvailableSlots();
       }
     } catch (error) {
@@ -666,6 +804,15 @@ export default function CustomerSchedulePage() {
       subtitle="Pick an available time based on technician availability and send the request directly to the service calendar."
       onLogout={handleLogout}
     >
+      {searchParams.get("guided") === "1" ? (
+        <div className="rounded-2xl border border-lime-400/35 bg-lime-400/10 px-4 py-3 text-sm text-slate-800 shadow-sm">
+          <span className="font-semibold text-slate-900">Guided setup: </span>
+          Vehicle and service type match what you chose in Get service. Finish the service location
+          {searchParams.get("flow") === "request"
+            ? " and describe what you need, then send the request."
+            : ", then choose an available time below."}
+        </div>
+      ) : null}
       <form onSubmit={handleSchedule} className="flex flex-col gap-6">
         <Card className="order-2 border-0 bg-white shadow-sm">
           <CardContent className="space-y-5 p-4 sm:p-6">
@@ -673,13 +820,13 @@ export default function CustomerSchedulePage() {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-lime-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-950">
                   <CalendarDays className="h-4 w-4" />
-                  {isRepairOtherRequest ? "Request Review" : "Next 21 Days"}
+                  {isUnscheduledServiceRequest ? "Request Review" : "Next 21 Days"}
                 </div>
                 <h2 className="mt-3 text-2xl font-black text-slate-950">
-                  {isRepairOtherRequest ? "Share the repair details" : "Choose a service time"}
+                  {isUnscheduledServiceRequest ? "Share the repair details" : "Choose a service time"}
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  {isRepairOtherRequest
+                  {isUnscheduledServiceRequest
                     ? "Repair and other custom requests are reviewed by the team first. Send the details here and we will follow up with scheduling."
                     : "Days with available technician time show a count badge. Slots are based on the selected service duration plus travel buffer."}
                 </p>
@@ -707,7 +854,7 @@ export default function CustomerSchedulePage() {
                     : "border border-dashed border-slate-300 bg-slate-50 text-slate-700"
                 }`}
               >
-                {isRepairOtherRequest
+                {isUnscheduledServiceRequest
                   ? "Repair and custom requests are reviewed before a time is assigned. Send the details above and the team will follow up with scheduling."
                   : showLocationPermissionWarning && !hasLocationPermissionConfirmation
                     ? "Please check the location permission confirmation above before available appointment times can be shown."
@@ -798,7 +945,10 @@ export default function CustomerSchedulePage() {
           </CardContent>
         </Card>
 
-        <Card className="order-1 h-fit border-0 bg-white shadow-sm">
+        <Card
+          id="customer-schedule-details"
+          className="order-1 h-fit scroll-mt-24 border-0 bg-white shadow-sm"
+        >
           <CardContent className="space-y-5 p-4 sm:p-6">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-700">
@@ -846,7 +996,13 @@ export default function CustomerSchedulePage() {
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Service Needed
               </label>
-              <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+              <Select
+                value={selectedServiceId}
+                onValueChange={(id) => {
+                  setSelectedServiceId(id);
+                  setSelectedSlotKey("");
+                }}
+              >
                 <SelectTrigger className="otg-schedule-select-trigger h-11 bg-white text-slate-950">
                   <SelectValue placeholder="Choose service" />
                 </SelectTrigger>
@@ -857,7 +1013,7 @@ export default function CustomerSchedulePage() {
                       value={service.id}
                       className="otg-schedule-select-item"
                     >
-                      {service.service_name} ({service.default_duration_minutes || 60} min)
+                      {service.service_name} ({formatServiceDurationLabel(service)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -866,7 +1022,7 @@ export default function CustomerSchedulePage() {
                 {selectedService?.service_description ||
                   "This service will reserve the selected amount of technician time."}
                 <div className="mt-2 font-black text-slate-950">
-                  {isRepairOtherRequest
+                  {isUnscheduledServiceRequest
                     ? "Scheduling stays open until the team reviews your request and follows up with you."
                     : `Service: ${selectedServiceDuration} min. Travel buffer is estimated from the technician's previous job after you choose a slot.`}
                 </div>
@@ -1037,14 +1193,14 @@ export default function CustomerSchedulePage() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                {isRepairOtherRequest ? "Request Details" : "Notes"}
+                {isUnscheduledServiceRequest ? "Describe the services needed" : "Notes"}
               </label>
               <Textarea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder={
-                  isRepairOtherRequest
-                    ? "Describe the repair, concern, symptoms, or any other service details so the team can contact you to schedule it."
+                  isUnscheduledServiceRequest
+                    ? "Describe the services needed (symptoms, goals, parts, or timing). The team will follow up — no time slot is booked yet."
                     : "Anything else the technician should know?"
                 }
                 className={`min-h-24 bg-white text-slate-950 ${
@@ -1058,7 +1214,7 @@ export default function CustomerSchedulePage() {
               ) : null}
             </div>
 
-            {!isRepairOtherRequest && selectedSlot && (
+            {!isUnscheduledServiceRequest && selectedSlot && (
               <div className="rounded-2xl border border-lime-300 bg-lime-100 p-4 text-sm text-lime-950">
                 <div className="font-black">Selected time</div>
                 <div className="mt-1 font-semibold">
@@ -1103,11 +1259,29 @@ export default function CustomerSchedulePage() {
           >
             {scheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {scheduling
-              ? (isRepairOtherRequest ? "Sending Request..." : "Scheduling...")
-              : (isRepairOtherRequest ? "Send Request" : "Schedule Service")}
+              ? (isUnscheduledServiceRequest ? "Sending Request..." : "Scheduling...")
+              : (isUnscheduledServiceRequest ? "Send Request" : "Schedule Service")}
           </Button>
         </div>
       </form>
     </CustomerPortalShell>
+  );
+}
+
+export default function CustomerSchedulePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="otg-page">
+          <div className="otg-container">
+            <div className="otg-card p-8">
+              <p className="otg-body">Loading service scheduler...</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <CustomerSchedulePageContent />
+    </Suspense>
   );
 }

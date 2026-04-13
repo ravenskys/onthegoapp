@@ -150,10 +150,10 @@ export default function ManagerCustomersPage() {
             <BackToPortalButton />
             <Button
               className={headerActionButtonClassName}
-              onClick={() => router.push("/manager/jobs/new")}
+              onClick={() => router.push("/manager/jobs")}
             >
               <PlusCircle className="mr-2 h-4 w-4" />
-              New Job
+              Jobs
             </Button>
           </div>
         </div>

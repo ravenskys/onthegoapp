@@ -452,7 +452,7 @@ export default function ManagerSchedulePage() {
                 <Button
                   type="button"
                   className={headerActionButtonClassName}
-                  onClick={() => window.location.href = "/manager/jobs/new"}
+                  onClick={() => window.location.href = "/manager/jobs"}
                 >
                   New Job
                 </Button>

@@ -73,14 +73,15 @@ export default function ContactPage() {
                   <option>Preventive Maintenance</option>
                   <option>Inspection</option>
                   <option>Fleet Service</option>
+                  <option value="other">Other — describe in the details below</option>
                 </select>
               </div>
 
               <div>
-                <label className="otg-label">Vehicle / Service Details</label>
+                <label className="otg-label">Vehicle / service details</label>
                 <textarea
                   className="otg-textarea mt-2"
-                  placeholder="Tell us about your vehicle and what service you need"
+                  placeholder="Tell us about your vehicle and what service you need. If you chose Other above, describe the work or concern here."
                 />
               </div>
 

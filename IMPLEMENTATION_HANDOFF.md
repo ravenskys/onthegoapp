@@ -28,6 +28,7 @@ It is written against the current codebase state in `src/app`, `src/lib`, and `s
   - `/customer/link`
   - `/customer/dashboard`
   - `/customer/account`
+  - `/customer/book`
   - `/customer/schedule`
   - `/customer/progress`
   - `/customer/reports`
@@ -36,13 +37,15 @@ It is written against the current codebase state in `src/app`, `src/lib`, and `s
   - `/tech/jobs`
 - Manager pages:
   - `/manager`
-  - `/manager/jobs`
+  - `/manager/jobs` (hub)
+  - `/manager/jobs/list`
   - `/manager/jobs/new`
   - `/manager/jobs/[jobId]`
   - `/manager/customers`
   - `/manager/customers/[customerId]`
   - `/manager/schedule`
   - `/manager/availability`
+  - `/manager/employees`
 - Admin pages:
   - `/admin`
   - `/admin/settings`
@@ -50,12 +53,13 @@ It is written against the current codebase state in `src/app`, `src/lib`, and `s
   - `src/lib/portal-auth.ts`
 - Shared portal navigation:
   - `src/components/portal/PortalTopNav.tsx`
+  - `src/lib/portal-nav-config.ts` (single source of truth for top-nav items per role)
 - RLS foundation exists for many business objects in `supabase/migrations`
 
 ### Gaps or mismatches from the proposed handoff
 - Public route naming differs:
   - proposed `/fleet`, current `/fleet-services`
-  - proposed `/request-service`, current primary entry is `/customer/schedule`
+  - proposed `/request-service`, current primary guided entry is `/customer/book` (wizard) and advanced form is `/customer/schedule`
 - Auth route naming differs:
   - proposed `/login` and `/signup`
   - current `/customer/login` and `/customer/signup`
@@ -68,9 +72,7 @@ It is written against the current codebase state in `src/app`, `src/lib`, and `s
 - Admin area naming differs:
   - proposed multiple admin modules
   - current implementation is `home` and `settings`
-- Route protection is mostly page-level client redirects today
-  - `src/app/admin/layout.tsx` and `src/app/manager/layout.tsx` are placeholders
-  - protection is not yet centralized in layouts or middleware
+- Route protection: segment layouts now wrap `PortalRouteGuard` for `customer`, `tech`, `manager`, and `admin` (`src/components/portal/PortalRouteGuard.tsx`). Many pages still perform their own redirects; middleware/SSR guards remain a future upgrade.
 
 ## Recommended Route Canon
 
@@ -98,6 +100,7 @@ Use the current route structure as the immediate source of truth, then expand to
 - current:
   - `/customer/dashboard`
   - `/customer/account`
+  - `/customer/book`
   - `/customer/schedule`
   - `/customer/progress`
   - `/customer/reports`
@@ -123,7 +126,8 @@ Use the current route structure as the immediate source of truth, then expand to
 ### Manager
 - current:
   - `/manager`
-  - `/manager/jobs`
+  - `/manager/jobs` (hub)
+  - `/manager/jobs/list`
   - `/manager/jobs/new`
   - `/manager/jobs/[jobId]`
   - `/manager/customers`
@@ -226,12 +230,13 @@ Legend:
 This already matches `portalAccessMap` in `src/lib/portal-auth.ts`.
 
 ### Recommended implementation order
-1. Add shared role-guard helpers that return `user`, `roles`, and redirect target.
+1. Add shared role-guard helpers that return `user`, `roles`, and redirect target. (Partially addressed: `PortalRouteGuard` centralizes the redirect pattern.)
 2. Move protection into route-group layouts where possible:
    - `src/app/customer/layout.tsx`
    - `src/app/tech/layout.tsx`
-   - strengthen `src/app/manager/layout.tsx`
-   - strengthen `src/app/admin/layout.tsx`
+   - `src/app/manager/layout.tsx`
+   - `src/app/admin/layout.tsx`  
+   (Done: each uses `PortalRouteGuard`; customer auth pages skip the guard.)
 3. Keep page-level checks temporarily for high-risk pages until layouts are verified.
 4. Add server-aware protection later using middleware or server components if auth model is upgraded for SSR.
 
@@ -260,7 +265,7 @@ These are the recommended role-specific nav groups. The current implementation u
 
 ### Customer
 - Dashboard
-- Schedule Service
+- Get Service (guided wizard → scheduler)
 - Service Progress
 - Reports
 - Account
@@ -282,10 +287,10 @@ These are the recommended role-specific nav groups. The current implementation u
 
 ### Manager
 - Dashboard
-- Jobs
-- New Job
+- Jobs (hub + list + create flows; no separate “New Job” tab)
 - Schedule
 - Availability
+- Employees (when enabled)
 - Customers
 - Vehicles
 - Appointments
@@ -406,8 +411,8 @@ This section maps the intended role model to the current RLS direction in Supaba
 
 ## Recommended Next Build Order
 
-1. Formalize nav config into one source of truth by role.
-2. Implement protected layouts for `customer`, `tech`, `manager`, and `admin`.
+1. Formalize nav config into one source of truth by role. (Done: `src/lib/portal-nav-config.ts` feeds `PortalTopNav`.)
+2. Implement protected layouts for `customer`, `tech`, `manager`, and `admin`. (Done: `PortalRouteGuard` in each segment layout.)
 3. Add missing routes as lightweight placeholders in the proposed map.
 4. Normalize naming decisions:
    - decide whether to keep `/customer/login` or alias `/login`

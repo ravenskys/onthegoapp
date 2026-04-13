@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
+import { LABOR_SELL_USD_PER_HOUR } from "@/lib/labor-pricing";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +26,6 @@ type EditableServiceCatalogItem = {
   defaultPartNumber: string;
   defaultPartQuantity: string;
   defaultPartSupplier: string;
-  defaultPartsCost: string;
   defaultPartsPrice: string;
   defaultPartsNotes: string;
   sortOrder: string;
@@ -54,7 +54,6 @@ const createEmptyServiceCatalogItem = (): EditableServiceCatalogItem => ({
   defaultPartNumber: "",
   defaultPartQuantity: "1",
   defaultPartSupplier: "",
-  defaultPartsCost: "",
   defaultPartsPrice: "",
   defaultPartsNotes: "",
   sortOrder: "0",
@@ -87,9 +86,18 @@ const calculateLaborDefaultsFromDuration = (durationMinutes: string) => {
 
   const hours = durationNumber / 60;
   return {
-    defaultPrice: (hours * 120).toFixed(2),
+    defaultPrice: (hours * LABOR_SELL_USD_PER_HOUR).toFixed(2),
   };
 };
+
+const parseSortOrderNumber = (value: string) => {
+  const n = Number(String(value).trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Next sort order = max among loaded rows + 1, so manual adds don’t reuse 1, 2, 3 from older data. */
+const getNextServiceSortOrder = (items: EditableServiceCatalogItem[]) =>
+  items.reduce((max, item) => Math.max(max, parseSortOrderNumber(item.sortOrder)), 0) + 1;
 
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -104,6 +112,62 @@ export default function AdminSettingsPage() {
   const [serviceCatalogItems, setServiceCatalogItems] = useState<EditableServiceCatalogItem[]>([]);
   const [serviceCatalogMessage, setServiceCatalogMessage] = useState("");
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+  const [serviceCatalogLoading, setServiceCatalogLoading] = useState(false);
+
+  const loadServiceCatalog = useCallback(async () => {
+    setServiceCatalogLoading(true);
+    try {
+      const { data: serviceCatalogData, error: serviceCatalogError } = await supabase
+        .from("service_catalog")
+        .select(
+          "id, service_code, service_name, service_description, category, default_duration_minutes, default_price, default_part_name, default_part_number, default_part_quantity, default_part_supplier, default_parts_price, default_parts_notes, is_active, is_bookable_online, sort_order, notes, service_catalog_parts(id, part_name, default_quantity, notes, sort_order)",
+        )
+        .order("sort_order", { ascending: true })
+        .order("service_name", { ascending: true });
+
+      if (serviceCatalogError) {
+        console.error(serviceCatalogError);
+        setServiceCatalogMessage(
+          `Could not load service catalog: ${getErrorMessage(serviceCatalogError, "Unknown error")}`,
+        );
+        return;
+      }
+
+      setServiceCatalogItems(
+        (serviceCatalogData || []).map((item) => ({
+          id: item.id,
+          serviceCode: item.service_code || "",
+          serviceName: item.service_name || "",
+          serviceDescription: item.service_description || "",
+          category: item.category || "",
+          defaultDurationMinutes: formatNumericField(item.default_duration_minutes),
+          defaultPrice: formatNumericField(item.default_price),
+          defaultPartName: item.default_part_name || "",
+          defaultPartNumber: item.default_part_number || "",
+          defaultPartQuantity: formatNumericField(item.default_part_quantity ?? 1),
+            defaultPartSupplier: item.default_part_supplier || "",
+            defaultPartsPrice: formatNumericField(item.default_parts_price),
+          defaultPartsNotes: item.default_parts_notes || "",
+          sortOrder: formatNumericField(item.sort_order ?? 0),
+          isActive: Boolean(item.is_active),
+          isBookableOnline: Boolean(item.is_bookable_online),
+          notes: item.notes || "",
+          defaultParts: (item.service_catalog_parts || [])
+            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+            .map((part) => ({
+              id: part.id,
+              partName: part.part_name || "",
+              defaultQuantity: formatNumericField(part.default_quantity ?? 1),
+              notes: part.notes || "",
+              sortOrder: formatNumericField(part.sort_order ?? 0),
+            })),
+        })),
+      );
+      setServiceCatalogMessage("");
+    } finally {
+      setServiceCatalogLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const loadPage = async () => {
@@ -133,55 +197,13 @@ export default function AdminSettingsPage() {
         setPartsTaxRate(String(settingsData.default_parts_tax_rate ?? 0));
       }
 
-      const { data: serviceCatalogData, error: serviceCatalogError } = await supabase
-        .from("service_catalog")
-        .select(
-          "id, service_code, service_name, service_description, category, default_duration_minutes, default_price, default_part_name, default_part_number, default_part_quantity, default_part_supplier, default_parts_cost, default_parts_price, default_parts_notes, is_active, is_bookable_online, sort_order, notes, service_catalog_parts(id, part_name, default_quantity, notes, sort_order)",
-        )
-        .order("sort_order", { ascending: true })
-        .order("service_name", { ascending: true });
-
-      if (serviceCatalogError) {
-        console.error(serviceCatalogError);
-      } else {
-        setServiceCatalogItems(
-          (serviceCatalogData || []).map((item) => ({
-            id: item.id,
-            serviceCode: item.service_code || "",
-            serviceName: item.service_name || "",
-            serviceDescription: item.service_description || "",
-            category: item.category || "",
-            defaultDurationMinutes: formatNumericField(item.default_duration_minutes),
-            defaultPrice: formatNumericField(item.default_price),
-            defaultPartName: item.default_part_name || "",
-            defaultPartNumber: item.default_part_number || "",
-            defaultPartQuantity: formatNumericField(item.default_part_quantity ?? 1),
-            defaultPartSupplier: item.default_part_supplier || "",
-            defaultPartsCost: formatNumericField(item.default_parts_cost),
-            defaultPartsPrice: formatNumericField(item.default_parts_price),
-            defaultPartsNotes: item.default_parts_notes || "",
-            sortOrder: formatNumericField(item.sort_order ?? 0),
-            isActive: Boolean(item.is_active),
-            isBookableOnline: Boolean(item.is_bookable_online),
-            notes: item.notes || "",
-            defaultParts: (item.service_catalog_parts || [])
-              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-              .map((part) => ({
-                id: part.id,
-                partName: part.part_name || "",
-                defaultQuantity: formatNumericField(part.default_quantity ?? 1),
-                notes: part.notes || "",
-                sortOrder: formatNumericField(part.sort_order ?? 0),
-              })),
-          })),
-        );
-      }
+      await loadServiceCatalog();
 
       setLoading(false);
     };
 
-    loadPage();
-  }, []);
+    void loadPage();
+  }, [loadServiceCatalog]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -301,13 +323,16 @@ export default function AdminSettingsPage() {
   };
 
   const handleAddService = () => {
-    setServiceCatalogItems((current) => [
-      ...current,
-      {
-        ...createEmptyServiceCatalogItem(),
-        sortOrder: String(current.length),
-      },
-    ]);
+    setServiceCatalogItems((current) => {
+      const nextSort = getNextServiceSortOrder(current);
+      return [
+        ...current,
+        {
+          ...createEmptyServiceCatalogItem(),
+          sortOrder: String(nextSort),
+        },
+      ];
+    });
     setEditingServiceId(null);
     setExpandedServiceId(null);
     setServiceCatalogMessage("");
@@ -387,7 +412,6 @@ export default function AdminSettingsPage() {
           ? Number(item.defaultPartQuantity)
           : null,
         default_part_supplier: item.defaultPartSupplier.trim() || null,
-        default_parts_cost: item.defaultPartsCost.trim() ? Number(item.defaultPartsCost) : null,
         default_parts_price: item.defaultPartsPrice.trim() ? Number(item.defaultPartsPrice) : null,
         default_parts_notes: item.defaultPartsNotes.trim() || null,
         is_active: item.isActive,
@@ -565,13 +589,29 @@ export default function AdminSettingsPage() {
             <div>
               <CardTitle>Services Offered</CardTitle>
               <p className="text-sm text-slate-600">
-                Admin can manage service names, labor time, pricing, and default parts/accounting details here.
+                Admin can manage service names, labor time, labor pricing, parts sell pricing, and default parts lists. Part costs from suppliers are not edited here yet.
               </p>
             </div>
-            <Button type="button" variant="outline" onClick={handleAddService}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Service
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void loadServiceCatalog()}
+                disabled={serviceCatalogLoading}
+                title="Reload the list from the database (use after migrations or edits made outside this page)"
+              >
+                {serviceCatalogLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Reload services
+              </Button>
+              <Button type="button" variant="outline" onClick={handleAddService}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Service
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -709,16 +749,6 @@ export default function AdminSettingsPage() {
                           step="0.01"
                           value={item.defaultPartsPrice}
                           onChange={(e) => updateServiceCatalogItem(index, "defaultPartsPrice", e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Default Parts Cost</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.defaultPartsCost}
-                          onChange={(e) => updateServiceCatalogItem(index, "defaultPartsCost", e.target.value)}
                         />
                       </div>
                       <div className="space-y-2">
@@ -975,7 +1005,6 @@ export default function AdminSettingsPage() {
                           <div>Part Qty: {item.defaultPartQuantity.trim() || "Not added"}</div>
                           <div>Part Supplier: {item.defaultPartSupplier.trim() || "Not added"}</div>
                           <div>Parts Price: {item.defaultPartsPrice.trim() ? `$${item.defaultPartsPrice}` : "Not added"}</div>
-                          <div>Parts Cost: {item.defaultPartsCost.trim() ? `$${item.defaultPartsCost}` : "Not added"}</div>
                           <div className="sm:col-span-2 lg:col-span-3 xl:col-span-5">Parts Notes: {item.defaultPartsNotes.trim() || "Not added"}</div>
                           <div className="sm:col-span-2 lg:col-span-3 xl:col-span-5">
                             Default Parts List:{" "}

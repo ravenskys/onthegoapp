@@ -54,6 +54,8 @@ type VehicleCatalogFieldsProps = {
   onPlateCommit?: (value: string) => void;
   onVinCommit?: (value: string) => void;
   onYearCommit?: (value: string) => void;
+  /** When false, hides the helper line under the license plate field. Defaults to true. */
+  showLicensePlateHint?: boolean;
 };
 
 type SearchableOption = {
@@ -207,6 +209,7 @@ export function VehicleCatalogFields({
   onPlateCommit,
   onVinCommit,
   onYearCommit,
+  showLicensePlateHint = true,
 }: VehicleCatalogFieldsProps) {
   const yearOptions = useMemo(
     () =>
@@ -477,9 +480,12 @@ export function VehicleCatalogFields({
           onBlur={(e) => onPlateCommit?.(normalizeLicensePlate(e.target.value))}
           placeholder="ABC123"
         />
-        <p className="text-xs text-slate-500">
-          Custom and specialty plates are allowed. This only normalizes spacing and capitalization.
-        </p>
+        {showLicensePlateHint ? (
+          <p className="text-xs text-slate-500">
+            Custom and specialty plates are allowed. This only normalizes spacing
+            and capitalization.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2 md:col-span-2 lg:col-span-2">

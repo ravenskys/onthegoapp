@@ -10,7 +10,6 @@ import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import {
   Loader2,
   Users,
-  PlusCircle,
   ClipboardList,
   Wrench,
   CalendarDays,
@@ -120,7 +119,7 @@ export default function ManagerHomePage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <button
             type="button"
             onClick={() => router.push("/manager/jobs")}
@@ -134,7 +133,7 @@ export default function ManagerHomePage() {
                     <h2 className="text-lg font-semibold">Jobs</h2>
                   </div>
                   <p className="text-sm text-slate-600">
-                    View all jobs, update statuses, assign technicians, and manage work.
+                    Start here: new or returning customer, create jobs, or open the full list.
                   </p>
                   <p className="mt-2 text-xs text-slate-500">
                     Draft jobs should be converted into active work or deleted.
@@ -220,27 +219,6 @@ export default function ManagerHomePage() {
                   </p>
                 </div>
                 <div className="text-sm font-semibold text-slate-900">Set Hours</div>
-              </CardContent>
-            </Card>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/manager/jobs/new")}
-            className="text-left"
-          >
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                <div>
-                  <div className="mb-3 flex items-center gap-2 text-slate-900">
-                    <PlusCircle className="h-5 w-5" />
-                    <h2 className="text-lg font-semibold">New Job</h2>
-                  </div>
-                  <p className="text-sm text-slate-600">
-                    Start a new service job with the fast intake flow.
-                  </p>
-                </div>
-                <div className="text-sm font-semibold text-slate-900">Create Job</div>
               </CardContent>
             </Card>
           </button>

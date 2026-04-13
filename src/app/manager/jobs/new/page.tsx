@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, Save } from "lucide-react";
 
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -34,6 +34,27 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
+import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import {
+  normalizeEmail,
+  normalizeLicensePlate,
+  normalizeVin,
+  normalizeYear,
+} from "@/lib/input-formatters";
+import {
+  laborSellTotalFromHours,
+  laborShopCostFromHours,
+  LABOR_COST_USD_PER_HOUR,
+  LABOR_SELL_USD_PER_HOUR,
+} from "@/lib/labor-pricing";
+import {
+  MANAGER_OTHER_SERVICE_VALUE,
+  MANAGER_OTHER_VEHICLE_VALUE,
+  REPAIR_OTHER_SERVICE_CODE,
+  parseOptionalDecimal,
+} from "@/lib/service-other";
+import { getTechnicianHourlyPayAsOf } from "@/lib/technician-pay";
+
 type Customer = {
   id: string;
   first_name: string | null;
@@ -45,10 +66,12 @@ type Customer = {
 type Vehicle = {
   id: string;
   customer_id: string | null;
-  year: number | null;
+  year: string | number | null;
   make: string | null;
   model: string | null;
+  engine_size: string | null;
   license_plate: string | null;
+  vin: string | null;
 };
 
 type Technician = {
@@ -58,25 +81,83 @@ type Technician = {
   email: string | null;
 };
 
-const SERVICE_TYPE_DESCRIPTIONS: Record<string, string> = {
-  "Oil Change":
-    "Perform engine oil and oil filter service. Inspect visible fluids and basic maintenance items during visit.",
-  Inspection:
-    "Perform inspection, document findings, and provide recommended services based on condition observed.",
-  "Oil Change + Inspection":
-    "Perform engine oil and oil filter service, complete vehicle inspection, document findings, and provide recommended services based on condition observed.",
+/** Row from `service_catalog` — shop job form lists all active services, including internal (not bookable online). */
+type CatalogServiceRow = {
+  id: string;
+  service_name: string;
+  service_description: string | null;
+  is_bookable_online: boolean;
+  category: string | null;
+  sort_order: number | null;
+  service_code: string | null;
 };
 
-export default function NewJobPage() {
+const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
+  {
+    id: "fallback-1",
+    service_name: "Oil Change",
+    service_description:
+      "Perform engine oil and oil filter service. Inspect visible fluids and basic maintenance items during visit.",
+    is_bookable_online: true,
+    category: "Maintenance",
+    sort_order: 10,
+    service_code: "oil_change",
+  },
+  {
+    id: "fallback-2",
+    service_name: "Inspection",
+    service_description:
+      "Perform inspection, document findings, and provide recommended services based on condition observed.",
+    is_bookable_online: true,
+    category: "Inspection",
+    sort_order: 20,
+    service_code: "inspection",
+  },
+  {
+    id: "fallback-3",
+    service_name: "Oil Change + Inspection",
+    service_description:
+      "Perform engine oil and oil filter service, complete vehicle inspection, document findings, and provide recommended services based on condition observed.",
+    is_bookable_online: true,
+    category: "Maintenance",
+    sort_order: 30,
+    service_code: "oil_change_and_inspection",
+  },
+  {
+    id: "fallback-4",
+    service_name: "Repair / Other",
+    service_description: "",
+    is_bookable_online: true,
+    category: "Repair",
+    sort_order: 40,
+    service_code: REPAIR_OTHER_SERVICE_CODE,
+  },
+];
+
+/** Match `.otg-portal-dark` select/input surfaces (`globals.css`) — customer combobox uses Button, not SelectTrigger. */
+const managerDarkFieldTriggerClassName = cn(
+  "h-8 w-full justify-between rounded-lg px-2.5 font-normal shadow-none",
+  "!border-[rgba(115,145,126,0.35)] !bg-[#121b14] !text-[#f3fff4]",
+  "hover:!bg-[#1a2620] aria-expanded:!bg-[#1a2620]"
+);
+
+function NewJobPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const flow = searchParams.get("flow");
+  const returningPickerOpenedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [catalogServices, setCatalogServices] = useState<CatalogServiceRow[]>(
+    []
+  );
 
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
@@ -88,11 +169,94 @@ export default function NewJobPage() {
   const [assignedTechId, setAssignedTechId] = useState("");
   const [notes, setNotes] = useState("");
 
+  const [otherLaborHours, setOtherLaborHours] = useState("");
+  const [otherPartName, setOtherPartName] = useState("");
+  const [otherPartQty, setOtherPartQty] = useState("1");
+  const [otherPartUnitCost, setOtherPartUnitCost] = useState("");
+  const [otherPartUnitPrice, setOtherPartUnitPrice] = useState("");
+
+  /** Resolved shop pay rate for assigned tech (for labor cost). */
+  const [assignedTechHourlyPay, setAssignedTechHourlyPay] = useState<number | null>(null);
+  const [assignedTechPayEffectiveYmd, setAssignedTechPayEffectiveYmd] = useState<string | null>(null);
+
   const [customerOpen, setCustomerOpen] = useState(false);
+
+  const [newCustomerFirst, setNewCustomerFirst] = useState("");
+  const [newCustomerLast, setNewCustomerLast] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+
+  const [newVehicleYear, setNewVehicleYear] = useState("");
+  const [newVehicleMake, setNewVehicleMake] = useState("");
+  const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [newVehicleEngineSize, setNewVehicleEngineSize] = useState("");
+  const [newVehiclePlate, setNewVehiclePlate] = useState("");
+  const [newVehicleVin, setNewVehicleVin] = useState("");
+  const [useCustomMake, setUseCustomMake] = useState(false);
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const [useCustomEngineSize, setUseCustomEngineSize] = useState(false);
+  const [addingVehicle, setAddingVehicle] = useState(false);
 
   const filteredVehicles = vehicles.filter(
       (vehicle) => vehicle.customer_id === selectedCustomerId
     );
+
+  const selectedCatalogRow = useMemo(
+    () => catalogServices.find((s) => s.service_name === serviceType),
+    [catalogServices, serviceType]
+  );
+
+  const showManagerLaborParts =
+    serviceType === MANAGER_OTHER_SERVICE_VALUE ||
+    selectedCatalogRow?.service_code === REPAIR_OTHER_SERVICE_CODE;
+
+  const otherLaborHoursParsed = useMemo(
+    () => parseOptionalDecimal(otherLaborHours),
+    [otherLaborHours]
+  );
+
+  const computedLaborSell = useMemo(() => {
+    if (otherLaborHoursParsed == null) return null;
+    return laborSellTotalFromHours(otherLaborHoursParsed);
+  }, [otherLaborHoursParsed]);
+
+  const laborCostAsOfYmd = useMemo(() => {
+    const t = requestedDate.trim();
+    if (t) return t;
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, [requestedDate]);
+
+  const computedLaborCost = useMemo(() => {
+    if (otherLaborHoursParsed == null) return null;
+    return laborShopCostFromHours(otherLaborHoursParsed, assignedTechHourlyPay);
+  }, [otherLaborHoursParsed, assignedTechHourlyPay]);
+
+  useEffect(() => {
+    if (!assignedTechId) {
+      setAssignedTechHourlyPay(null);
+      setAssignedTechPayEffectiveYmd(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const row = await getTechnicianHourlyPayAsOf(
+        supabase,
+        assignedTechId,
+        laborCostAsOfYmd
+      );
+      if (cancelled) return;
+      setAssignedTechHourlyPay(row?.hourly_pay ?? null);
+      setAssignedTechPayEffectiveYmd(row?.effective_date ?? null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assignedTechId, laborCostAsOfYmd]);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -107,10 +271,15 @@ export default function NewJobPage() {
         return;
       }
 
+      setCurrentUserId(user.id);
       setAuthorized(true);
 
-       const [{ data: customersData, error: customersError }, { data: vehiclesData, error: vehiclesError }, { data: rolesData, error: rolesError }] =
-          await Promise.all([
+       const [
+          { data: customersData, error: customersError },
+          { data: vehiclesData, error: vehiclesError },
+          { data: rolesData, error: rolesError },
+          { data: catalogData, error: catalogError },
+        ] = await Promise.all([
             supabase
               .from("customers")
               .select("id, first_name, last_name, email, phone")
@@ -119,18 +288,40 @@ export default function NewJobPage() {
 
             supabase
               .from("vehicles")
-              .select("id, customer_id, year, make, model, license_plate")
+              .select("id, customer_id, year, make, model, engine_size, license_plate, vin")
               .order("year", { ascending: false }),
 
             supabase
               .from("user_roles")
               .select("user_id, role")
               .eq("role", "technician"),
+
+            supabase
+              .from("service_catalog")
+              .select(
+                "id, service_name, service_description, is_bookable_online, category, sort_order, service_code"
+              )
+              .eq("is_active", true)
+              .order("sort_order", { ascending: true })
+              .order("service_name", { ascending: true }),
           ]);
 
         if (customersError) throw customersError;
         if (vehiclesError) throw vehiclesError;
         if (rolesError) throw rolesError;
+        if (catalogError) {
+          console.error("Service catalog load failed:", catalogError);
+        }
+
+        const catalogRows = (catalogData ?? []) as CatalogServiceRow[];
+        setCatalogServices(
+          catalogRows.length > 0 ? catalogRows : FALLBACK_SERVICE_CATALOG
+        );
+        if (catalogRows.length === 0 && !catalogError) {
+          console.warn(
+            "Service catalog returned no active rows; using fallback list."
+          );
+        }
 
         setCustomers(customersData ?? []);
         setVehicles(vehiclesData ?? []);
@@ -169,6 +360,114 @@ export default function NewJobPage() {
     checkAccess();
   }, []);
 
+  useEffect(() => {
+    if (loading || !authorized) return;
+    if (flow !== "returning" || returningPickerOpenedRef.current) return;
+    returningPickerOpenedRef.current = true;
+    setCustomerOpen(true);
+  }, [loading, authorized, flow]);
+
+  const handleCreateCustomer = async () => {
+    const first = newCustomerFirst.trim();
+    const last = newCustomerLast.trim();
+    if (!first && !last) {
+      alert("Enter at least a first or last name.");
+      return;
+    }
+
+    setCreatingCustomer(true);
+    try {
+      const emailNorm = normalizeEmail(newCustomerEmail);
+      const { data, error } = await supabase
+        .from("customers")
+        .insert({
+          first_name: first || null,
+          last_name: last || null,
+          phone: newCustomerPhone.trim() || null,
+          email: emailNorm || null,
+          tax_exempt: false,
+        })
+        .select("id, first_name, last_name, email, phone")
+        .single();
+
+      if (error) throw error;
+
+      const row = data as Customer;
+      setCustomers((prev) =>
+        [...prev, row].sort((a, b) => {
+          const an = `${a.last_name ?? ""} ${a.first_name ?? ""}`.trim();
+          const bn = `${b.last_name ?? ""} ${b.first_name ?? ""}`.trim();
+          return an.localeCompare(bn);
+        })
+      );
+      setSelectedCustomerId(row.id);
+      setSelectedVehicleId("");
+      setNewCustomerFirst("");
+      setNewCustomerLast("");
+      setNewCustomerPhone("");
+      setNewCustomerEmail("");
+      setCustomerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Could not create customer.");
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
+
+  const handleAddVehicleForCustomer = async () => {
+    if (!selectedCustomerId) return;
+
+    if (
+      !newVehicleMake.trim() &&
+      !newVehicleModel.trim() &&
+      !newVehicleVin.trim()
+    ) {
+      alert("Please enter at least basic vehicle information (make, model, or VIN).");
+      return;
+    }
+
+    setAddingVehicle(true);
+    try {
+      const { data, error } = await supabase
+        .from("vehicles")
+        .insert({
+          customer_id: selectedCustomerId,
+          year: newVehicleYear.trim() || null,
+          make: newVehicleMake.trim() || null,
+          model: newVehicleModel.trim() || null,
+          engine_size: newVehicleEngineSize.trim() || null,
+          license_plate: normalizeLicensePlate(newVehiclePlate) || null,
+          vin: normalizeVin(newVehicleVin) || null,
+        })
+        .select(
+          "id, customer_id, year, make, model, engine_size, license_plate, vin"
+        )
+        .single();
+
+      if (error) throw error;
+
+      setVehicles((prev) => [...prev, data]);
+      setSelectedVehicleId(data.id);
+      setNewVehicleYear("");
+      setNewVehicleMake("");
+      setNewVehicleModel("");
+      setNewVehicleEngineSize("");
+      setNewVehiclePlate("");
+      setNewVehicleVin("");
+      setUseCustomMake(false);
+      setUseCustomModel(false);
+      setUseCustomEngineSize(false);
+    } catch (err) {
+      console.error(err);
+      alert(
+        err instanceof Error ? err.message : "Could not save the vehicle."
+      );
+    } finally {
+      setAddingVehicle(false);
+    }
+  };
+
   if (loading || !authorized) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -192,10 +491,10 @@ export default function NewJobPage() {
 
             <div>
               <h1 className="text-3xl font-bold text-slate-900">
-                Create New Job
+                Create shop job
               </h1>
               <p className="text-slate-600">
-                Set up a new service job for a customer and vehicle.
+                Internal job entry (not created by the customer scheduling portal). Customer online bookings still appear as jobs with source &quot;Customer portal&quot;.
               </p>
             </div>
           </div>
@@ -216,6 +515,93 @@ export default function NewJobPage() {
 
         <PortalTopNav section="manager" />
 
+        {flow === "new" || flow === "returning" ? (
+          <div className="rounded-xl border border-lime-400/35 bg-lime-400/10 px-4 py-3 text-sm text-slate-800">
+            {flow === "new" ? (
+              <>
+                <span className="font-semibold text-slate-900">New customer path: </span>
+                Add the person below, then choose a vehicle and complete the job.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-slate-900">Returning customer: </span>
+                The customer search should be open—pick someone on file, then their vehicle.
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {flow === "new" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 1 — Add customer</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-cust-first">First name</Label>
+                <Input
+                  id="new-cust-first"
+                  value={newCustomerFirst}
+                  onChange={(e) => setNewCustomerFirst(e.target.value)}
+                  placeholder="First name"
+                  className="bg-white text-slate-950"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-cust-last">Last name</Label>
+                <Input
+                  id="new-cust-last"
+                  value={newCustomerLast}
+                  onChange={(e) => setNewCustomerLast(e.target.value)}
+                  placeholder="Last name"
+                  className="bg-white text-slate-950"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-cust-phone">Phone</Label>
+                <Input
+                  id="new-cust-phone"
+                  value={newCustomerPhone}
+                  onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  placeholder="Phone"
+                  className="bg-white text-slate-950"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-cust-email">Email (optional)</Label>
+                <Input
+                  id="new-cust-email"
+                  type="email"
+                  value={newCustomerEmail}
+                  onChange={(e) => setNewCustomerEmail(e.target.value)}
+                  placeholder="Email"
+                  className="bg-white text-slate-950"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Button
+                  type="button"
+                  disabled={creatingCustomer}
+                  onClick={() => void handleCreateCustomer()}
+                  className={headerActionButtonClassName}
+                >
+                  {creatingCustomer ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Save customer and continue
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
           <form
             id="new-job-form"
             onSubmit={async (e) => {
@@ -228,8 +614,14 @@ export default function NewJobPage() {
                   return;
                 }
 
-                if (!selectedVehicleId) {
-                  alert("Please select a vehicle.");
+                if (!selectedVehicleId || selectedVehicleId === MANAGER_OTHER_VEHICLE_VALUE) {
+                  alert(
+                    selectedVehicleId === MANAGER_OTHER_VEHICLE_VALUE
+                      ? "Save the new vehicle using “Add vehicle for this customer” below, or pick an existing vehicle from the list."
+                      : selectedCustomerId && filteredVehicles.length === 0
+                      ? "Add a vehicle for this customer using the form (same catalog as Customer page), then click “Add vehicle for this customer” before creating the job."
+                      : "Please select a vehicle."
+                  );
                   return;
                 }
 
@@ -238,15 +630,35 @@ export default function NewJobPage() {
                   return;
                 }
 
+                const resolvedServiceType =
+                  serviceType === MANAGER_OTHER_SERVICE_VALUE
+                    ? "Other"
+                    : serviceType;
+
+                const catalogRowForSubmit = catalogServices.find(
+                  (s) => s.service_name === serviceType
+                );
+
+                const isOtherOrRepairFlow =
+                  serviceType === MANAGER_OTHER_SERVICE_VALUE ||
+                  catalogRowForSubmit?.service_code === REPAIR_OTHER_SERVICE_CODE;
+
+                if (isOtherOrRepairFlow && !serviceDescription.trim()) {
+                  alert("Please describe the service needed.");
+                  return;
+                }
+
                 const jobPayload: Record<string, unknown> = {
                   customer_id: selectedCustomerId,
                   vehicle_id: selectedVehicleId,
-                  service_type: serviceType,
+                  service_type: resolvedServiceType,
                   priority,
                   service_description: serviceDescription || null,
                   requested_date: requestedDate || null,
                   notes: notes || null,
                   status: "new",
+                  source: "manual",
+                  created_by_user_id: currentUserId,
                 };
 
                 if (assignedTechId) {
@@ -263,6 +675,56 @@ export default function NewJobPage() {
                   console.error(insertError);
                   alert(`Failed to create job: ${insertError.message}`);
                   return;
+                }
+
+                if (isOtherOrRepairFlow && serviceDescription.trim()) {
+                  const { data: insertedService, error: jobServiceError } =
+                    await supabase
+                      .from("job_services")
+                      .insert({
+                        job_id: insertedJob.id,
+                        service_code:
+                          serviceType === MANAGER_OTHER_SERVICE_VALUE
+                            ? null
+                            : catalogRowForSubmit?.service_code ?? null,
+                        service_name:
+                          serviceType === MANAGER_OTHER_SERVICE_VALUE
+                            ? "Other"
+                            : serviceType,
+                        service_description: serviceDescription.trim(),
+                        estimated_hours: otherLaborHoursParsed,
+                        estimated_price: computedLaborSell,
+                        estimated_cost: computedLaborCost,
+                        sort_order: 0,
+                      })
+                      .select("id")
+                      .single();
+
+                  if (jobServiceError) {
+                    console.error(jobServiceError);
+                    alert(
+                      `Job was created, but saving labor line failed: ${jobServiceError.message}`
+                    );
+                  } else if (otherPartName.trim() && insertedService?.id) {
+                    const qty = parseOptionalDecimal(otherPartQty) ?? 1;
+                    const { error: partError } = await supabase
+                      .from("job_parts")
+                      .insert({
+                        job_id: insertedJob.id,
+                        job_service_id: insertedService.id,
+                        part_name: otherPartName.trim(),
+                        quantity: qty > 0 ? qty : 1,
+                        unit_cost: parseOptionalDecimal(otherPartUnitCost),
+                        unit_price: parseOptionalDecimal(otherPartUnitPrice),
+                      });
+
+                    if (partError) {
+                      console.error(partError);
+                      alert(
+                        `Job was created, but saving the part line failed: ${partError.message}`
+                      );
+                    }
+                  }
                 }
 
                 router.push(`/manager/jobs/${insertedJob.id}`);
@@ -286,7 +748,7 @@ export default function NewJobPage() {
                     variant="outline"
                     role="combobox"
                     aria-expanded={customerOpen}
-                    className="w-full justify-between font-normal text-slate-900"
+                    className={managerDarkFieldTriggerClassName}
                   >
                     {selectedCustomerId
                       ? (() => {
@@ -302,15 +764,29 @@ export default function NewJobPage() {
                         })()
                       : "Select customer"}
 
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-[#7f9988]" />
                   </Button>
                 </PopoverTrigger>
 
-                <PopoverContent className="w-[420px] border-slate-200 bg-white p-0 text-slate-900" align="start">
-                  <Command className="bg-white text-slate-900">
-                    <CommandInput placeholder="Search customer..." />
+                <PopoverContent
+                  className="w-[420px] border border-[rgba(115,145,126,0.35)] bg-[#121b14] p-0 text-[#f3fff4] shadow-lg"
+                  align="start"
+                >
+                  <Command
+                    className={cn(
+                      "!bg-[#121b14] !text-[#f3fff4]",
+                      "[&_[data-slot=command-input-wrapper]]:border-[rgba(115,145,126,0.35)]",
+                      "[&_[data-slot=command-input-wrapper]_svg]:text-[#7f9988]"
+                    )}
+                  >
+                    <CommandInput
+                      placeholder="Search customer..."
+                      className="text-[#f3fff4] placeholder:text-[#7f9988]"
+                    />
                     <CommandList>
-                      <CommandEmpty>No customer found.</CommandEmpty>
+                      <CommandEmpty className="text-[#7f9988]">
+                        No customer found.
+                      </CommandEmpty>
                       <CommandGroup>
                         {customers.map((customer) => {
                           const name =
@@ -323,10 +799,19 @@ export default function NewJobPage() {
                             <CommandItem
                               key={customer.id}
                               value={`${name} ${customer.email ?? ""} ${customer.phone ?? ""}`}
-                              className="text-slate-900 data-[selected=true]:bg-slate-100 data-[selected=true]:text-slate-900"
+                              className="text-[#f3fff4] data-[selected=true]:!bg-[rgba(57,255,20,0.16)] data-[selected=true]:!text-[#f3fff4]"
                               onSelect={() => {
                                 setSelectedCustomerId(customer.id);
                                 setSelectedVehicleId("");
+                                setNewVehicleYear("");
+                                setNewVehicleMake("");
+                                setNewVehicleModel("");
+                                setNewVehicleEngineSize("");
+                                setNewVehiclePlate("");
+                                setNewVehicleVin("");
+                                setUseCustomMake(false);
+                                setUseCustomModel(false);
+                                setUseCustomEngineSize(false);
                                 setCustomerOpen(false);
                               }}
                             >
@@ -349,73 +834,210 @@ export default function NewJobPage() {
 
             <div className="space-y-2">
               <Label>Vehicle</Label>
-              <Select
-                value={selectedVehicleId}
-                onValueChange={setSelectedVehicleId}
-                disabled={!selectedCustomerId || filteredVehicles.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      !selectedCustomerId
-                        ? "Select customer first"
-                        : filteredVehicles.length === 0
-                          ? "No vehicles found"
-                          : "Select vehicle"
-                    }
+              {!selectedCustomerId ? (
+                <div
+                  className={cn(
+                    "flex h-8 w-full items-center rounded-lg border px-2.5 text-sm text-[#7f9988]",
+                    "border-[rgba(115,145,126,0.35)] bg-[#121b14]/50"
+                  )}
+                >
+                  Select customer first
+                </div>
+              ) : filteredVehicles.length === 0 ? (
+                <div className="space-y-4 rounded-lg border border-dashed border-[rgba(115,145,126,0.45)] bg-[#0d160f]/50 p-4">
+                  <p className="text-sm text-slate-400">
+                    No vehicles on file for this customer. Use the searchable year,
+                    make, model, and engine lists (same catalog as on the customer
+                    vehicle form), then save the vehicle before creating the job.
+                  </p>
+                  <VehicleCatalogFields
+                    year={newVehicleYear}
+                    make={newVehicleMake}
+                    model={newVehicleModel}
+                    engineSize={newVehicleEngineSize}
+                    licensePlate={newVehiclePlate}
+                    vin={newVehicleVin}
+                    useCustomMake={useCustomMake}
+                    useCustomModel={useCustomModel}
+                    useCustomEngineSize={useCustomEngineSize}
+                    normalizeYear={normalizeYear}
+                    normalizeVin={normalizeVin}
+                    normalizeLicensePlate={normalizeLicensePlate}
+                    setYear={setNewVehicleYear}
+                    setMake={setNewVehicleMake}
+                    setModel={setNewVehicleModel}
+                    setEngineSize={setNewVehicleEngineSize}
+                    setLicensePlate={setNewVehiclePlate}
+                    setVin={setNewVehicleVin}
+                    setUseCustomMake={setUseCustomMake}
+                    setUseCustomModel={setUseCustomModel}
+                    setUseCustomEngineSize={setUseCustomEngineSize}
+                    makeListId="new-job-vehicle-makes"
+                    modelListId="new-job-vehicle-models"
+                    engineListId="new-job-vehicle-engine-sizes"
+                    className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                    showLicensePlateHint={false}
                   />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredVehicles.map((vehicle) => {
-                    const label = [
-                      vehicle.year,
-                      vehicle.make,
-                      vehicle.model,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      managerDarkFieldTriggerClassName,
+                      "w-full sm:w-auto"
+                    )}
+                    disabled={addingVehicle}
+                    onClick={() => void handleAddVehicleForCustomer()}
+                  >
+                    {addingVehicle ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving vehicle…
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add vehicle for this customer
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Select
+                    value={selectedVehicleId}
+                    onValueChange={setSelectedVehicleId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredVehicles.map((vehicle) => {
+                        const label = [
+                          vehicle.year,
+                          vehicle.make,
+                          vehicle.model,
+                        ]
+                          .filter(Boolean)
+                          .join(" ");
 
-                    const display =
-                      label || vehicle.license_plate || "Unnamed vehicle";
+                        const display =
+                          label || vehicle.license_plate || "Unnamed vehicle";
 
-                    return (
-                      <SelectItem key={vehicle.id} value={vehicle.id}>
-                        {vehicle.license_plate
-                          ? `${display} - ${vehicle.license_plate}`
-                          : display}
+                        return (
+                          <SelectItem key={vehicle.id} value={vehicle.id}>
+                            {vehicle.license_plate
+                              ? `${display} - ${vehicle.license_plate}`
+                              : display}
+                          </SelectItem>
+                        );
+                      })}
+                      <SelectItem value={MANAGER_OTHER_VEHICLE_VALUE}>
+                        Other — add a vehicle not in this list
                       </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+                    </SelectContent>
+                  </Select>
+
+                  {selectedVehicleId === MANAGER_OTHER_VEHICLE_VALUE ? (
+                    <div className="space-y-4 rounded-lg border border-dashed border-[rgba(115,145,126,0.45)] bg-[#0d160f]/50 p-4">
+                      <p className="text-sm text-slate-400">
+                        Enter year, make, model, and VIN or plate, then save. The vehicle is
+                        added to this customer and selected for the job.
+                      </p>
+                      <VehicleCatalogFields
+                        year={newVehicleYear}
+                        make={newVehicleMake}
+                        model={newVehicleModel}
+                        engineSize={newVehicleEngineSize}
+                        licensePlate={newVehiclePlate}
+                        vin={newVehicleVin}
+                        useCustomMake={useCustomMake}
+                        useCustomModel={useCustomModel}
+                        useCustomEngineSize={useCustomEngineSize}
+                        normalizeYear={normalizeYear}
+                        normalizeVin={normalizeVin}
+                        normalizeLicensePlate={normalizeLicensePlate}
+                        setYear={setNewVehicleYear}
+                        setMake={setNewVehicleMake}
+                        setModel={setNewVehicleModel}
+                        setEngineSize={setNewVehicleEngineSize}
+                        setLicensePlate={setNewVehiclePlate}
+                        setVin={setNewVehicleVin}
+                        setUseCustomMake={setUseCustomMake}
+                        setUseCustomModel={setUseCustomModel}
+                        setUseCustomEngineSize={setUseCustomEngineSize}
+                        makeListId="new-job-vehicle-makes-other"
+                        modelListId="new-job-vehicle-models-other"
+                        engineListId="new-job-vehicle-engine-sizes-other"
+                        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                        showLicensePlateHint={false}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          managerDarkFieldTriggerClassName,
+                          "w-full sm:w-auto"
+                        )}
+                        disabled={addingVehicle}
+                        onClick={() => void handleAddVehicleForCustomer()}
+                      >
+                        {addingVehicle ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving vehicle…
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add vehicle for this customer
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
               <Label>Service Type</Label>
+              <p className="text-xs text-slate-500">
+                Active services from the catalog, including shop-only items not
+                shown on the customer booking portal.
+              </p>
               <Select
                 value={serviceType}
                 onValueChange={(value) => {
                   setServiceType(value);
-
-                  if (value === "Repair / Other") {
+                  if (value === MANAGER_OTHER_SERVICE_VALUE) {
                     setServiceDescription("");
+                    setOtherLaborHours("");
+                    setOtherPartName("");
+                    setOtherPartQty("1");
+                    setOtherPartUnitCost("");
+                    setOtherPartUnitPrice("");
                     return;
                   }
-
-                  const defaultDescription = SERVICE_TYPE_DESCRIPTIONS[value];
-                  if (defaultDescription) {
-                    setServiceDescription(defaultDescription);
-                  }
+                  const row = catalogServices.find(
+                    (s) => s.service_name === value
+                  );
+                  const nextDesc = row?.service_description?.trim() ?? "";
+                  setServiceDescription(nextDesc);
                 }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select service type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Oil Change">Oil Change</SelectItem>
-                  <SelectItem value="Inspection">Inspection</SelectItem>
-                  <SelectItem value="Oil Change + Inspection">Oil Change + Inspection</SelectItem>
-                  <SelectItem value="Repair / Other">Repair / Other</SelectItem>
+                  {catalogServices.map((svc) => (
+                    <SelectItem key={svc.id} value={svc.service_name}>
+                      {svc.service_name}
+                      {!svc.is_bookable_online ? " (shop only)" : ""}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={MANAGER_OTHER_SERVICE_VALUE}>
+                    Other — describe below (labor and parts)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -437,11 +1059,109 @@ export default function NewJobPage() {
             <div className="space-y-2 md:col-span-2">
               <Label>Service Description</Label>
               <Textarea
-                placeholder="Describe the requested work..."
+                placeholder={
+                  showManagerLaborParts
+                    ? "Describe the service needed (required for Other / repair requests)…"
+                    : "Describe the requested work…"
+                }
                 value={serviceDescription}
                 onChange={(e) => setServiceDescription(e.target.value)}
               />
             </div>
+
+            {showManagerLaborParts ? (
+              <div className="space-y-4 md:col-span-2 rounded-lg border border-[rgba(115,145,126,0.35)] bg-[#0d160f]/40 p-4">
+                <div className="text-sm font-medium text-[#f3fff4]">
+                  Labor (shop)
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-[#c5dcc9]">Est. labor hours</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                      value={otherLaborHours}
+                      onChange={(e) => setOtherLaborHours(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 rounded-lg border border-[rgba(115,145,126,0.25)] bg-[#121b14]/60 p-3 text-sm text-[#c5dcc9]">
+                    <div className="font-medium text-[#f3fff4]">Labor dollars (auto)</div>
+                    <p className="text-xs leading-relaxed text-[#7f9988]">
+                      <span className="text-[#c5dcc9]">Customer labor total</span> uses the catalog sell rule (
+                      {LABOR_SELL_USD_PER_HOUR}/hr × hours).{" "}
+                      <span className="text-[#c5dcc9]">Shop labor cost</span> uses the assigned technician&apos;s
+                      hourly pay (Employees list) effective on{" "}
+                      {laborCostAsOfYmd}
+                      {assignedTechHourlyPay != null
+                        ? ` — $${assignedTechHourlyPay.toFixed(2)}/hr from ${assignedTechPayEffectiveYmd ?? "—"}.`
+                        : assignedTechId
+                          ? ` — no rate on file; using default $${LABOR_COST_USD_PER_HOUR}/hr.`
+                          : ` — no technician assigned; using default $${LABOR_COST_USD_PER_HOUR}/hr.`}
+                    </p>
+                    <div className="mt-2 space-y-1 font-mono text-[#f3fff4]">
+                      <div>
+                        Customer total (est.):{" "}
+                        {computedLaborSell != null ? `$${computedLaborSell.toFixed(2)}` : "—"}
+                      </div>
+                      <div>
+                        Shop cost (est.):{" "}
+                        {computedLaborCost != null ? `$${computedLaborCost.toFixed(2)}` : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-sm font-medium text-[#f3fff4]">
+                  Parts (optional)
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="text-[#c5dcc9]">Part name</Label>
+                    <Input
+                      className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                      value={otherPartName}
+                      onChange={(e) => setOtherPartName(e.target.value)}
+                      placeholder="e.g. filter, belt…"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#c5dcc9]">Qty</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                      value={otherPartQty}
+                      onChange={(e) => setOtherPartQty(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#c5dcc9]">Unit cost</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                      value={otherPartUnitCost}
+                      onChange={(e) => setOtherPartUnitCost(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#c5dcc9]">Unit price</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                      value={otherPartUnitPrice}
+                      onChange={(e) => setOtherPartUnitPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <Label>Requested Date</Label>
@@ -488,5 +1208,19 @@ export default function NewJobPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function NewJobPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
+        </div>
+      }
+    >
+      <NewJobPageContent />
+    </Suspense>
   );
 }
