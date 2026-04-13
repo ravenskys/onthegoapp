@@ -22,7 +22,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (local branch tracks **`secondary/main`** for routine pushes).
 - **Next convergence**: when you are ready to ship, plan a merge or PR from this line of work (**`secondary/main`**) into **`upstream/main`** (`onthegoapp`) so the primary deployed repo stays a deliberate promotion.
 - Push day-to-day work to **`secondary`**; use **`upstream`** only when intentionally updating the main app repo.
-- Last pushed handoff / validation update: `93a4b8e` — *Handoff: vehicle library and manager layout next; new customer field errors.*
+- After syncing **`secondary/main`**, run `git log -1 --oneline` for the current tip (avoids stale hashes in this file).
 
 ## Next session — start here
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
