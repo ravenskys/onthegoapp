@@ -127,3 +127,8 @@ The recommended workflow right now is:
 1. Keep active app development pointed at hosted Supabase.
 2. Use the schema recovery docs to restore a clean local baseline later.
 3. Centralize setup and handoff docs in this repo so the project moves cleanly between computers.
+
+Near-term product focus (see [SESSION_HANDOFF.md](./SESSION_HANDOFF.md)):
+
+- Expand the **vehicle library** in `src/lib/vehicleCatalog.ts` (feeds vehicle pickers app-wide).
+- Improve **manager home** layout at `src/app/manager/page.tsx`.

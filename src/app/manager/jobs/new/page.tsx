@@ -36,6 +36,7 @@ import {
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import {
+  formatPhoneNumber,
   normalizeEmail,
   normalizeLicensePlate,
   normalizeVin,
@@ -186,6 +187,13 @@ function NewJobPageContent() {
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
+  /** Inline validation for Step 1 — Add customer (highlights fields + messages). */
+  const [newCustomerErrors, setNewCustomerErrors] = useState<
+    Partial<Record<"name" | "email" | "phone", string>>
+  >({});
+
+  const newCustomerInputErrorClass =
+    "!border-red-500 !ring-2 !ring-red-200 focus-visible:!ring-red-300";
 
   const [newVehicleYear, setNewVehicleYear] = useState("");
   const [newVehicleMake, setNewVehicleMake] = useState("");
@@ -367,24 +375,80 @@ function NewJobPageContent() {
     setCustomerOpen(true);
   }, [loading, authorized, flow]);
 
+  useEffect(() => {
+    if (!newCustomerErrors.name && !newCustomerErrors.email && !newCustomerErrors.phone) {
+      return;
+    }
+    const focusId = newCustomerErrors.name
+      ? "new-cust-first"
+      : newCustomerErrors.email
+        ? "new-cust-email"
+        : "new-cust-phone";
+    const el = document.getElementById(focusId);
+    if (el && typeof (el as HTMLElement).focus === "function") {
+      (el as HTMLElement).focus();
+    }
+  }, [newCustomerErrors]);
+
   const handleCreateCustomer = async () => {
+    setNewCustomerErrors({});
+
     const first = newCustomerFirst.trim();
     const last = newCustomerLast.trim();
     if (!first && !last) {
-      alert("Enter at least a first or last name.");
+      setNewCustomerErrors({
+        name: "Enter at least a first or last name.",
+      });
       return;
     }
 
+    const emailNorm = normalizeEmail(newCustomerEmail);
+    if (!emailNorm) {
+      setNewCustomerErrors({
+        email: "Email is required. We use it to spot repeat customers and match portal accounts.",
+      });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      setNewCustomerErrors({
+        email: "Enter a valid email (example: name@company.com).",
+      });
+      return;
+    }
+
+    const phoneDigits = newCustomerPhone.replace(/\D/g, "");
+    if (phoneDigits.length !== 10) {
+      setNewCustomerErrors({
+        phone: "Enter a complete 10-digit U.S. phone number.",
+      });
+      return;
+    }
+    const phoneFormatted = formatPhoneNumber(phoneDigits);
+
     setCreatingCustomer(true);
     try {
-      const emailNorm = normalizeEmail(newCustomerEmail);
+      const { data: existingByEmail, error: dupError } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("email", emailNorm)
+        .maybeSingle();
+
+      if (dupError) throw dupError;
+      if (existingByEmail?.id) {
+        setNewCustomerErrors({
+          email:
+            "This email is already on file. Use Returning customer from Jobs and search, or use a different email.",
+        });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("customers")
         .insert({
           first_name: first || null,
           last_name: last || null,
-          phone: newCustomerPhone.trim() || null,
-          email: emailNorm || null,
+          phone: phoneFormatted,
+          email: emailNorm,
           tax_exempt: false,
         })
         .select("id, first_name, last_name, email, phone")
@@ -406,10 +470,16 @@ function NewJobPageContent() {
       setNewCustomerLast("");
       setNewCustomerPhone("");
       setNewCustomerEmail("");
+      setNewCustomerErrors({});
       setCustomerOpen(false);
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Could not create customer.");
+      const msg = err instanceof Error ? err.message : "Could not create customer.";
+      if (/email|unique|duplicate/i.test(msg)) {
+        setNewCustomerErrors({ email: msg });
+      } else {
+        alert(msg);
+      }
     } finally {
       setCreatingCustomer(false);
     }
@@ -535,48 +605,153 @@ function NewJobPageContent() {
           <Card>
             <CardHeader>
               <CardTitle>Step 1 — Add customer</CardTitle>
+              <p className="text-sm font-normal text-slate-600">
+                Email is required and must be unique—it is how we catch repeat customers. Phone is saved as a
+                standard 10-digit U.S. format.
+              </p>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <CardContent className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="new-cust-first">First name</Label>
+                <Label
+                  htmlFor="new-cust-first"
+                  className={cn(newCustomerErrors.name && "font-semibold text-red-700")}
+                >
+                  First name
+                </Label>
                 <Input
                   id="new-cust-first"
                   value={newCustomerFirst}
-                  onChange={(e) => setNewCustomerFirst(e.target.value)}
+                  onChange={(e) => {
+                    setNewCustomerFirst(e.target.value);
+                    if (newCustomerErrors.name) {
+                      setNewCustomerErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.name;
+                        return next;
+                      });
+                    }
+                  }}
                   placeholder="First name"
-                  className="bg-white text-slate-950"
+                  autoComplete="given-name"
+                  aria-invalid={Boolean(newCustomerErrors.name)}
+                  className={cn(
+                    "h-11 bg-white text-slate-950",
+                    newCustomerErrors.name && newCustomerInputErrorClass
+                  )}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-cust-last">Last name</Label>
+                <Label
+                  htmlFor="new-cust-last"
+                  className={cn(newCustomerErrors.name && "font-semibold text-red-700")}
+                >
+                  Last name
+                </Label>
                 <Input
                   id="new-cust-last"
                   value={newCustomerLast}
-                  onChange={(e) => setNewCustomerLast(e.target.value)}
+                  onChange={(e) => {
+                    setNewCustomerLast(e.target.value);
+                    if (newCustomerErrors.name) {
+                      setNewCustomerErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.name;
+                        return next;
+                      });
+                    }
+                  }}
                   placeholder="Last name"
-                  className="bg-white text-slate-950"
+                  autoComplete="family-name"
+                  aria-invalid={Boolean(newCustomerErrors.name)}
+                  className={cn(
+                    "h-11 bg-white text-slate-950",
+                    newCustomerErrors.name && newCustomerInputErrorClass
+                  )}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-cust-phone">Phone</Label>
-                <Input
-                  id="new-cust-phone"
-                  value={newCustomerPhone}
-                  onChange={(e) => setNewCustomerPhone(e.target.value)}
-                  placeholder="Phone"
-                  className="bg-white text-slate-950"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-cust-email">Email (optional)</Label>
+              {newCustomerErrors.name ? (
+                <p className="text-sm font-medium text-red-600 md:col-span-2" role="alert">
+                  {newCustomerErrors.name}
+                </p>
+              ) : null}
+              <div className="space-y-2 md:col-span-2">
+                <Label
+                  htmlFor="new-cust-email"
+                  className={cn(newCustomerErrors.email && "font-semibold text-red-700")}
+                >
+                  Email <span className="text-red-600">*</span>
+                </Label>
                 <Input
                   id="new-cust-email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  required
                   value={newCustomerEmail}
-                  onChange={(e) => setNewCustomerEmail(e.target.value)}
-                  placeholder="Email"
-                  className="bg-white text-slate-950"
+                  onChange={(e) => {
+                    setNewCustomerEmail(e.target.value);
+                    if (newCustomerErrors.email) {
+                      setNewCustomerErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.email;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="name@example.com"
+                  aria-invalid={Boolean(newCustomerErrors.email)}
+                  className={cn(
+                    "h-11 max-w-lg bg-white text-slate-950",
+                    newCustomerErrors.email && newCustomerInputErrorClass
+                  )}
                 />
+                {newCustomerErrors.email ? (
+                  <p className="text-sm font-medium text-red-600" role="alert">
+                    {newCustomerErrors.email}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    If this email already exists, use <strong>Returning customer</strong> from Jobs instead.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label
+                  htmlFor="new-cust-phone"
+                  className={cn(newCustomerErrors.phone && "font-semibold text-red-700")}
+                >
+                  Phone <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  id="new-cust-phone"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  value={newCustomerPhone}
+                  onChange={(e) => {
+                    setNewCustomerPhone(formatPhoneNumber(e.target.value));
+                    if (newCustomerErrors.phone) {
+                      setNewCustomerErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.phone;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="(555) 555-5555"
+                  aria-invalid={Boolean(newCustomerErrors.phone)}
+                  className={cn(
+                    "h-11 max-w-xs bg-white font-mono text-slate-950 tracking-wide",
+                    newCustomerErrors.phone && newCustomerInputErrorClass
+                  )}
+                />
+                {newCustomerErrors.phone ? (
+                  <p className="text-sm font-medium text-red-600" role="alert">
+                    {newCustomerErrors.phone}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">10 digits; formatting applies as you type.</p>
+                )}
               </div>
               <div className="md:col-span-2">
                 <Button

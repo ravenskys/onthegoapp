@@ -419,12 +419,12 @@ This section maps the intended role model to the current RLS direction in Supaba
    - decide whether `/fleet-services` becomes `/fleet`
    - decide whether `/customer/schedule` is the same concept as `/request-service`
 5. Audit remaining schema objects against the permissions matrix before building more UI.
+6. **Vehicle catalog data**: grow the in-repo library in `src/lib/vehicleCatalog.ts` (used by `VehicleCatalogFields`) so shop and customer vehicle pickers stay accurate.
+7. **Manager home UI**: refine `src/app/manager/page.tsx` layout (card grid, header, shell alignment) after functional routes are stable.
 
 ## Build Guidance For Next Chat
 
 Use this document plus `SESSION_HANDOFF.md` as the build structure.
 
 If the next task is implementation, the highest-value starting point is:
-- scaffold protected layouts
-- centralize role navigation config
-- add placeholder pages for the agreed route map
+- **Vehicle library** and **manager dashboard layout** (see `SESSION_HANDOFF.md` “Next session — start here”), then continue with scheduler verification and service-catalog live checks.

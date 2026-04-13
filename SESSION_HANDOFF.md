@@ -22,7 +22,11 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (local branch tracks **`secondary/main`** for routine pushes).
 - **Next convergence**: when you are ready to ship, plan a merge or PR from this line of work (**`secondary/main`**) into **`upstream/main`** (`onthegoapp`) so the primary deployed repo stays a deliberate promotion.
 - Push day-to-day work to **`secondary`**; use **`upstream`** only when intentionally updating the main app repo.
-- For the exact commit hash after the latest push, run `git log -1 --oneline` on `secondary/main`.
+- For the latest commit hash after a push, run `git log -1 --oneline` on your synced branch.
+
+## Next session — start here
+- **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
+- **Manager home layout**: Rework **`src/app/manager/page.tsx`** (dashboard card grid, header, alignment with `otg-manager-shell` / portal patterns) so it matches the clarity of the Jobs hub and scales as more tiles are added.
 
 ## Session checkpoint — 2026-04-12 (evening)
 - **Customer portal UX**
@@ -37,6 +41,9 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
   - Manager nav: single **Jobs** item (removed separate **New Job**). Job detail “back to list” targets `/manager/jobs/list`.
   - Manager home: one **Jobs** tile (removed duplicate **New Job** tile); Customers header button goes to Jobs hub; schedule shortcut goes to hub.
 - **Shared / infra touched in this stretch** (see git history for full set): `src/lib/portal-nav-config.ts`, `PortalRouteGuard`, layouts, `service-other`, `technician-pay` + migration, manager employees, job source helpers, etc.
+
+## Session note — manager new customer (Step 1)
+- **`/manager/jobs/new?flow=new`**: Email is **required** and checked for duplicates before insert; phone uses **`formatPhoneNumber`** (10-digit U.S.) and is stored formatted. Validation errors **highlight fields** (red border/label + inline `role="alert"` text) and focus the first invalid control instead of relying on `alert()` for routine mistakes.
 
 ## Git Remotes
 - `upstream` -> `https://github.com/onthegomaint-glitch/onthegoapp.git`
@@ -204,6 +211,8 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - If `Repair / Other` shows `Failed to schedule customer service: {}` in a stale dev bundle, restart the dev server and hard refresh; the current source now logs/reads the real Supabase error via `getErrorMessage(...)`.
 
 ## Next Priority List
+- **Vehicle library** (`src/lib/vehicleCatalog.ts`): add missing makes/models/engines; consider a data-maintenance story (admin UI vs checked-in TS) if the catalog grows large.
+- **Manager dashboard layout** (`src/app/manager/page.tsx`): visual hierarchy, responsive grid, consistency with other manager pages.
 - Finish the scheduler:
   - review live behavior after all recent Supabase migrations are applied
   - verify customer account editing live after both recent vehicle/address migrations are applied
@@ -261,6 +270,9 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - `supabase/migrations/20260327213751_create_customer_addresses_table.sql`
 - `supabase/migrations/20260415120000_create_technician_pay_rates.sql` (if present in tree; technician pay wiring)
 - `src/lib/technician-pay.ts`
+- `src/lib/vehicleCatalog.ts` (vehicle make/model/engine library)
+- `src/components/vehicle/VehicleCatalogFields.tsx`
+- `src/app/manager/page.tsx` (manager home — layout pass next)
 
 ## Good Resume Prompt
 Use this when resuming:
