@@ -421,6 +421,7 @@ This section maps the intended role model to the current RLS direction in Supaba
 5. Audit remaining schema objects against the permissions matrix before building more UI.
 6. **Vehicle catalog data**: grow the in-repo library in `src/lib/vehicleCatalog.ts` (used by `VehicleCatalogFields`) so shop and customer vehicle pickers stay accurate.
 7. **Manager home UI**: refine `src/app/manager/page.tsx` layout (card grid, header, shell alignment) after functional routes are stable.
+8. **Manager create job + schedule**: embed availability / slot selection on `src/app/manager/jobs/new/page.tsx` so jobs can be scheduled with the customer at creation time (reuse customer scheduler patterns and Supabase RPCs where RLS allows, or add manager-scoped endpoints).
 
 ## Build Guidance For Next Chat
 

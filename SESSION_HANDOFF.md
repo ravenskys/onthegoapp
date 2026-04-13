@@ -27,6 +27,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 ## Next session — start here
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
 - **Manager home layout**: Rework **`src/app/manager/page.tsx`** (dashboard card grid, header, alignment with `otg-manager-shell` / portal patterns) so it matches the clarity of the Jobs hub and scales as more tiles are added.
+- **Manager create job + scheduler (on-page)**: Add a **scheduling section** to **`/manager/jobs/new`** so the manager can pick date/time with the customer while creating the shop job (same conceptual flow as customer scheduling: availability, duration, travel buffer, service address as already captured on the form). Reuse or mirror logic from **`/customer/schedule`** (`get_customer_available_schedule_slots`, job insert with `scheduled_start` / `scheduled_end`, etc.) and/or patterns from **`/manager/schedule`**, with **manager-appropriate RPCs or RLS** if the customer-only functions are too restrictive. Decide UX: optional “Schedule now” vs “Leave unscheduled”; persist `assigned_tech_user_id` from chosen slot.
 
 ## Session checkpoint — 2026-04-12 (evening)
 - **Customer portal UX**
@@ -211,6 +212,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - If `Repair / Other` shows `Failed to schedule customer service: {}` in a stale dev bundle, restart the dev server and hard refresh; the current source now logs/reads the real Supabase error via `getErrorMessage(...)`.
 
 ## Next Priority List
+- **Manager new job — embedded scheduler** (`src/app/manager/jobs/new/page.tsx`): slot picker + write `scheduled_start` / `scheduled_end` (and tech) when creating the job; align with existing Supabase scheduler RPCs and manager schedule views.
 - **Vehicle library** (`src/lib/vehicleCatalog.ts`): add missing makes/models/engines; consider a data-maintenance story (admin UI vs checked-in TS) if the catalog grows large.
 - **Manager dashboard layout** (`src/app/manager/page.tsx`): visual hierarchy, responsive grid, consistency with other manager pages.
 - Finish the scheduler:
@@ -237,13 +239,13 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 ## Helpful Files For Resume
 - `src/lib/portal-nav-config.ts`
 - `src/app/customer/book/page.tsx`
-- `src/app/customer/schedule/page.tsx`
+- `src/app/customer/schedule/page.tsx` (customer slot UX; reference for manager new-job scheduler)
 - `src/app/customer/dashboard/page.tsx`
 - `src/app/customer/layout.tsx`
 - `src/components/portal/PortalRouteGuard.tsx`
 - `src/app/manager/jobs/page.tsx` (hub)
 - `src/app/manager/jobs/list/page.tsx`
-- `src/app/manager/jobs/new/page.tsx`
+- `src/app/manager/jobs/new/page.tsx` (next: on-page scheduler when creating job)
 - `src/app/admin/settings/page.tsx`
 - `src/app/customer/account/page.tsx`
 - `src/lib/customer-portal.ts`

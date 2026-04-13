@@ -132,3 +132,4 @@ Near-term product focus (see [SESSION_HANDOFF.md](./SESSION_HANDOFF.md)):
 
 - Expand the **vehicle library** in `src/lib/vehicleCatalog.ts` (feeds vehicle pickers app-wide).
 - Improve **manager home** layout at `src/app/manager/page.tsx`.
+- Add **scheduling to manager create job** (`/manager/jobs/new`) so slots can be booked with the customer on the same page.
