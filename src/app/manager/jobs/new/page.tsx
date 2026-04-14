@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowLeft, Plus, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, Save, CalendarDays, Clock, MapPin } from "lucide-react";
 
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -54,7 +54,24 @@ import {
   REPAIR_OTHER_SERVICE_CODE,
   parseOptionalDecimal,
 } from "@/lib/service-other";
+import {
+  PART_UNIT_SELL_RULE,
+  formatSellPriceForPartInput,
+  resolvePartUnitPriceForSave,
+  unitSellPriceFromUnitCost,
+} from "@/lib/pricing";
 import { getTechnicianHourlyPayAsOf } from "@/lib/technician-pay";
+import {
+  type AvailableSlot,
+  type ScheduleBlock,
+  buildSlotsFromScheduleBlocks,
+  formatDayLabel,
+  formatSlotTime,
+  getSchedulerDateRange,
+  getSlotKey,
+  toDateKey,
+} from "@/lib/scheduler-slots";
+import { getCentralDispatchTravelMinutes } from "@/lib/routing";
 
 type Customer = {
   id: string;
@@ -91,6 +108,7 @@ type CatalogServiceRow = {
   category: string | null;
   sort_order: number | null;
   service_code: string | null;
+  default_duration_minutes: number | null;
 };
 
 const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
@@ -103,6 +121,7 @@ const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
     category: "Maintenance",
     sort_order: 10,
     service_code: "oil_change",
+    default_duration_minutes: 30,
   },
   {
     id: "fallback-2",
@@ -113,6 +132,7 @@ const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
     category: "Inspection",
     sort_order: 20,
     service_code: "inspection",
+    default_duration_minutes: 45,
   },
   {
     id: "fallback-3",
@@ -123,6 +143,7 @@ const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
     category: "Maintenance",
     sort_order: 30,
     service_code: "oil_change_and_inspection",
+    default_duration_minutes: 90,
   },
   {
     id: "fallback-4",
@@ -132,6 +153,7 @@ const FALLBACK_SERVICE_CATALOG: CatalogServiceRow[] = [
     category: "Repair",
     sort_order: 40,
     service_code: REPAIR_OTHER_SERVICE_CODE,
+    default_duration_minutes: 60,
   },
 ];
 
@@ -169,6 +191,18 @@ function NewJobPageContent() {
   const [requestedDate, setRequestedDate] = useState("");
   const [assignedTechId, setAssignedTechId] = useState("");
   const [notes, setNotes] = useState("");
+
+  /** Service location for scheduler travel buffer (same RPC as customer portal). */
+  const [serviceAddress, setServiceAddress] = useState("");
+  const [serviceCity, setServiceCity] = useState("");
+  const [serviceState, setServiceState] = useState("");
+  const [serviceZip, setServiceZip] = useState("");
+  const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
+  const [selectedSlotKey, setSelectedSlotKey] = useState("");
+  const [scheduleLoadError, setScheduleLoadError] = useState("");
+  const [travelLookupDebug, setTravelLookupDebug] = useState("");
 
   const [otherLaborHours, setOtherLaborHours] = useState("");
   const [otherPartName, setOtherPartName] = useState("");
@@ -214,6 +248,126 @@ function NewJobPageContent() {
     () => catalogServices.find((s) => s.service_name === serviceType),
     [catalogServices, serviceType]
   );
+
+  /** Minutes reserved for slot search — matches catalog when possible. */
+  const selectedServiceDurationForSchedule = useMemo(() => {
+    if (!serviceType) return 0;
+    if (serviceType === MANAGER_OTHER_SERVICE_VALUE) return 60;
+    const row = catalogServices.find((s) => s.service_name === serviceType);
+    if (row?.service_code === REPAIR_OTHER_SERVICE_CODE) return 60;
+    const d = row?.default_duration_minutes;
+    if (d != null && d > 0) return d;
+    return 60;
+  }, [serviceType, catalogServices]);
+
+  const canShowScheduler =
+    Boolean(serviceType) &&
+    selectedServiceDurationForSchedule > 0 &&
+    Boolean(serviceAddress.trim()) &&
+    Boolean(serviceCity.trim()) &&
+    Boolean(serviceState.trim()) &&
+    Boolean(serviceZip.trim());
+
+  const calendarDays = useMemo(() => {
+    const { start } = getSchedulerDateRange();
+    return Array.from({ length: 21 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return toDateKey(date);
+    });
+  }, []);
+
+  const slotsByDate = useMemo(() => {
+    const grouped = new Map<string, AvailableSlot[]>();
+    slots.forEach((slot) => {
+      const dateKey = toDateKey(new Date(slot.starts_at));
+      grouped.set(dateKey, [...(grouped.get(dateKey) || []), slot]);
+    });
+    return grouped;
+  }, [slots]);
+
+  const selectedDateSlots = slotsByDate.get(selectedDateKey) || [];
+
+  const selectedScheduleSlot =
+    slots.find((slot) => getSlotKey(slot) === selectedSlotKey) ?? null;
+
+  const loadManagerScheduleSlots = useCallback(async () => {
+    if (!canShowScheduler) {
+      setSlots([]);
+      return;
+    }
+
+    setLoadingSlots(true);
+    setScheduleLoadError("");
+
+    try {
+      const { start, end } = getSchedulerDateRange();
+      const dispatchTravel = await getCentralDispatchTravelMinutes({
+        serviceAddress,
+        serviceCity,
+        serviceState,
+        serviceZip,
+      });
+      const dispatchTravelMinutes = dispatchTravel.minutes;
+      setTravelLookupDebug(
+        dispatchTravelMinutes != null
+          ? `Travel default source: ${dispatchTravel.provider} (${dispatchTravel.reason}), ${dispatchTravelMinutes} min`
+          : `Travel default source: ${dispatchTravel.provider} (${dispatchTravel.reason}), using fallback defaults`,
+      );
+      const { data, error } = await supabase.rpc("get_customer_available_schedule_slots", {
+        p_range_start: start.toISOString(),
+        p_range_end: end.toISOString(),
+        p_service_duration_minutes: selectedServiceDurationForSchedule,
+        p_service_city: serviceCity.trim() || null,
+        p_service_state: serviceState.trim() || null,
+        p_service_zip: serviceZip.trim() || null,
+        p_default_travel_time_minutes: dispatchTravelMinutes,
+      });
+
+      if (!error) {
+        setSlots((data || []) as AvailableSlot[]);
+        return;
+      }
+
+      console.warn("Manager scheduler RPC fallback:", error);
+
+      const { data: blockData, error: blockError } = await supabase
+        .from("technician_schedule_blocks")
+        .select("technician_user_id, starts_at, ends_at")
+        .eq("status", "active")
+        .eq("block_type", "available")
+        .lt("starts_at", end.toISOString())
+        .gt("ends_at", start.toISOString())
+        .order("starts_at", { ascending: true });
+
+      if (blockError) throw blockError;
+
+      setSlots(
+        buildSlotsFromScheduleBlocks(
+          (blockData || []) as ScheduleBlock[],
+          start,
+          end,
+          selectedServiceDurationForSchedule + (dispatchTravelMinutes ?? 30),
+          dispatchTravelMinutes ?? 30,
+        ),
+      );
+    } catch (err) {
+      console.error("Manager schedule slots failed:", err);
+      setScheduleLoadError(
+        "Could not load available times. Confirm the scheduler migration is applied and technicians have availability blocks.",
+      );
+      setSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, [
+    canShowScheduler,
+    selectedServiceDurationForSchedule,
+    serviceAddress,
+    serviceCity,
+    serviceState,
+    serviceZip,
+  ]);
 
   const showManagerLaborParts =
     serviceType === MANAGER_OTHER_SERVICE_VALUE ||
@@ -267,6 +421,23 @@ function NewJobPageContent() {
   }, [assignedTechId, laborCostAsOfYmd]);
 
   useEffect(() => {
+    if (loading || !authorized) return;
+    if (!canShowScheduler) {
+      setSlots([]);
+      setSelectedSlotKey("");
+      return;
+    }
+    setSelectedSlotKey("");
+    void loadManagerScheduleSlots();
+  }, [loading, authorized, canShowScheduler, loadManagerScheduleSlots]);
+
+  useEffect(() => {
+    if (!selectedScheduleSlot) return;
+    setAssignedTechId(selectedScheduleSlot.technician_user_id);
+    setRequestedDate(toDateKey(new Date(selectedScheduleSlot.starts_at)));
+  }, [selectedScheduleSlot]);
+
+  useEffect(() => {
     const checkAccess = async () => {
       const { user, roles } = await getUserRoles();
       if (!user) {
@@ -307,7 +478,7 @@ function NewJobPageContent() {
             supabase
               .from("service_catalog")
               .select(
-                "id, service_name, service_description, is_bookable_online, category, sort_order, service_code"
+                "id, service_name, service_description, is_bookable_online, category, sort_order, service_code, default_duration_minutes"
               )
               .eq("is_active", true)
               .order("sort_order", { ascending: true })
@@ -829,15 +1000,33 @@ function NewJobPageContent() {
                   service_type: resolvedServiceType,
                   priority,
                   service_description: serviceDescription || null,
-                  requested_date: requestedDate || null,
                   notes: notes || null,
                   status: "new",
                   source: "manual",
                   created_by_user_id: currentUserId,
                 };
 
-                if (assignedTechId) {
-                  jobPayload.assigned_tech_user_id = assignedTechId;
+                if (selectedScheduleSlot) {
+                  jobPayload.requested_date = toDateKey(
+                    new Date(selectedScheduleSlot.starts_at),
+                  );
+                  jobPayload.scheduled_start = selectedScheduleSlot.starts_at;
+                  jobPayload.scheduled_end = selectedScheduleSlot.ends_at;
+                  jobPayload.assigned_tech_user_id =
+                    selectedScheduleSlot.technician_user_id;
+                  jobPayload.service_duration_minutes =
+                    selectedServiceDurationForSchedule;
+                  jobPayload.travel_time_minutes =
+                    selectedScheduleSlot.travel_time_minutes ?? 30;
+                  jobPayload.service_address = serviceAddress.trim() || null;
+                  jobPayload.service_city = serviceCity.trim() || null;
+                  jobPayload.service_state = serviceState.trim() || null;
+                  jobPayload.service_zip = serviceZip.trim() || null;
+                } else {
+                  jobPayload.requested_date = requestedDate || null;
+                  if (assignedTechId) {
+                    jobPayload.assigned_tech_user_id = assignedTechId;
+                  }
                 }
 
                 const { data: insertedJob, error: insertError } = await supabase
@@ -890,7 +1079,10 @@ function NewJobPageContent() {
                         part_name: otherPartName.trim(),
                         quantity: qty > 0 ? qty : 1,
                         unit_cost: parseOptionalDecimal(otherPartUnitCost),
-                        unit_price: parseOptionalDecimal(otherPartUnitPrice),
+                        unit_price: resolvePartUnitPriceForSave(
+                          otherPartUnitCost,
+                          otherPartUnitPrice,
+                        ),
                       });
 
                     if (partError) {
@@ -1320,7 +1512,19 @@ function NewJobPageContent() {
                       step="0.01"
                       className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
                       value={otherPartUnitCost}
-                      onChange={(e) => setOtherPartUnitCost(e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setOtherPartUnitCost(v);
+                        const n = Number(v);
+                        if (v.trim() !== "" && Number.isFinite(n) && n > 0) {
+                          const p = unitSellPriceFromUnitCost(n);
+                          if (p != null) {
+                            setOtherPartUnitPrice(formatSellPriceForPartInput(p));
+                          }
+                        } else if (v.trim() === "") {
+                          setOtherPartUnitPrice("");
+                        }
+                      }}
                     />
                   </div>
                   <div className="space-y-2">
@@ -1333,10 +1537,226 @@ function NewJobPageContent() {
                       value={otherPartUnitPrice}
                       onChange={(e) => setOtherPartUnitPrice(e.target.value)}
                     />
+                    <p className="text-xs text-[#7f9988]">
+                      Filled from cost (rule v{PART_UNIT_SELL_RULE.version}): min $
+                      {PART_UNIT_SELL_RULE.minSellUnitPrice} sell. Cost ≤$
+                      {PART_UNIT_SELL_RULE.costBlendStartUsd}: ×
+                      {PART_UNIT_SELL_RULE.multiplierBelowBlendUsd}. From $
+                      {PART_UNIT_SELL_RULE.costBlendStartUsd} to $
+                      {PART_UNIT_SELL_RULE.costBlendEndUsd}, multiplier ramps smoothly to ×
+                      {PART_UNIT_SELL_RULE.multiplierEndBlendUsd} (no price dip at $50.01). Above $
+                      {PART_UNIT_SELL_RULE.costBlendEndUsd}: ×
+                      {PART_UNIT_SELL_RULE.multiplierAboveBlendUsd}. You can still edit price.
+                    </p>
                   </div>
                 </div>
               </div>
             ) : null}
+
+            <div className="space-y-4 md:col-span-2">
+              <div className="flex flex-col gap-2 border-b border-[rgba(115,145,126,0.25)] pb-2">
+                <div className="inline-flex items-center gap-2 text-[#c5dcc9]">
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">
+                    Schedule on calendar
+                  </span>
+                </div>
+                <p className="text-sm text-[#7f9988]">
+                  Uses the same availability rules as the customer scheduler. Enter the service address, then
+                  pick a slot or leave unscheduled and set the date and tech manually below.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[#c5dcc9]">Service street address</Label>
+                  <Input
+                    className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                    value={serviceAddress}
+                    onChange={(e) => setServiceAddress(e.target.value)}
+                    placeholder="123 Main St"
+                    autoComplete="street-address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[#c5dcc9]">City</Label>
+                  <Input
+                    className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                    value={serviceCity}
+                    onChange={(e) => setServiceCity(e.target.value)}
+                    placeholder="City"
+                    autoComplete="address-level2"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[#c5dcc9]">State</Label>
+                  <Input
+                    className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                    value={serviceState}
+                    onChange={(e) => setServiceState(e.target.value)}
+                    placeholder="ST"
+                    autoComplete="address-level1"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[#c5dcc9]">ZIP</Label>
+                  <Input
+                    className="max-w-xs border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                    value={serviceZip}
+                    onChange={(e) => setServiceZip(e.target.value)}
+                    placeholder="ZIP"
+                    autoComplete="postal-code"
+                  />
+                </div>
+              </div>
+
+              {!canShowScheduler ? (
+                <p className="text-sm text-[#7f9988]">
+                  Choose a service type and complete address (street, city, state, ZIP) to load open times for
+                  the next 21 days ({selectedServiceDurationForSchedule || "—"} min job window from the
+                  catalog).
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="inline-flex items-center gap-2 text-[#f3fff4]">
+                      <CalendarDays className="h-4 w-4 text-[#7f9988]" />
+                      <span className="text-sm font-medium">Next 21 days</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          managerDarkFieldTriggerClassName,
+                          "h-9 w-auto px-3",
+                        )}
+                        onClick={() => void loadManagerScheduleSlots()}
+                        disabled={loadingSlots}
+                      >
+                        {loadingSlots ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Refresh times
+                      </Button>
+                      {selectedSlotKey ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-9 text-[#c5dcc9] hover:text-[#f3fff4]"
+                          onClick={() => {
+                            setSelectedSlotKey("");
+                            setAssignedTechId("");
+                          }}
+                        >
+                          Clear slot
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {scheduleLoadError ? (
+                    <p className="text-sm font-medium text-red-400" role="alert">
+                      {scheduleLoadError}
+                    </p>
+                  ) : null}
+                  {travelLookupDebug ? (
+                    <p className="text-xs text-[#7f9988]">{travelLookupDebug}</p>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+                    {calendarDays.map((dateKey) => {
+                      const daySlots = slotsByDate.get(dateKey) || [];
+                      const isSelected = dateKey === selectedDateKey;
+
+                      return (
+                        <button
+                          key={dateKey}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDateKey(dateKey);
+                            setSelectedSlotKey("");
+                          }}
+                          className={cn(
+                            "min-h-20 rounded-lg border p-2 text-left text-sm transition",
+                            isSelected
+                              ? "border-lime-500/80 bg-[rgba(57,255,20,0.12)]"
+                              : "border-[rgba(115,145,126,0.35)] bg-[#0d160f] hover:border-lime-400/50",
+                          )}
+                        >
+                          <div className="font-medium text-[#f3fff4]">{formatDayLabel(dateKey)}</div>
+                          <div className="mt-2 text-xs font-semibold text-[#7f9988]">
+                            {daySlots.length} slot{daySlots.length === 1 ? "" : "s"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="rounded-lg border border-[rgba(115,145,126,0.35)] bg-[#0d160f]/80 p-4">
+                    <div className="flex items-center gap-2 text-[#f3fff4]">
+                      <Clock className="h-4 w-4 text-[#7f9988]" />
+                      <span className="font-medium">{formatDayLabel(selectedDateKey)}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {selectedDateSlots.map((slot) => {
+                        const slotKey = getSlotKey(slot);
+                        const isSelected = slotKey === selectedSlotKey;
+                        const techLabel = (() => {
+                          const t = technicians.find((x) => x.id === slot.technician_user_id);
+                          const name = `${t?.first_name ?? ""} ${t?.last_name ?? ""}`.trim();
+                          return name || t?.email || "Technician";
+                        })();
+
+                        return (
+                          <button
+                            key={slotKey}
+                            type="button"
+                            onClick={() => setSelectedSlotKey(slotKey)}
+                            className={cn(
+                              "rounded-lg border p-3 text-left text-sm transition",
+                              isSelected
+                                ? "border-lime-500/90 bg-[rgba(57,255,20,0.18)] text-[#f3fff4]"
+                                : "border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4] hover:border-lime-400/45",
+                            )}
+                          >
+                            <div className="font-semibold">{formatSlotTime(slot)}</div>
+                            <div className="mt-1 text-xs text-[#c5dcc9]">{techLabel}</div>
+                            <div className="mt-1 text-xs text-[#7f9988]">
+                              ~{slot.travel_time_minutes ?? 30} min travel buffer
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {selectedDateSlots.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-[rgba(115,145,126,0.4)] p-4 text-sm text-[#7f9988] sm:col-span-2 lg:col-span-3">
+                          {loadingSlots
+                            ? "Loading slots…"
+                            : "No open times this day. Try another day or refresh."}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {selectedSlotKey ? (
+                    <p className="text-sm text-[#7f9988]">
+                      Requested date and assigned technician below follow this slot. Use{" "}
+                      <button
+                        type="button"
+                        className="font-medium text-lime-300 underline underline-offset-2"
+                        onClick={() => {
+                          setSelectedSlotKey("");
+                          setAssignedTechId("");
+                        }}
+                      >
+                        Clear slot
+                      </button>{" "}
+                      to pick a tech or date manually instead.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label>Requested Date</Label>
@@ -1344,13 +1764,30 @@ function NewJobPageContent() {
                 type="date"
                 value={requestedDate}
                 onChange={(e) => setRequestedDate(e.target.value)}
+                disabled={Boolean(selectedSlotKey)}
+                title={
+                  selectedSlotKey
+                    ? "Clear the selected calendar slot to edit the date manually."
+                    : undefined
+                }
               />
             </div>
 
             <div className="space-y-2">
               <Label>Assigned Technician</Label>
-              <Select value={assignedTechId} onValueChange={setAssignedTechId}>
-                <SelectTrigger>
+              <Select
+                value={assignedTechId}
+                onValueChange={setAssignedTechId}
+                disabled={Boolean(selectedSlotKey)}
+              >
+                <SelectTrigger
+                  disabled={Boolean(selectedSlotKey)}
+                  title={
+                    selectedSlotKey
+                      ? "Clear the selected calendar slot to assign a different technician."
+                      : undefined
+                  }
+                >
                   <SelectValue placeholder="Unassigned" />
                 </SelectTrigger>
                 <SelectContent>

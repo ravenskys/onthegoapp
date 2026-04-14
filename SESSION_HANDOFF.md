@@ -212,6 +212,11 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - If `Repair / Other` shows `Failed to schedule customer service: {}` in a stale dev bundle, restart the dev server and hard refresh; the current source now logs/reads the real Supabase error via `getErrorMessage(...)`.
 
 ## Next Priority List
+- **Scheduler travel-time follow-up (start here tomorrow)**:
+  - Mapbox-backed dispatch travel lookup and debug source labels are wired in (`/api/routing/travel-time`, manager/customer scheduler debug line).
+  - Current blocker when travel falls back to `30`: `MAPBOX_ACCESS_TOKEN` is missing/invalid in `.env.local` (`provider_config_missing`).
+  - After setting token, restart dev and verify debug shows `mapbox (ok), <minutes>` on manager scheduler refresh.
+  - If still defaulting, re-check `/api/routing/travel-time` response and dispatch origin env vars (`DISPATCH_ORIGIN_LAT`, `DISPATCH_ORIGIN_LNG`).
 - **Manager new job — embedded scheduler** (`src/app/manager/jobs/new/page.tsx`): slot picker + write `scheduled_start` / `scheduled_end` (and tech) when creating the job; align with existing Supabase scheduler RPCs and manager schedule views.
 - **Vehicle library** (`src/lib/vehicleCatalog.ts`): add missing makes/models/engines; consider a data-maintenance story (admin UI vs checked-in TS) if the catalog grows large.
 - **Manager dashboard layout** (`src/app/manager/page.tsx`): visual hierarchy, responsive grid, consistency with other manager pages.

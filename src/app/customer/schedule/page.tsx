@@ -18,6 +18,7 @@ import {
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { supabase } from "@/lib/supabase";
 import { getErrorMessage } from "@/lib/tech-inspection";
+import { getCentralDispatchTravelMinutes } from "@/lib/routing";
 import {
   CUSTOMER_OTHER_SERVICE_ID,
   REPAIR_OTHER_SERVICE_CODE,
@@ -257,6 +258,7 @@ function CustomerSchedulePageContent() {
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [travelLookupDebug, setTravelLookupDebug] = useState("");
 
   const services = useMemo(() => {
     const base =
@@ -377,6 +379,18 @@ function CustomerSchedulePageContent() {
     try {
       const { start, end } = getSchedulerDateRange();
       const slotMinutes = selectedServiceDuration;
+      const dispatchTravel = await getCentralDispatchTravelMinutes({
+        serviceAddress,
+        serviceCity,
+        serviceState,
+        serviceZip,
+      });
+      const dispatchTravelMinutes = dispatchTravel.minutes;
+      setTravelLookupDebug(
+        dispatchTravelMinutes != null
+          ? `Travel default source: ${dispatchTravel.provider} (${dispatchTravel.reason}), ${dispatchTravelMinutes} min`
+          : `Travel default source: ${dispatchTravel.provider} (${dispatchTravel.reason}), using fallback defaults`,
+      );
       const { data, error } = await supabase.rpc("get_customer_available_schedule_slots", {
         p_range_start: start.toISOString(),
         p_range_end: end.toISOString(),
@@ -384,6 +398,7 @@ function CustomerSchedulePageContent() {
         p_service_city: serviceCity || null,
         p_service_state: serviceState || null,
         p_service_zip: serviceZip || null,
+        p_default_travel_time_minutes: dispatchTravelMinutes,
       });
 
       if (!error) {
@@ -409,7 +424,8 @@ function CustomerSchedulePageContent() {
           (blockData || []) as ScheduleBlock[],
           start,
           end,
-          selectedServiceDuration + 30,
+          selectedServiceDuration + (dispatchTravelMinutes ?? 30),
+          dispatchTravelMinutes ?? 30,
         ),
       );
     } catch (error) {
@@ -845,6 +861,9 @@ function CustomerSchedulePageContent() {
                 </Button>
               ) : null}
             </div>
+            {travelLookupDebug ? (
+              <p className="text-xs text-slate-500">{travelLookupDebug}</p>
+            ) : null}
 
             {!canShowScheduler ? (
               <div

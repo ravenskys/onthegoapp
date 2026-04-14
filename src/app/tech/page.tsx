@@ -330,6 +330,10 @@ type TechnicianJob = {
   vehicle_id: string | null;
   business_job_number: string | null;
   service_type: string | null;
+  service_address: string | null;
+  service_city: string | null;
+  service_state: string | null;
+  service_zip: string | null;
   status: string | null;
   notes: string | null;
   assigned_tech_user_id: string | null;
@@ -671,6 +675,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [activeJobStatus, setActiveJobStatus] = useState("new_request");
   const [activeJobNotes, setActiveJobNotes] = useState("");
   const [activeJobServiceType, setActiveJobServiceType] = useState<string | null>(null);
+  const [activeJobServiceAddress, setActiveJobServiceAddress] = useState("");
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(createEmptyWorkflowSteps);
@@ -819,6 +824,23 @@ export default function OnTheGoTechnicianAppPrototype() {
       }),
     [vehicle.year, vehicle.make, vehicle.model, vehicle.mileage]
   );
+
+  const activeJobAddressLabel = useMemo(
+    () => activeJobServiceAddress.trim(),
+    [activeJobServiceAddress]
+  );
+
+  const activeJobGoogleMapsUrl = useMemo(() => {
+    const q = activeJobAddressLabel.trim();
+    if (!q) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  }, [activeJobAddressLabel]);
+
+  const activeJobAppleMapsUrl = useMemo(() => {
+    const d = activeJobAddressLabel.trim();
+    if (!d) return "";
+    return `https://maps.apple.com/?daddr=${encodeURIComponent(d)}&dirflg=d`;
+  }, [activeJobAddressLabel]);
 
   const getMissingRequiredReasonMessage = useCallback(() => {
     const missingMaintenanceReason = activeMaintenanceItems.find(
@@ -996,6 +1018,11 @@ export default function OnTheGoTechnicianAppPrototype() {
       setActiveJobStatus(job.status || "new_request");
       setActiveJobNotes(job.notes || "");
       setActiveJobServiceType(job.service_type || null);
+      setActiveJobServiceAddress(
+        [job.service_address, job.service_city, job.service_state, job.service_zip]
+          .filter(Boolean)
+          .join(", ")
+      );
 
       const vehicleCatalogModes = getVehicleCatalogModes({
         year: vehicleData?.year,
@@ -1028,6 +1055,10 @@ export default function OnTheGoTechnicianAppPrototype() {
         vehicle_id,
         business_job_number,
         service_type,
+        service_address,
+        service_city,
+        service_state,
+        service_zip,
         status,
         notes,
         assigned_tech_user_id,
@@ -1119,6 +1150,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     setActiveJobStatus("new_request");
     setActiveJobNotes("");
     setActiveJobServiceType(null);
+    setActiveJobServiceAddress("");
     setRecordSyncState("idle");
     setRecordSyncMessage("");
     setUseCustomMake(false);
@@ -2159,6 +2191,7 @@ useEffect(() => {
         setActiveJobId(null);
         setActiveJobStatus("new_request");
         setActiveJobNotes("");
+        setActiveJobServiceAddress("");
         setDraftLoaded(true);
         return;
       }
@@ -2320,6 +2353,31 @@ if (!isAuthorized) {
                         : "This job uses a quicker maintenance-style inspection for services like oil changes, tune-ups, and repair work."}
                     </span>
                   </div>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <Label>Service Location</Label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    {activeJobAddressLabel || "No service address on this job."}
+                  </div>
+                  {activeJobAddressLabel ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => window.open(activeJobGoogleMapsUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        Open in Google Maps
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => window.open(activeJobAppleMapsUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        Open in Apple Maps
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex-1 space-y-2">

@@ -25,6 +25,11 @@ import {
   PART_SUPPLIER_OTHER_VALUE,
   parseOptionalDecimal,
 } from "@/lib/service-other";
+import {
+  formatSellPriceForPartInput,
+  resolvePartUnitPriceForSave,
+  unitSellPriceFromUnitCost,
+} from "@/lib/pricing";
 
 // Types
 interface Job {
@@ -600,7 +605,10 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                   part_name: catalogOtherPartName.trim(),
                   quantity: qty > 0 ? qty : 1,
                   unit_cost: parseOptionalDecimal(catalogOtherPartUnitCost),
-                  unit_price: parseOptionalDecimal(catalogOtherPartUnitPrice),
+                  unit_price: resolvePartUnitPriceForSave(
+                    catalogOtherPartUnitCost,
+                    catalogOtherPartUnitPrice,
+                  ),
                 })
                 .select(
                   "id, part_name, part_number, quantity, unit_cost, unit_price, supplier"
@@ -715,7 +723,12 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                   part_number: catalogService.default_part_number?.trim() || null,
                   quantity: catalogService.default_part_quantity ?? 1,
                   unit_cost: catalogService.default_parts_cost,
-                  unit_price: catalogService.default_parts_price,
+                  unit_price:
+                    catalogService.default_parts_price ??
+                    (typeof catalogService.default_parts_cost === "number" &&
+                    catalogService.default_parts_cost > 0
+                      ? unitSellPriceFromUnitCost(catalogService.default_parts_cost)
+                      : null),
                   supplier: catalogService.default_part_supplier?.trim() || null,
                   notes: catalogService.default_parts_notes?.trim() || null,
                 })
@@ -769,7 +782,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                 part_number: newPartNumber.trim() || null,
                 quantity,
                 unit_cost: newPartUnitCost ? Number(newPartUnitCost) : null,
-                unit_price: newPartUnitPrice ? Number(newPartUnitPrice) : null,
+                unit_price: resolvePartUnitPriceForSave(newPartUnitCost, newPartUnitPrice),
                 supplier: supplierResolved,
                 notes: newPartNotes.trim() || null,
             })
@@ -982,7 +995,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
               part_number: editPartNumber.trim() || null,
               quantity,
               unit_cost: editPartUnitCost ? Number(editPartUnitCost) : null,
-              unit_price: editPartUnitPrice ? Number(editPartUnitPrice) : null,
+              unit_price: resolvePartUnitPriceForSave(editPartUnitCost, editPartUnitPrice),
               supplier: supplierResolvedEdit,
               notes: editPartNotes.trim() || null,
             })
@@ -1874,7 +1887,19 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                               min="0"
                               step="0.01"
                               value={catalogOtherPartUnitCost}
-                              onChange={(e) => setCatalogOtherPartUnitCost(e.target.value)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setCatalogOtherPartUnitCost(v);
+                                const n = Number(v);
+                                if (v.trim() !== "" && Number.isFinite(n) && n > 0) {
+                                  const p = unitSellPriceFromUnitCost(n);
+                                  if (p != null) {
+                                    setCatalogOtherPartUnitPrice(formatSellPriceForPartInput(p));
+                                  }
+                                } else if (v.trim() === "") {
+                                  setCatalogOtherPartUnitPrice("");
+                                }
+                              }}
                             />
                           </div>
                           <div className="space-y-2">
@@ -2111,7 +2136,19 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                         step="0.01"
                         placeholder="Unit cost"
                         value={newPartUnitCost}
-                        onChange={(e) => setNewPartUnitCost(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setNewPartUnitCost(v);
+                          const n = Number(v);
+                          if (v.trim() !== "" && Number.isFinite(n) && n > 0) {
+                            const p = unitSellPriceFromUnitCost(n);
+                            if (p != null) {
+                              setNewPartUnitPrice(formatSellPriceForPartInput(p));
+                            }
+                          } else if (v.trim() === "") {
+                            setNewPartUnitPrice("");
+                          }
+                        }}
                     />
 
                     <Input
@@ -2207,7 +2244,19 @@ const [estimateLineItems, setEstimateLineItems] = useState<
                                 step="0.01"
                                 placeholder="Unit cost"
                                 value={editPartUnitCost}
-                                onChange={(e) => setEditPartUnitCost(e.target.value)}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setEditPartUnitCost(v);
+                                  const n = Number(v);
+                                  if (v.trim() !== "" && Number.isFinite(n) && n > 0) {
+                                    const p = unitSellPriceFromUnitCost(n);
+                                    if (p != null) {
+                                      setEditPartUnitPrice(formatSellPriceForPartInput(p));
+                                    }
+                                  } else if (v.trim() === "") {
+                                    setEditPartUnitPrice("");
+                                  }
+                                }}
                               />
 
                               <Input
