@@ -14,6 +14,7 @@ import {
   Wrench,
   CalendarDays,
   CalendarClock,
+  ArrowRight,
 } from "lucide-react";
 
 export default function ManagerHomePage() {
@@ -100,13 +101,11 @@ export default function ManagerHomePage() {
 
   return (
     <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Manager Dashboard</h1>
-            <p className="mt-1 text-slate-600">
-              Manage jobs, customers, and daily workflow.
-            </p>
+            <p className="mt-1 text-slate-600">Start in Jobs, then run schedule and team operations.</p>
           </div>
 
           <div className="w-full max-w-2xl space-y-4">
@@ -119,37 +118,89 @@ export default function ManagerHomePage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <button
-            type="button"
-            onClick={() => router.push("/manager/jobs")}
-            className="text-left"
-          >
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                <div>
-                  <div className="mb-3 flex items-center gap-2 text-slate-900">
-                    <ClipboardList className="h-5 w-5" />
-                    <h2 className="text-lg font-semibold">Jobs</h2>
-                  </div>
-                  <p className="text-sm text-slate-600">
-                    Start here: new or returning customer, create jobs, or open the full list.
-                  </p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Draft jobs should be converted into active work or deleted.
-                  </p>
+        <button
+          type="button"
+          onClick={() => router.push("/manager/jobs")}
+          className="w-full text-left"
+        >
+          <Card className="border-2 border-lime-400/60 bg-gradient-to-br from-lime-100 to-white transition-shadow hover:shadow-md">
+            <CardContent className="grid gap-4 p-6 md:grid-cols-[1fr_auto] md:items-end">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-lime-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-black">
+                  <ClipboardList className="h-4 w-4" />
+                  Primary flow
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span>Open Jobs</span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                <h2 className="text-2xl font-bold text-slate-900">Start in Jobs</h2>
+                <p className="mt-2 max-w-2xl text-sm text-slate-700">
+                  New customer, returning customer, and full list actions all live in the Jobs hub.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
                     {openJobsCount} open
                   </span>
                   <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
                     {unassignedJobsCount} unassigned
                   </span>
                   <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
-                    {draftJobsCount} drafts to review
+                    {draftJobsCount} drafts
                   </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                    {customersCount} customers
+                  </span>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                Open Jobs hub
+                <ArrowRight className="h-4 w-4" />
+              </div>
+            </CardContent>
+          </Card>
+        </button>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => router.push("/manager/schedule")}
+            className="text-left"
+          >
+            <Card className="h-full transition-shadow hover:shadow-md">
+              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-slate-900">
+                    <CalendarDays className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">Schedule</h2>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    Review upcoming work, technician load, and scheduled visits.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  Open calendar
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </CardContent>
+            </Card>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/manager/availability")}
+            className="text-left"
+          >
+            <Card className="h-full transition-shadow hover:shadow-md">
+              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
+                <div>
+                  <div className="mb-3 flex items-center gap-2 text-slate-900">
+                    <CalendarClock className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">Availability</h2>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    Manage weekly technician availability blocks and coverage.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  Set hours
+                  <ArrowRight className="h-4 w-4" />
                 </div>
               </CardContent>
             </Card>
@@ -168,57 +219,13 @@ export default function ManagerHomePage() {
                     <h2 className="text-lg font-semibold">Customers</h2>
                   </div>
                   <p className="text-sm text-slate-600">
-                    Manage customer details, tax status, and vehicles.
+                    Update customer profiles, contact details, and linked vehicles.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span>Customers</span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                    {customersCount} total
-                  </span>
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  Open customers
+                  <ArrowRight className="h-4 w-4" />
                 </div>
-              </CardContent>
-            </Card>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/manager/schedule")}
-            className="text-left"
-          >
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                <div>
-                  <div className="mb-3 flex items-center gap-2 text-slate-900">
-                    <CalendarDays className="h-5 w-5" />
-                    <h2 className="text-lg font-semibold">Schedule</h2>
-                  </div>
-                  <p className="text-sm text-slate-600">
-                    View jobs on a calendar and spot unscheduled work.
-                  </p>
-                </div>
-                <div className="text-sm font-semibold text-slate-900">Open Calendar</div>
-              </CardContent>
-            </Card>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/manager/availability")}
-            className="text-left"
-          >
-            <Card className="h-full transition-shadow hover:shadow-md">
-              <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                <div>
-                  <div className="mb-3 flex items-center gap-2 text-slate-900">
-                    <CalendarClock className="h-5 w-5" />
-                    <h2 className="text-lg font-semibold">Availability</h2>
-                  </div>
-                  <p className="text-sm text-slate-600">
-                    Build and update regular weekly employee availability.
-                  </p>
-                </div>
-                <div className="text-sm font-semibold text-slate-900">Set Hours</div>
               </CardContent>
             </Card>
           </button>
@@ -236,10 +243,13 @@ export default function ManagerHomePage() {
                     <h2 className="text-lg font-semibold">Settings</h2>
                   </div>
                   <p className="text-sm text-slate-600">
-                    Update default tax settings and other internal business controls.
+                    Service catalog and internal business settings.
                   </p>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">Open Settings</div>
+                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  Open settings
+                  <ArrowRight className="h-4 w-4" />
+                </div>
               </CardContent>
             </Card>
           </button>

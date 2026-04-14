@@ -15,6 +15,9 @@ export type ScheduleBlock = {
   ends_at: string;
 };
 
+/** Extra on-site staging / customer handoff time before wrench time. */
+export const PRE_SERVICE_STAGING_MINUTES = 20;
+
 export const padDatePart = (value: number) => String(value).padStart(2, "0");
 
 export const toDateKey = (date: Date) =>

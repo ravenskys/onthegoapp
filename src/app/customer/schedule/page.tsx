@@ -19,6 +19,7 @@ import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-a
 import { supabase } from "@/lib/supabase";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { getCentralDispatchTravelMinutes } from "@/lib/routing";
+import { PRE_SERVICE_STAGING_MINUTES } from "@/lib/scheduler-slots";
 import {
   CUSTOMER_OTHER_SERVICE_ID,
   REPAIR_OTHER_SERVICE_CODE,
@@ -424,7 +425,7 @@ function CustomerSchedulePageContent() {
           (blockData || []) as ScheduleBlock[],
           start,
           end,
-          selectedServiceDuration + (dispatchTravelMinutes ?? 30),
+          selectedServiceDuration + PRE_SERVICE_STAGING_MINUTES + (dispatchTravelMinutes ?? 30),
           dispatchTravelMinutes ?? 30,
         ),
       );
@@ -817,9 +818,17 @@ function CustomerSchedulePageContent() {
   return (
     <CustomerPortalShell
       title="Schedule Service"
-      subtitle="Pick an available time based on technician availability and send the request directly to the service calendar."
+      subtitle="Use this when you already have service details. For the guided first step, start from Get service."
       onLogout={handleLogout}
     >
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <span className="font-semibold text-slate-900">Flow tip: </span>
+        Need help choosing request type and vehicle first? Start at{" "}
+        <a href="/customer/book" className="font-semibold text-lime-700 underline-offset-2 hover:underline">
+          Get service
+        </a>
+        . This page stays the full scheduler for direct use.
+      </div>
       {searchParams.get("guided") === "1" ? (
         <div className="rounded-2xl border border-lime-400/35 bg-lime-400/10 px-4 py-3 text-sm text-slate-800 shadow-sm">
           <span className="font-semibold text-slate-900">Guided setup: </span>

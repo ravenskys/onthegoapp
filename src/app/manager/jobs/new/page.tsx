@@ -63,6 +63,7 @@ import {
 import { getTechnicianHourlyPayAsOf } from "@/lib/technician-pay";
 import {
   type AvailableSlot,
+  PRE_SERVICE_STAGING_MINUTES,
   type ScheduleBlock,
   buildSlotsFromScheduleBlocks,
   formatDayLabel,
@@ -347,7 +348,9 @@ function NewJobPageContent() {
           (blockData || []) as ScheduleBlock[],
           start,
           end,
-          selectedServiceDurationForSchedule + (dispatchTravelMinutes ?? 30),
+          selectedServiceDurationForSchedule +
+            PRE_SERVICE_STAGING_MINUTES +
+            (dispatchTravelMinutes ?? 30),
           dispatchTravelMinutes ?? 30,
         ),
       );
