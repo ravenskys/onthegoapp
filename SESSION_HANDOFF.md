@@ -19,10 +19,9 @@
 Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md), [BASELINE_MIGRATION_PLAN.md](./BASELINE_MIGRATION_PLAN.md), [MANUAL_CORE_SCHEMA_REFERENCE.md](./MANUAL_CORE_SCHEMA_REFERENCE.md). Hosted Supabase remains the default dev path until this is done.
 
 ## Current Status
-- Branch: `main` (local branch tracks **`secondary/main`** for routine pushes).
-- **Next convergence**: when you are ready to ship, plan a merge or PR from this line of work (**`secondary/main`**) into **`upstream/main`** (`onthegoapp`) so the primary deployed repo stays a deliberate promotion.
-- Push day-to-day work to **`secondary`**; use **`upstream`** only when intentionally updating the main app repo.
-- After syncing **`secondary/main`**, run `git log -1 --oneline` for the current tip (avoids stale hashes in this file).
+- Branch: `main` (tracks **`origin/main`** on **`onthegoapp`** — single canonical repo / Vercel).
+- Push and pull with **`git push`** / **`git pull`**; no separate fork remote for routine work.
+- After pushing, run `git log -1 --oneline` for the current tip (avoids stale hashes in this file).
 
 ## Next session — start here
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
@@ -47,10 +46,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - **`/manager/jobs/new?flow=new`**: Email is **required** and checked for duplicates before insert; phone uses **`formatPhoneNumber`** (10-digit U.S.) and is stored formatted. Validation errors **highlight fields** (red border/label + inline `role="alert"` text) and focus the first invalid control instead of relying on `alert()` for routine mistakes.
 
 ## Git Remotes
-- `upstream` -> `https://github.com/onthegomaint-glitch/onthegoapp.git`
-- `secondary` -> `https://github.com/onthegomaint-glitch/https---github.com-onthegomaint-glitch-onthegoapp.git`
-- Push current in-progress work to `secondary` so Vercel stays untouched.
-- Merge back later from `secondary` into `upstream` when the feature is ready.
+- `origin` -> `https://github.com/onthegomaint-glitch/onthegoapp.git` (only remote; Vercel deploys from this repo).
 
 ## Current Git Status
 - After this handoff update, run `git status` to confirm a clean tree post-commit.
@@ -289,9 +285,7 @@ Use this when resuming:
 ## If Something Looks Broken Again
 - Check `git status --short` first.
 - Do not commit `.next-verify-accounting/` or `.next-verify-utf8/`.
-- Confirm the target remote before pushing:
-  - use `secondary` for isolated feature work
-  - use `upstream` only when intentionally updating the deployed repo
+- Confirm you are on `main` and `origin` points at `onthegoapp` before pushing (`git remote -v`).
 - Confirm latest pushed commit before pushing.
 - If scheduling fails live, check Supabase migration state before debugging React code.
 
