@@ -175,6 +175,7 @@ const buildSlotsFromScheduleBlocks = (
   rangeStart: Date,
   rangeEnd: Date,
   slotMinutes: number,
+  defaultTravelMinutes: number = 30,
 ) => {
   const slotMs = slotMinutes * 60 * 1000;
   const nextSlots: AvailableSlot[] = [];
@@ -192,7 +193,7 @@ const buildSlotsFromScheduleBlocks = (
         technician_user_id: block.technician_user_id,
         starts_at: slotStart.toISOString(),
         ends_at: slotEnd.toISOString(),
-        travel_time_minutes: 30,
+        travel_time_minutes: defaultTravelMinutes,
       });
 
       slotStart.setTime(slotStart.getTime() + slotMs);

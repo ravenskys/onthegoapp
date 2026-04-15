@@ -146,7 +146,7 @@ function parsePartNotes(notes: string | null | undefined): {
 } {
   if (!notes?.trim()) return { partNumber: "", extra: "" };
   const s = notes.trim();
-  const m = s.match(/^Part\s*#\s*:\s*(.*)$/is);
+  const m = s.match(/^Part\s*#\s*:\s*([\s\S]*)$/i);
   if (!m) return { partNumber: "", extra: s };
   const rest = m[1].trim();
   const pipeIdx = rest.indexOf("|");
