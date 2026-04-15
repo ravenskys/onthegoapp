@@ -19,8 +19,9 @@
 Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md), [BASELINE_MIGRATION_PLAN.md](./BASELINE_MIGRATION_PLAN.md), [MANUAL_CORE_SCHEMA_REFERENCE.md](./MANUAL_CORE_SCHEMA_REFERENCE.md). Hosted Supabase remains the default dev path until this is done.
 
 ## Current Status
-- Branch: `main` (tracks **`origin/main`** on **`onthegoapp`** — single canonical repo / Vercel).
-- Push and pull with **`git push`** / **`git pull`**; no separate fork remote for routine work.
+- Branch: `main` (tracks **`origin/main`** — canonical repo **`onthegoapp`**, Vercel deploys from here).
+- **`origin`**: normal **`git push`** / **`git pull`** target.
+- **`secondary`**: same history kept as a **backup mirror** (not the default push target). After pushing to `origin`, run **`git push secondary main`** to refresh the backup (or push both in one go when you care).
 - After pushing, run `git log -1 --oneline` for the current tip (avoids stale hashes in this file).
 
 ## Next session — start here
@@ -46,7 +47,8 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - **`/manager/jobs/new?flow=new`**: Email is **required** and checked for duplicates before insert; phone uses **`formatPhoneNumber`** (10-digit U.S.) and is stored formatted. Validation errors **highlight fields** (red border/label + inline `role="alert"` text) and focus the first invalid control instead of relying on `alert()` for routine mistakes.
 
 ## Git Remotes
-- `origin` -> `https://github.com/onthegomaint-glitch/onthegoapp.git` (only remote; Vercel deploys from this repo).
+- `origin` -> `https://github.com/onthegomaint-glitch/onthegoapp.git` (canonical; Vercel deploys from this repo).
+- `secondary` -> `https://github.com/onthegomaint-glitch/https---github.com-onthegomaint-glitch-onthegoapp.git` (backup mirror — keep in sync with `git push secondary main` after `git push`).
 
 ## Current Git Status
 - After this handoff update, run `git status` to confirm a clean tree post-commit.
@@ -285,7 +287,7 @@ Use this when resuming:
 ## If Something Looks Broken Again
 - Check `git status --short` first.
 - Do not commit `.next-verify-accounting/` or `.next-verify-utf8/`.
-- Confirm you are on `main` and `origin` points at `onthegoapp` before pushing (`git remote -v`).
+- Confirm you are on `main` and `origin` points at `onthegoapp` before pushing (`git remote -v`). Optionally mirror to the backup: `git push secondary main`.
 - Confirm latest pushed commit before pushing.
 - If scheduling fails live, check Supabase migration state before debugging React code.
 
