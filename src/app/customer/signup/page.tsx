@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { formatPhoneNumber, normalizeEmail } from "@/lib/input-formatters";
+import { formatPhoneNumber, normalizeEmail, normalizePhoneExtension } from "@/lib/input-formatters";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -13,6 +13,7 @@ export default function CustomerSignupPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneExtension, setPhoneExtension] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,6 +27,7 @@ export default function CustomerSignupPage() {
       const trimmedFirstName = firstName.trim();
       const trimmedLastName = lastName.trim();
       const trimmedPhone = formatPhoneNumber(phone).trim();
+      const trimmedExtension = normalizePhoneExtension(phoneExtension);
 
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
@@ -125,6 +127,7 @@ export default function CustomerSignupPage() {
             first_name: existingCustomer.first_name || trimmedFirstName,
             last_name: existingCustomer.last_name || trimmedLastName,
             phone: existingCustomer.phone || trimmedPhone,
+            phone_extension: trimmedExtension || null,
             email: normalizedEmail,
           })
           .eq("id", existingCustomer.id);
@@ -138,6 +141,7 @@ export default function CustomerSignupPage() {
             first_name: trimmedFirstName,
             last_name: trimmedLastName,
             phone: trimmedPhone,
+            phone_extension: trimmedExtension || null,
             email: normalizedEmail,
             auth_user_id: user.id,
           },
@@ -192,9 +196,11 @@ export default function CustomerSignupPage() {
                 firstName={firstName}
                 lastName={lastName}
                 phone={phone}
+                phoneExtension={phoneExtension}
                 setFirstName={setFirstName}
                 setLastName={setLastName}
                 setPhone={(value) => setPhone(formatPhoneNumber(value))}
+                setPhoneExtension={(value) => setPhoneExtension(normalizePhoneExtension(value))}
               />
 
               <div className="space-y-2">

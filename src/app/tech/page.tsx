@@ -22,6 +22,8 @@ import {
   normalizeYear,
 } from "@/lib/input-formatters";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import { UsStateSelect } from "@/components/forms/UsStateSelect";
+import { DEFAULT_US_STATE_CODE, resolveUsStateForForm } from "@/lib/us-states";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
   BackToPortalButton,
@@ -141,7 +143,7 @@ const createEmptyVehicleState = (techName = "") => ({
   vin: "",
   engineSize: "",
   licensePlate: "",
-  state: "",
+  state: DEFAULT_US_STATE_CODE,
   transmission: "",
   driveline: "",
   techName,
@@ -897,6 +899,7 @@ export default function OnTheGoTechnicianAppPrototype() {
     setVehicle({
       ...createEmptyVehicleState(String(vehicleSnapshot.techName || "")),
       ...vehicleSnapshot,
+      state: resolveUsStateForForm(String(vehicleSnapshot.state ?? "")),
     });
     setTireData({
       ...createEmptyTireDataState(),
@@ -982,7 +985,7 @@ export default function OnTheGoTechnicianAppPrototype() {
         vin: vehicleData?.vin ?? "",
         engineSize: vehicleData?.engine_size ?? "",
         licensePlate: vehicleData?.license_plate ?? "",
-        state: vehicleData?.state ?? "",
+        state: resolveUsStateForForm(vehicleData?.state),
         transmission: vehicleData?.transmission ?? "",
         driveline: vehicleData?.driveline ?? "",
         notes: inspectionData?.notes ?? "",
@@ -2482,7 +2485,16 @@ if (!isAuthorized) {
                   ] as const satisfies readonly (readonly [string, VehicleFieldKey])[]).map(([label, key]) => (
                     <div key={key} className="space-y-2">
                       <Label>{label}</Label>
-                      {key === "techName" && technicians.length > 0 ? (
+                      {key === "state" ? (
+                        <UsStateSelect
+                          value={vehicle.state}
+                          onChange={(code) => {
+                            updateVehicle("state", code);
+                            void handleVehicleProfileBlur();
+                          }}
+                          className="flex h-12 w-full rounded-md border border-slate-200 bg-white px-3 text-base"
+                        />
+                      ) : key === "techName" && technicians.length > 0 ? (
                         <Select
                           value={vehicle.techName}
                           onValueChange={(value) => {

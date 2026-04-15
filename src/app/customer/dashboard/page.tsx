@@ -23,11 +23,13 @@ import {
   formatVehicleMiles,
   fetchCustomerPortalData,
   getCustomerRecommendedServices,
+  hasValidCustomerOdometerMiles,
   getSingleRelation,
   type CustomerPortalVehicle,
   type CustomerPortalData,
 } from "@/lib/customer-portal";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { getErrorDebugFields, getErrorMessage } from "@/lib/tech-inspection";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -35,6 +37,9 @@ import {
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 const EMPTY_VEHICLES: CustomerPortalVehicle[] = [];
+
+/** Account page — Vehicles section (add / edit vehicles). */
+const ADD_VEHICLE_ACCOUNT_HREF = "/customer/account#customer-account-vehicles";
 
 function OverviewHubTile({
   icon: Icon,
@@ -109,11 +114,13 @@ function DashboardMainSectionHeader({
 
 export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
+        setLoadError(null);
         const { user, roles: roleNames } = await getUserRoles();
         if (!user) {
           window.location.href = "/customer/login";
@@ -130,16 +137,16 @@ export default function CustomerDashboardPage() {
           return;
         }
 
-        const portalData = await fetchCustomerPortalData(user.id);
-
-        if (!portalData.customer) {
-          setLoading(false);
-          return;
-        }
-
-        setPortalData(portalData);
+        const nextPortalData = await fetchCustomerPortalData(user.id);
+        setPortalData(nextPortalData);
       } catch (error) {
-        console.error("Dashboard load failed:", error);
+        const message = getErrorMessage(error, "Could not load your dashboard.");
+        setLoadError(message);
+        console.error(
+          "Dashboard load failed:",
+          message,
+          getErrorDebugFields(error),
+        );
       } finally {
         setLoading(false);
       }
@@ -188,6 +195,12 @@ export default function CustomerDashboardPage() {
     ? new Date(latestInspection.created_at).toLocaleDateString()
     : "No service yet";
   const recommendedServices = getCustomerRecommendedServices(primaryVehicle);
+  const recommendationEmptyMessage =
+    !vehicles.length || !primaryVehicle
+      ? "Add a vehicle and current mileage in your account to see personalized maintenance suggestions."
+      : !hasValidCustomerOdometerMiles(primaryVehicle.mileage)
+        ? "Add your current mileage in your account to see personalized maintenance suggestions."
+        : "No recommended services are available yet for the current vehicle details.";
   const reportCountsByVehicle = reports.reduce<Record<string, number>>((acc, report) => {
     const inspection = getSingleRelation(report.inspections);
     const vehicle = getSingleRelation(inspection?.vehicles);
@@ -202,6 +215,26 @@ export default function CustomerDashboardPage() {
         <div className="otg-container">
           <div className="otg-card p-8">
             <p className="otg-body">Loading customer portal...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="otg-page">
+        <div className="otg-container max-w-3xl">
+          <div className="otg-card border-red-200 bg-red-50/80 p-8">
+            <h1 className="otg-section-title text-red-950">Something went wrong</h1>
+            <p className="otg-body mt-3 text-red-900">{loadError}</p>
+            <button
+              type="button"
+              className="mt-6 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 shadow-sm hover:bg-red-50"
+              onClick={() => window.location.reload()}
+            >
+              Try again
+            </button>
           </div>
         </div>
       </div>
@@ -288,7 +321,7 @@ export default function CustomerDashboardPage() {
                 ? `${completedReportsCount} completed report${completedReportsCount === 1 ? "" : "s"}`
                 : "History will appear here"
             }
-            href="/customer/reports"
+            href={vehicles.length ? "/customer/reports" : ADD_VEHICLE_ACCOUNT_HREF}
           />
           <OverviewHubTile
             icon={UserRound}
@@ -366,9 +399,13 @@ export default function CustomerDashboardPage() {
                         </a>
                       ))
                     ) : (
-                      <div className="rounded-[22px] border border-lime-400/25 bg-white/10 px-4 py-3 text-sm text-lime-50/80">
-                        No vehicles are linked to this customer account yet.
-                      </div>
+                      <a
+                        href={ADD_VEHICLE_ACCOUNT_HREF}
+                        className="block w-full min-w-[170px] rounded-[22px] border border-lime-400/25 bg-white/10 px-4 py-3 text-left text-sm leading-relaxed text-lime-50/80 transition-colors hover:border-lime-300/60 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime-300"
+                      >
+                        <span className="font-semibold text-lime-100">No vehicles on file.</span>{" "}
+                        Click here to add a vehicle — opens the Vehicles section on Account.
+                      </a>
                     )}
                   </div>
                 </div>
@@ -388,7 +425,13 @@ export default function CustomerDashboardPage() {
                     </div>
                     <div className="flex items-center gap-3 text-slate-700">
                       <UserRound className="h-4 w-4 text-lime-400" />
-                      {customer.phone || "No phone number on file"}
+                      {customer.phone
+                        ? `${customer.phone}${
+                            customer.phone_extension
+                              ? ` ext. ${customer.phone_extension}`
+                              : ""
+                          }`
+                        : "No phone number on file"}
                     </div>
                   </div>
                 </div>
@@ -446,15 +489,21 @@ export default function CustomerDashboardPage() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (!vehicles.length) {
+                          window.location.href = ADD_VEHICLE_ACCOUNT_HREF;
+                          return;
+                        }
                         window.location.href = completedReportsCount
                           ? "/customer/reports"
                           : "/customer/account";
                       }}
                       className="otg-btn otg-btn-secondary w-full sm:w-auto lg:w-full"
                     >
-                      {completedReportsCount
-                        ? "Open Report History"
-                        : "Update Account"}
+                      {!vehicles.length
+                        ? "Add a vehicle"
+                        : completedReportsCount
+                          ? "Open Report History"
+                          : "Update Account"}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </button>
                   </div>
@@ -492,7 +541,7 @@ export default function CustomerDashboardPage() {
                     ))
                   ) : (
                     <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 sm:col-span-2 sm:p-5">
-                      No recommended services are available yet for the current vehicle details.
+                      {recommendationEmptyMessage}
                     </div>
                   )}
                 </div>
@@ -502,7 +551,9 @@ export default function CustomerDashboardPage() {
                     href="/customer/book"
                     className="inline-flex items-center text-sm font-semibold text-lime-700 underline-offset-4 hover:underline"
                   >
-                    Book or request one of these
+                    {recommendedServices.length
+                      ? "Book or request one of these"
+                      : "Book or request service"}
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </a>
                 </div>

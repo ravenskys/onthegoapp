@@ -25,6 +25,8 @@ import {
   REPAIR_OTHER_SERVICE_CODE,
   isCustomerUnscheduledServiceRequest,
 } from "@/lib/service-other";
+import { UsStateSelect } from "@/components/forms/UsStateSelect";
+import { DEFAULT_US_STATE_CODE, resolveUsStateForForm } from "@/lib/us-states";
 
 type AvailableSlot = {
   technician_user_id: string;
@@ -223,7 +225,7 @@ const applySavedAddressToForm = (
   setters.setCustomLocationLabel(customLocationLabel);
   setters.setServiceAddress(address.address || "");
   setters.setServiceCity(address.city || "");
-  setters.setServiceState(address.state || "");
+  setters.setServiceState(resolveUsStateForForm(address.state));
   setters.setServiceZip(address.zip || "");
 };
 
@@ -254,7 +256,7 @@ function CustomerSchedulePageContent() {
   const [customLocationLabel, setCustomLocationLabel] = useState("");
   const [serviceAddress, setServiceAddress] = useState("");
   const [serviceCity, setServiceCity] = useState("");
-  const [serviceState, setServiceState] = useState("");
+  const [serviceState, setServiceState] = useState(DEFAULT_US_STATE_CODE);
   const [serviceZip, setServiceZip] = useState("");
   const [hasLocationPermissionConfirmation, setHasLocationPermissionConfirmation] = useState(false);
   const [notes, setNotes] = useState("");
@@ -683,9 +685,7 @@ function CustomerSchedulePageContent() {
     const { data, error } = await supabase
       .from("customer_addresses")
       .insert(payload)
-      .select(
-        "id, customer_id, address_type, is_default, label, contact_name, contact_phone, address, city, state, zip, gate_code, parking_notes, service_notes, created_at, updated_at",
-      )
+      .select("*")
       .single();
 
     if (error) {
@@ -1148,7 +1148,7 @@ function CustomerSchedulePageContent() {
                         markManualAddressEditing(selectedAddressId, setSelectedAddressId);
                         setServiceCity(event.target.value);
                       }}
-                      placeholder="City"
+                      placeholder="Pocatello"
                       className={`h-11 w-full rounded-lg border bg-white px-3 text-sm text-slate-950 ${
                         serviceCityRequiredError ? "!border-red-500 !ring-2 !ring-red-300" : "border-slate-300"
                       }`}
@@ -1158,14 +1158,12 @@ function CustomerSchedulePageContent() {
                     ) : null}
                   </div>
                   <div className="space-y-1">
-                    <input
+                    <UsStateSelect
                       value={serviceState}
-                      onChange={(event) => {
+                      onChange={(code) => {
                         markManualAddressEditing(selectedAddressId, setSelectedAddressId);
-                        setServiceState(event.target.value.toUpperCase());
+                        setServiceState(code);
                       }}
-                      placeholder="State"
-                      maxLength={2}
                       className={`h-11 w-full rounded-lg border bg-white px-3 text-sm text-slate-950 ${
                         serviceStateRequiredError ? "!border-red-500 !ring-2 !ring-red-300" : "border-slate-300"
                       }`}
@@ -1181,7 +1179,7 @@ function CustomerSchedulePageContent() {
                         markManualAddressEditing(selectedAddressId, setSelectedAddressId);
                         setServiceZip(event.target.value);
                       }}
-                      placeholder="ZIP"
+                      placeholder="83202"
                       className={`h-11 w-full rounded-lg border bg-white px-3 text-sm text-slate-950 ${
                         serviceZipRequiredError ? "!border-red-500 !ring-2 !ring-red-300" : "border-slate-300"
                       }`}

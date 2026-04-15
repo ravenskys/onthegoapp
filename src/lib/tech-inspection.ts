@@ -24,6 +24,21 @@ export const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+/** Fields PostgREST / Supabase clients attach; safe to log when `console.error(err)` shows `{}`. */
+export const getErrorDebugFields = (error: unknown): Record<string, unknown> => {
+  if (error && typeof error === "object") {
+    const o = error as Record<string, unknown>;
+    return {
+      message: o.message,
+      code: o.code,
+      details: o.details,
+      hint: o.hint,
+      name: o.name,
+    };
+  }
+  return { value: error };
+};
+
 export const getTrimmedValue = (value: unknown) => {
   const trimmed = String(value || "").trim();
   return trimmed || null;

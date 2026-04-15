@@ -16,9 +16,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // suppressHydrationWarning on root nodes: extensions (e.g. Grammarly) add data-* attrs to <html>/<body>
   return (
-    <html lang="en" data-scroll-behavior="smooth">
-      <body>{children}</body>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

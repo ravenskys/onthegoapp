@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Save, Plus } from "lucide-react";
 import {
   formatPhoneNumber,
+  normalizePhoneExtension,
   normalizeEmail,
   normalizeLicensePlate,
   normalizeVin,
@@ -29,6 +30,7 @@ type Customer = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  phone_extension: string | null;
   tax_exempt: boolean;
 };
 
@@ -69,6 +71,7 @@ export default function CustomerDetailPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneExtension, setPhoneExtension] = useState("");
   const [taxExempt, setTaxExempt] = useState(false);
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export default function CustomerDetailPage() {
 
     const { data: customerData, error: customerError } = await supabase
       .from("customers")
-      .select("id, first_name, last_name, email, phone, tax_exempt")
+      .select("id, first_name, last_name, email, phone, phone_extension, tax_exempt")
       .eq("id", customerId)
       .single();
 
@@ -116,6 +119,7 @@ export default function CustomerDetailPage() {
     setLastName(customerData.last_name ?? "");
     setEmail(customerData.email ?? "");
     setPhone(customerData.phone ?? "");
+    setPhoneExtension(customerData.phone_extension ?? "");
     setTaxExempt(customerData.tax_exempt ?? false);
 
     const { data: vehicleData, error: vehicleError } = await supabase
@@ -161,6 +165,7 @@ export default function CustomerDetailPage() {
           last_name: lastName.trim() || null,
           email: normalizedCustomerEmail,
           phone: formatPhoneNumber(phone).trim() || null,
+          phone_extension: normalizePhoneExtension(phoneExtension) || null,
           tax_exempt: taxExempt,
         })
         .eq("id", customerId);
@@ -301,14 +306,30 @@ export default function CustomerDetailPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label>Phone</Label>
-              <Input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
-                placeholder="(555) 555-5555"
-              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <Input
+                  type="tel"
+                  className="min-w-0 flex-1"
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                  placeholder="(555) 555-5555"
+                  autoComplete="tel-national"
+                />
+                <div className="flex w-full shrink-0 flex-col gap-1.5 sm:w-32">
+                  <Label className="text-xs uppercase tracking-wide text-slate-500">Extension</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={phoneExtension}
+                    onChange={(e) => setPhoneExtension(normalizePhoneExtension(e.target.value))}
+                    placeholder="Ext."
+                    maxLength={10}
+                    autoComplete="tel-extension"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">

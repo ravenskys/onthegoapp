@@ -6,6 +6,7 @@ export type CustomerPortalRecord = {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  phone_extension?: string | null;
   email?: string | null;
   auth_user_id?: string | null;
 };
@@ -29,6 +30,7 @@ export type CustomerPortalAddress = {
   label?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
+  contact_phone_extension?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -388,14 +390,26 @@ export const getCustomerWorkflowStepState = (
   };
 };
 
+/** True when mileage is a positive number (matches maintenance preview parsing). */
+export const hasValidCustomerOdometerMiles = (
+  mileage: CustomerPortalVehicle["mileage"] | null | undefined
+): boolean => {
+  const mileageValue = Number(String(mileage ?? "").replace(/,/g, "").trim());
+  return !Number.isNaN(mileageValue) && mileageValue > 0;
+};
+
 export const getCustomerRecommendedServices = (
   vehicle: CustomerPortalVehicle | null | undefined
 ) => {
+  if (!vehicle || !hasValidCustomerOdometerMiles(vehicle.mileage)) {
+    return [];
+  }
+
   const preview = getMaintenanceSchedulePreview({
-    year: vehicle?.year ?? null,
-    make: vehicle?.make ?? null,
-    model: vehicle?.model ?? null,
-    mileage: vehicle?.mileage ?? null,
+    year: vehicle.year ?? null,
+    make: vehicle.make ?? null,
+    model: vehicle.model ?? null,
+    mileage: vehicle.mileage ?? null,
   });
 
   return preview?.current?.items || [];
@@ -444,24 +458,8 @@ export const fetchCustomerPortalData = async (
 
   const { data: addressRows, error: addressError } = await supabase
     .from("customer_addresses")
-    .select(`
-      id,
-      customer_id,
-      address_type,
-      is_default,
-      label,
-      contact_name,
-      contact_phone,
-      address,
-      city,
-      state,
-      zip,
-      gate_code,
-      parking_notes,
-      service_notes,
-      created_at,
-      updated_at
-    `)
+    // Use * so reads work before optional columns (e.g. contact_phone_extension) exist in every environment.
+    .select("*")
     .eq("customer_id", customer.id)
     .order("is_default", { ascending: false })
     .order("created_at", { ascending: true });

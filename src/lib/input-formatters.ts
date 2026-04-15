@@ -9,6 +9,12 @@ export const formatPhoneNumber = (value: string) => {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
+/** Digits-only extension (e.g. 101); max 10 for PBX-style codes. */
+export const normalizePhoneExtension = (value: string) =>
+  String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 10);
+
 export const normalizeEmail = (value: string) =>
   String(value || "").trim().toLowerCase();
 

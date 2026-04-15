@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/tech-inspection";
 import {
   formatMileage,
   formatPhoneNumber,
+  normalizePhoneExtension,
   normalizeEmail,
   normalizeLicensePlate,
   normalizeVin,
@@ -20,7 +21,15 @@ import {
   fetchCustomerPortalData,
 } from "@/lib/customer-portal";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
+import { getVehicleCatalogModes } from "@/lib/tech-inspection";
 import { supabase } from "@/lib/supabase";
+import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
+import { UsStateSelect } from "@/components/forms/UsStateSelect";
+import {
+  DEFAULT_US_STATE_CODE,
+  normalizeUsStateCode,
+  resolveUsStateForForm,
+} from "@/lib/us-states";
 
 type EditableVehicleDraft = {
   id?: string;
@@ -32,6 +41,9 @@ type EditableVehicleDraft = {
   savedMileage: string;
   vin: string;
   licensePlate: string;
+  useCustomMake: boolean;
+  useCustomModel: boolean;
+  useCustomEngineSize: boolean;
 };
 
 type EditableAddressDraft = {
@@ -41,6 +53,7 @@ type EditableAddressDraft = {
   otherLocationType: string;
   contactName: string;
   contactPhone: string;
+  contactPhoneExtension: string;
   address: string;
   city: string;
   state: string;
@@ -59,6 +72,9 @@ const createEmptyVehicleDraft = (): EditableVehicleDraft => ({
   savedMileage: "",
   vin: "",
   licensePlate: "",
+  useCustomMake: false,
+  useCustomModel: false,
+  useCustomEngineSize: false,
 });
 
 const createEmptyAddressDraft = (): EditableAddressDraft => ({
@@ -67,9 +83,10 @@ const createEmptyAddressDraft = (): EditableAddressDraft => ({
   otherLocationType: "",
   contactName: "",
   contactPhone: "",
+  contactPhoneExtension: "",
   address: "",
   city: "",
-  state: "",
+  state: DEFAULT_US_STATE_CODE,
   zip: "",
   gateCode: "",
   parkingNotes: "",
@@ -116,17 +133,26 @@ const formatStoredMileageValue = (value: unknown) => {
   return digitsOnly ? Number(digitsOnly).toLocaleString("en-US") : "";
 };
 
-const mapVehicleToDraft = (vehicle: CustomerPortalVehicle): EditableVehicleDraft => ({
-  id: vehicle.id,
-  year: vehicle.year ? String(vehicle.year) : "",
-  make: vehicle.make || "",
-  model: vehicle.model || "",
-  engineSize: vehicle.engine_size || "",
-  mileage: formatStoredMileageValue(vehicle.mileage),
-  savedMileage: formatStoredMileageValue(vehicle.mileage),
-  vin: vehicle.vin || "",
-  licensePlate: vehicle.license_plate || "",
-});
+const mapVehicleToDraft = (vehicle: CustomerPortalVehicle): EditableVehicleDraft => {
+  const year = vehicle.year ? String(vehicle.year) : "";
+  const make = vehicle.make || "";
+  const model = vehicle.model || "";
+  const engineSize = vehicle.engine_size || "";
+  const catalogModes = getVehicleCatalogModes({ year, make, model, engineSize });
+
+  return {
+    id: vehicle.id,
+    year,
+    make,
+    model,
+    engineSize,
+    mileage: formatStoredMileageValue(vehicle.mileage),
+    savedMileage: formatStoredMileageValue(vehicle.mileage),
+    vin: vehicle.vin || "",
+    licensePlate: vehicle.license_plate || "",
+    ...catalogModes,
+  };
+};
 
 const mapAddressToDraft = (address: CustomerPortalAddress): EditableAddressDraft => ({
   id: address.id,
@@ -134,9 +160,10 @@ const mapAddressToDraft = (address: CustomerPortalAddress): EditableAddressDraft
   isDefault: Boolean(address.is_default),
   contactName: address.contact_name || "",
   contactPhone: address.contact_phone || "",
+  contactPhoneExtension: address.contact_phone_extension || "",
   address: address.address || "",
   city: address.city || "",
-  state: address.state || "",
+  state: resolveUsStateForForm(address.state),
   zip: address.zip || "",
   gateCode: address.gate_code || "",
   parkingNotes: address.parking_notes || "",
@@ -207,6 +234,7 @@ export default function CustomerAccountPage() {
   const [accountFirstName, setAccountFirstName] = useState("");
   const [accountLastName, setAccountLastName] = useState("");
   const [accountPhone, setAccountPhone] = useState("");
+  const [accountPhoneExtension, setAccountPhoneExtension] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
   const [vehicleDrafts, setVehicleDrafts] = useState<EditableVehicleDraft[]>([]);
   const [addressDrafts, setAddressDrafts] = useState<EditableAddressDraft[]>([]);
@@ -244,6 +272,7 @@ export default function CustomerAccountPage() {
     setAccountFirstName(data.customer?.first_name || "");
     setAccountLastName(data.customer?.last_name || "");
     setAccountPhone(data.customer?.phone || "");
+    setAccountPhoneExtension(data.customer?.phone_extension || "");
     setAccountEmail(data.customer?.email || "");
     setVehicleDrafts(
       data.vehicles.length
@@ -283,6 +312,24 @@ export default function CustomerAccountPage() {
 
     void loadPage();
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const scrollToVehiclesSection = () => {
+      if (typeof window === "undefined") return;
+      if (window.location.hash !== "#customer-account-vehicles") return;
+      const el = document.getElementById("customer-account-vehicles");
+      if (!el) return;
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+
+    scrollToVehiclesSection();
+    window.addEventListener("hashchange", scrollToVehiclesSection);
+    return () => window.removeEventListener("hashchange", scrollToVehiclesSection);
+  }, [loading]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -325,6 +372,7 @@ export default function CustomerAccountPage() {
       const trimmedFirstName = accountFirstName.trim();
       const trimmedLastName = accountLastName.trim();
       const trimmedPhone = formatPhoneNumber(accountPhone).trim();
+      const trimmedExtension = normalizePhoneExtension(accountPhoneExtension);
       const normalizedCustomerEmail = normalizeEmail(accountEmail);
 
       if (!normalizedCustomerEmail) {
@@ -354,6 +402,7 @@ export default function CustomerAccountPage() {
         first_name: trimmedFirstName,
         last_name: trimmedLastName,
         phone: trimmedPhone,
+        phone_extension: trimmedExtension || null,
         email: canUpdateCustomerEmail ? normalizedCustomerEmail : authEmail,
       };
 
@@ -375,6 +424,7 @@ export default function CustomerAccountPage() {
               first_name: trimmedFirstName,
               last_name: trimmedLastName,
               phone: trimmedPhone,
+              phone_extension: trimmedExtension || null,
               email: savedEmail,
             }
           : prev
@@ -533,9 +583,10 @@ export default function CustomerAccountPage() {
         label: buildAddressLocationLabel(draft) || null,
         contact_name: draft.contactName.trim() || null,
         contact_phone: formatPhoneNumber(draft.contactPhone).trim() || null,
+        contact_phone_extension: normalizePhoneExtension(draft.contactPhoneExtension) || null,
         address: draft.address.trim(),
         city: draft.city.trim() || null,
-        state: draft.state.trim().toUpperCase() || null,
+        state: normalizeUsStateCode(draft.state) || DEFAULT_US_STATE_CODE,
         zip: draft.zip.trim() || null,
         gate_code: draft.gateCode.trim() || null,
         parking_notes: draft.parkingNotes.trim() || null,
@@ -654,10 +705,12 @@ export default function CustomerAccountPage() {
               firstName={accountFirstName}
               lastName={accountLastName}
               phone={accountPhone}
+              phoneExtension={accountPhoneExtension}
               email={accountEmail}
               setFirstName={setAccountFirstName}
               setLastName={setAccountLastName}
               setPhone={(value) => setAccountPhone(formatPhoneNumber(value))}
+              setPhoneExtension={(value) => setAccountPhoneExtension(normalizePhoneExtension(value))}
               setEmail={(value) => setAccountEmail(normalizeEmail(value))}
             />
 
@@ -677,7 +730,7 @@ export default function CustomerAccountPage() {
           ) : null}
         </div>
 
-        <div className="otg-card p-4 sm:p-6">
+        <div id="customer-account-vehicles" className="otg-card scroll-mt-6 p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 sm:items-center">
               <div className="rounded-2xl bg-slate-200 p-2 text-slate-900">
@@ -781,21 +834,61 @@ export default function CustomerAccountPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="otg-label">Year</label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={draft.year}
-                            onChange={(event) =>
-                              handleVehicleDraftChange(index, "year", normalizeYear(event.target.value))
-                            }
-                            className="otg-input"
-                            placeholder="2020"
-                          />
-                        </div>
+                      <VehicleCatalogFields
+                        year={draft.year}
+                        make={draft.make}
+                        model={draft.model}
+                        engineSize={draft.engineSize}
+                        licensePlate={draft.licensePlate}
+                        vin={draft.vin}
+                        useCustomMake={draft.useCustomMake}
+                        useCustomModel={draft.useCustomModel}
+                        useCustomEngineSize={draft.useCustomEngineSize}
+                        normalizeYear={normalizeYear}
+                        normalizeVin={normalizeVin}
+                        normalizeLicensePlate={normalizeLicensePlate}
+                        setYear={(value) => handleVehicleDraftChange(index, "year", value)}
+                        setMake={(value) => handleVehicleDraftChange(index, "make", value)}
+                        setModel={(value) => handleVehicleDraftChange(index, "model", value)}
+                        setEngineSize={(value) => handleVehicleDraftChange(index, "engineSize", value)}
+                        setLicensePlate={(value) =>
+                          handleVehicleDraftChange(index, "licensePlate", value)
+                        }
+                        setVin={(value) => handleVehicleDraftChange(index, "vin", value)}
+                        setUseCustomMake={(updater) => {
+                          setVehicleDrafts((current) =>
+                            current.map((row, rowIndex) =>
+                              rowIndex === index
+                                ? { ...row, useCustomMake: updater(row.useCustomMake) }
+                                : row
+                            )
+                          );
+                        }}
+                        setUseCustomModel={(updater) => {
+                          setVehicleDrafts((current) =>
+                            current.map((row, rowIndex) =>
+                              rowIndex === index
+                                ? { ...row, useCustomModel: updater(row.useCustomModel) }
+                                : row
+                            )
+                          );
+                        }}
+                        setUseCustomEngineSize={(updater) => {
+                          setVehicleDrafts((current) =>
+                            current.map((row, rowIndex) =>
+                              rowIndex === index
+                                ? { ...row, useCustomEngineSize: updater(row.useCustomEngineSize) }
+                                : row
+                            )
+                          );
+                        }}
+                        makeListId={`customer-account-make-${index}`}
+                        modelListId={`customer-account-model-${index}`}
+                        engineListId={`customer-account-engine-${draft.id || `new-${index}`}`}
+                        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                      />
 
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <label className="otg-label">Mileage</label>
                           <input
@@ -803,79 +896,14 @@ export default function CustomerAccountPage() {
                             inputMode="numeric"
                             value={draft.mileage}
                             onChange={(event) =>
-                              handleVehicleDraftChange(index, "mileage", formatMileage(event.target.value))
-                            }
-                            className="otg-input"
-                            placeholder="75,000"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="otg-label">Make</label>
-                          <input
-                            type="text"
-                            value={draft.make}
-                            onChange={(event) =>
-                              handleVehicleDraftChange(index, "make", event.target.value)
-                            }
-                            className="otg-input"
-                            placeholder="Toyota"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="otg-label">Model</label>
-                          <input
-                            type="text"
-                            value={draft.model}
-                            onChange={(event) =>
-                              handleVehicleDraftChange(index, "model", event.target.value)
-                            }
-                            className="otg-input"
-                            placeholder="Camry"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="otg-label">Engine Size</label>
-                          <input
-                            type="text"
-                            value={draft.engineSize}
-                            onChange={(event) =>
-                              handleVehicleDraftChange(index, "engineSize", event.target.value)
-                            }
-                            className="otg-input"
-                            placeholder="2.5L"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="otg-label">License Plate</label>
-                          <input
-                            type="text"
-                            value={draft.licensePlate}
-                            onChange={(event) =>
                               handleVehicleDraftChange(
                                 index,
-                                "licensePlate",
-                                normalizeLicensePlate(event.target.value)
+                                "mileage",
+                                formatMileage(event.target.value)
                               )
                             }
                             className="otg-input"
-                            placeholder="ABC123"
-                          />
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <label className="otg-label">VIN</label>
-                          <input
-                            type="text"
-                            value={draft.vin}
-                            onChange={(event) =>
-                              handleVehicleDraftChange(index, "vin", normalizeVin(event.target.value))
-                            }
-                            className="otg-input"
-                            placeholder="17-character VIN"
+                            placeholder="75,000"
                           />
                         </div>
                       </div>
@@ -998,7 +1026,14 @@ export default function CustomerAccountPage() {
                           {[draft.address, draft.city, draft.state, draft.zip].filter(Boolean).join(", ") || "Address details not added"}
                         </div>
                         <div className="mt-2 text-sm text-slate-600">
-                          Contact: {draft.contactName || "Not added"} {draft.contactPhone ? `• ${draft.contactPhone}` : ""}
+                          Contact: {draft.contactName || "Not added"}{" "}
+                          {draft.contactPhone
+                            ? `• ${draft.contactPhone}${
+                                draft.contactPhoneExtension
+                                  ? ` ext. ${draft.contactPhoneExtension}`
+                                  : ""
+                              }`
+                            : ""}
                         </div>
                         {draft.gateCode ? (
                           <div className="mt-1 text-sm text-slate-600">Gate code: {draft.gateCode}</div>
@@ -1138,21 +1173,48 @@ export default function CustomerAccountPage() {
                         </div>
                       ) : null}
 
-                      <div className="space-y-2">
-                        <label className="otg-label">Contact Phone</label>
-                        <input
-                          type="tel"
-                          value={draft.contactPhone}
-                          onChange={(event) =>
-                            handleAddressDraftChange(
-                              index,
-                              "contactPhone",
-                              formatPhoneNumber(event.target.value)
-                            )
-                          }
-                          className="otg-input"
-                          placeholder="(555) 555-5555"
-                        />
+                      <div className="space-y-2 md:col-span-2">
+                        <label className="otg-label">Contact phone at this location</label>
+                        <p className="text-xs text-slate-600">
+                          Optional if it matches your account phone — use when someone at the site should be reached directly.
+                        </p>
+                        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <input
+                            type="tel"
+                            value={draft.contactPhone}
+                            onChange={(event) =>
+                              handleAddressDraftChange(
+                                index,
+                                "contactPhone",
+                                formatPhoneNumber(event.target.value)
+                              )
+                            }
+                            className="otg-input min-w-0 flex-1"
+                            placeholder="(555) 555-5555"
+                            autoComplete="tel-local"
+                          />
+                          <div className="flex w-full shrink-0 flex-col gap-1.5 sm:w-36">
+                            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                              Extension
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={draft.contactPhoneExtension}
+                              onChange={(event) =>
+                                handleAddressDraftChange(
+                                  index,
+                                  "contactPhoneExtension",
+                                  normalizePhoneExtension(event.target.value)
+                                )
+                              }
+                              className="otg-input w-full"
+                              placeholder="Ext."
+                              maxLength={10}
+                              autoComplete="tel-extension"
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
@@ -1177,21 +1239,16 @@ export default function CustomerAccountPage() {
                             handleAddressDraftChange(index, "city", event.target.value)
                           }
                           className="otg-input"
-                          placeholder="Denver"
+                          placeholder="Pocatello"
                         />
                       </div>
 
                       <div className="space-y-2">
                         <label className="otg-label">State</label>
-                        <input
-                          type="text"
-                          maxLength={2}
+                        <UsStateSelect
                           value={draft.state}
-                          onChange={(event) =>
-                            handleAddressDraftChange(index, "state", event.target.value.toUpperCase())
-                          }
+                          onChange={(code) => handleAddressDraftChange(index, "state", code)}
                           className="otg-input"
-                          placeholder="CO"
                         />
                       </div>
 
@@ -1204,7 +1261,7 @@ export default function CustomerAccountPage() {
                             handleAddressDraftChange(index, "zip", event.target.value)
                           }
                           className="otg-input"
-                          placeholder="80202"
+                          placeholder="83202"
                         />
                       </div>
 

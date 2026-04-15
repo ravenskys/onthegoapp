@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { Download, FileText } from "lucide-react";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import {
   buildVehicleLabel,
+  buildVehicleReportKey,
   CustomerPortalData,
   fetchCustomerPortalData,
   formatVehicleMiles,
@@ -15,20 +17,15 @@ import {
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { supabase } from "@/lib/supabase";
 
+const ADD_VEHICLE_ACCOUNT_HREF = "/customer/account#customer-account-vehicles";
+
 function CustomerReportsPageContent() {
+  const searchParams = useSearchParams();
+  const selectedVehicleKey = searchParams.get("vehicle");
+
   const [loading, setLoading] = useState(true);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
-  const [selectedVehicleKey, setSelectedVehicleKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    setSelectedVehicleKey(params.get("vehicle"));
-  }, []);
 
   useEffect(() => {
     const loadPage = async () => {
@@ -55,6 +52,35 @@ function CustomerReportsPageContent() {
 
     void loadPage();
   }, []);
+
+  useEffect(() => {
+    if (loading || !portalData) return;
+    if (portalData.vehicles.length === 0) {
+      window.location.replace(ADD_VEHICLE_ACCOUNT_HREF);
+    }
+  }, [loading, portalData]);
+
+  const visibleGroups = useMemo(() => {
+    if (!portalData) return [];
+    if (!selectedVehicleKey) return portalData.reportGroups || [];
+    return (portalData.reportGroups || []).filter((group) => group.key === selectedVehicleKey);
+  }, [portalData, selectedVehicleKey]);
+
+  /** Prefer vehicle from report group; fall back to account vehicle list (e.g. zero reports for that car). */
+  const filteredVehicleLabel = useMemo(() => {
+    if (!selectedVehicleKey || !portalData) return null;
+    const fromReport = visibleGroups[0]?.vehicle;
+    if (fromReport) return buildVehicleLabel(fromReport);
+    const fromAccount = portalData.vehicles.find(
+      (vehicle) => buildVehicleReportKey(vehicle) === selectedVehicleKey
+    );
+    return fromAccount ? buildVehicleLabel(fromAccount) : null;
+  }, [selectedVehicleKey, portalData, visibleGroups]);
+
+  const photosByInspection = useMemo(
+    () => portalData?.photosByInspection || {},
+    [portalData]
+  );
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -122,10 +148,17 @@ function CustomerReportsPageContent() {
     return <div className="otg-page"><div className="otg-container"><div className="otg-card p-8"><p className="otg-body">Loading reports...</p></div></div></div>;
   }
 
-  const visibleGroups = selectedVehicleKey
-    ? (portalData?.reportGroups.filter((group) => group.key === selectedVehicleKey) || [])
-    : portalData?.reportGroups || [];
-  const photosByInspection = portalData?.photosByInspection || {};
+  if (portalData && portalData.vehicles.length === 0) {
+    return (
+      <div className="otg-page">
+        <div className="otg-container">
+          <div className="otg-card p-8">
+            <p className="otg-body">Taking you to add a vehicle…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <CustomerPortalShell
@@ -140,9 +173,9 @@ function CustomerReportsPageContent() {
             <p className="mt-2 text-sm text-slate-600">
               Report history is grouped by vehicle so each car keeps its own timeline of completed inspections.
             </p>
-            {selectedVehicleKey && visibleGroups[0]?.vehicle ? (
+            {selectedVehicleKey && filteredVehicleLabel ? (
               <div className="mt-3 inline-flex rounded-full border border-lime-400/35 bg-lime-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-black">
-                Viewing {buildVehicleLabel(visibleGroups[0].vehicle)}
+                Viewing {filteredVehicleLabel}
               </div>
             ) : null}
           </div>
@@ -283,6 +316,22 @@ function CustomerReportsPageContent() {
   );
 }
 
+function CustomerReportsLoading() {
+  return (
+    <div className="otg-page">
+      <div className="otg-container">
+        <div className="otg-card p-8">
+          <p className="otg-body">Loading reports...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerReportsPage() {
-  return <CustomerReportsPageContent />;
+  return (
+    <Suspense fallback={<CustomerReportsLoading />}>
+      <CustomerReportsPageContent />
+    </Suspense>
+  );
 }

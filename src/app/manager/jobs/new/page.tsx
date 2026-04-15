@@ -73,6 +73,8 @@ import {
   toDateKey,
 } from "@/lib/scheduler-slots";
 import { getCentralDispatchTravelMinutes } from "@/lib/routing";
+import { UsStateSelect } from "@/components/forms/UsStateSelect";
+import { DEFAULT_US_STATE_CODE } from "@/lib/us-states";
 
 type Customer = {
   id: string;
@@ -196,7 +198,7 @@ function NewJobPageContent() {
   /** Service location for scheduler travel buffer (same RPC as customer portal). */
   const [serviceAddress, setServiceAddress] = useState("");
   const [serviceCity, setServiceCity] = useState("");
-  const [serviceState, setServiceState] = useState("");
+  const [serviceState, setServiceState] = useState(DEFAULT_US_STATE_CODE);
   const [serviceZip, setServiceZip] = useState("");
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -1587,17 +1589,16 @@ function NewJobPageContent() {
                     className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
                     value={serviceCity}
                     onChange={(e) => setServiceCity(e.target.value)}
-                    placeholder="City"
+                    placeholder="Pocatello"
                     autoComplete="address-level2"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#c5dcc9]">State</Label>
-                  <Input
-                    className="border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
+                  <UsStateSelect
+                    className="h-8 w-full rounded-lg border border-[rgba(115,145,126,0.35)] bg-[#121b14] px-2.5 text-sm text-[#f3fff4]"
                     value={serviceState}
-                    onChange={(e) => setServiceState(e.target.value)}
-                    placeholder="ST"
+                    onChange={setServiceState}
                     autoComplete="address-level1"
                   />
                 </div>
@@ -1607,7 +1608,7 @@ function NewJobPageContent() {
                     className="max-w-xs border-[rgba(115,145,126,0.35)] bg-[#121b14] text-[#f3fff4]"
                     value={serviceZip}
                     onChange={(e) => setServiceZip(e.target.value)}
-                    placeholder="ZIP"
+                    placeholder="83202"
                     autoComplete="postal-code"
                   />
                 </div>
