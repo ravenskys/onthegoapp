@@ -116,6 +116,26 @@ export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
+  const [showSignupSuccessMessage, setShowSignupSuccessMessage] = useState(false);
+
+  useEffect(() => {
+    const signupSuccessKey = "customerSignupAutoLoginSuccess";
+    const shouldShowMessage = sessionStorage.getItem(signupSuccessKey) === "1";
+    if (!shouldShowMessage) {
+      return;
+    }
+
+    sessionStorage.removeItem(signupSuccessKey);
+    setShowSignupSuccessMessage(true);
+
+    const timerId = window.setTimeout(() => {
+      setShowSignupSuccessMessage(false);
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -264,6 +284,16 @@ export default function CustomerDashboardPage() {
   return (
     <div className="otg-page otg-portal-dark overflow-x-hidden">
       <div className="otg-container min-w-0 space-y-4 sm:space-y-6">
+        {showSignupSuccessMessage ? (
+          <div
+            className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm"
+            role="status"
+            aria-live="polite"
+          >
+            Account created and signed in successfully. Welcome to your dashboard.
+          </div>
+        ) : null}
+
         <div className="otg-card min-w-0 overflow-hidden p-0">
           <div className="flex flex-col gap-5 border-b border-lime-500/20 bg-[linear-gradient(135deg,rgba(57,255,20,0.18),rgba(7,17,10,0.88)_35%,rgba(7,17,10,0.96)_100%)] px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between md:px-8">
             <div className="space-y-3">

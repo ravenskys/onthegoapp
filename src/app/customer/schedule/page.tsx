@@ -17,9 +17,15 @@ import {
 } from "@/lib/customer-portal";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { supabase } from "@/lib/supabase";
-import { getErrorMessage } from "@/lib/tech-inspection";
+import { getErrorMessage, getVehicleCatalogModes } from "@/lib/tech-inspection";
 import { getCentralDispatchTravelMinutes } from "@/lib/routing";
 import { PRE_SERVICE_STAGING_MINUTES } from "@/lib/scheduler-slots";
+import {
+  formatMileage,
+  normalizeLicensePlate,
+  normalizeVin,
+  normalizeYear,
+} from "@/lib/input-formatters";
 import {
   CUSTOMER_OTHER_SERVICE_ID,
   REPAIR_OTHER_SERVICE_CODE,
@@ -27,6 +33,7 @@ import {
 } from "@/lib/service-other";
 import { UsStateSelect } from "@/components/forms/UsStateSelect";
 import { DEFAULT_US_STATE_CODE, resolveUsStateForForm } from "@/lib/us-states";
+import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 
 type AvailableSlot = {
   technician_user_id: string;
@@ -48,6 +55,8 @@ type CatalogService = {
   service_description: string | null;
   default_duration_minutes: number | null;
 };
+
+const ADD_NEW_VEHICLE_OPTION = "__add_new_vehicle__";
 
 /** Used only if the service_catalog query fails or returns no bookable rows. */
 const FALLBACK_CATALOG_SERVICES: CatalogService[] = [
@@ -238,6 +247,38 @@ const markManualAddressEditing = (
   }
 };
 
+const parseOptionalNumber = (value: string) => {
+  const digitsOnly = String(value || "").replace(/\D/g, "");
+  return digitsOnly ? Number(digitsOnly) : null;
+};
+
+const hasVehicleDraftContent = ({
+  year,
+  make,
+  model,
+  engineSize,
+  mileage,
+  vin,
+  licensePlate,
+}: {
+  year: string;
+  make: string;
+  model: string;
+  engineSize: string;
+  mileage: string;
+  vin: string;
+  licensePlate: string;
+}) =>
+  Boolean(
+    year.trim() ||
+      make.trim() ||
+      model.trim() ||
+      engineSize.trim() ||
+      mileage.trim() ||
+      vin.trim() ||
+      licensePlate.trim(),
+  );
+
 function CustomerSchedulePageContent() {
   const searchParams = useSearchParams();
   const appliedQueryRef = useRef(false);
@@ -250,6 +291,7 @@ function CustomerSchedulePageContent() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [showInlineVehicleForm, setShowInlineVehicleForm] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedAddressId, setSelectedAddressId] = useState("manual");
   const [locationType, setLocationType] = useState("house");
@@ -263,6 +305,18 @@ function CustomerSchedulePageContent() {
   const [message, setMessage] = useState("");
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [travelLookupDebug, setTravelLookupDebug] = useState("");
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [vehiclePromptMessage, setVehiclePromptMessage] = useState("");
+  const [newVehicleYear, setNewVehicleYear] = useState("");
+  const [newVehicleMake, setNewVehicleMake] = useState("");
+  const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [newVehicleEngineSize, setNewVehicleEngineSize] = useState("");
+  const [newVehicleMileage, setNewVehicleMileage] = useState("");
+  const [newVehicleVin, setNewVehicleVin] = useState("");
+  const [newVehicleLicensePlate, setNewVehicleLicensePlate] = useState("");
+  const [newVehicleUseCustomMake, setNewVehicleUseCustomMake] = useState(false);
+  const [newVehicleUseCustomModel, setNewVehicleUseCustomModel] = useState(false);
+  const [newVehicleUseCustomEngineSize, setNewVehicleUseCustomEngineSize] = useState(false);
 
   const services = useMemo(() => {
     const base =
@@ -548,6 +602,13 @@ function CustomerSchedulePageContent() {
     (address): address is CustomerPortalAddress => Boolean(address.id),
   );
   const customer = portalData?.customer ?? null;
+  const shouldShowVehicleAddPrompt = vehicles.length === 0 || showInlineVehicleForm;
+  const newVehicleCatalogModes = getVehicleCatalogModes({
+    year: newVehicleYear,
+    make: newVehicleMake,
+    model: newVehicleModel,
+    engineSize: newVehicleEngineSize,
+  });
   const hasLocationDetails =
     Boolean(serviceAddress.trim()) &&
     Boolean(serviceCity.trim()) &&
@@ -575,6 +636,16 @@ function CustomerSchedulePageContent() {
     attemptedSubmit && isUnscheduledServiceRequest && !notes.trim();
   const selectedSlotRequiredError =
     attemptedSubmit && !isUnscheduledServiceRequest && !selectedSlot;
+
+  useEffect(() => {
+    setNewVehicleUseCustomMake(newVehicleCatalogModes.useCustomMake);
+    setNewVehicleUseCustomModel(newVehicleCatalogModes.useCustomModel);
+    setNewVehicleUseCustomEngineSize(newVehicleCatalogModes.useCustomEngineSize);
+  }, [
+    newVehicleCatalogModes.useCustomEngineSize,
+    newVehicleCatalogModes.useCustomMake,
+    newVehicleCatalogModes.useCustomModel,
+  ]);
 
   useEffect(() => {
     if (selectedAddressId === "manual") {
@@ -646,6 +717,83 @@ function CustomerSchedulePageContent() {
 
     if (value !== "other") {
       setCustomLocationLabel("");
+    }
+  };
+
+  const handleCreateVehicleForScheduling = async () => {
+    if (!customer?.id) {
+      setVehiclePromptMessage("Your customer record was not loaded yet. Refresh and try again.");
+      return;
+    }
+
+    if (
+      !hasVehicleDraftContent({
+        year: newVehicleYear,
+        make: newVehicleMake,
+        model: newVehicleModel,
+        engineSize: newVehicleEngineSize,
+        mileage: newVehicleMileage,
+        vin: newVehicleVin,
+        licensePlate: newVehicleLicensePlate,
+      })
+    ) {
+      setVehiclePromptMessage("Add at least some vehicle details before saving.");
+      return;
+    }
+
+    setAddingVehicle(true);
+    setVehiclePromptMessage("");
+
+    try {
+      const payload = {
+        customer_id: customer.id,
+        year: parseOptionalNumber(newVehicleYear),
+        make: newVehicleMake.trim() || null,
+        model: newVehicleModel.trim() || null,
+        engine_size: newVehicleEngineSize.trim() || null,
+        mileage: parseOptionalNumber(newVehicleMileage),
+        vin: normalizeVin(newVehicleVin) || null,
+        license_plate: normalizeLicensePlate(newVehicleLicensePlate) || null,
+      };
+
+      const { data: insertedVehicle, error } = await supabase
+        .from("vehicles")
+        .insert(payload)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      const insertedVehicleId = insertedVehicle?.id ? String(insertedVehicle.id) : "";
+      if (!insertedVehicleId) {
+        throw new Error("Vehicle was created, but no vehicle id was returned.");
+      }
+
+      setPortalData((current) =>
+        current
+          ? {
+              ...current,
+              vehicles: [...(current.vehicles || []), insertedVehicle],
+            }
+          : current,
+      );
+      setSelectedVehicleId(insertedVehicleId);
+      setShowInlineVehicleForm(false);
+      setVehiclePromptMessage("Vehicle added. Continue scheduling your service.");
+      setNewVehicleYear("");
+      setNewVehicleMake("");
+      setNewVehicleModel("");
+      setNewVehicleEngineSize("");
+      setNewVehicleMileage("");
+      setNewVehicleVin("");
+      setNewVehicleLicensePlate("");
+      setNewVehicleUseCustomMake(false);
+      setNewVehicleUseCustomModel(false);
+      setNewVehicleUseCustomEngineSize(false);
+    } catch (error) {
+      setVehiclePromptMessage(getErrorMessage(error, "Could not save the vehicle right now."));
+    } finally {
+      setAddingVehicle(false);
     }
   };
 
@@ -994,7 +1142,18 @@ function CustomerSchedulePageContent() {
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Vehicle
               </label>
-              <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId}>
+              <Select
+                value={showInlineVehicleForm ? ADD_NEW_VEHICLE_OPTION : selectedVehicleId}
+                onValueChange={(value) => {
+                  if (value === ADD_NEW_VEHICLE_OPTION) {
+                    setShowInlineVehicleForm(true);
+                    setSelectedVehicleId("");
+                    return;
+                  }
+                  setShowInlineVehicleForm(false);
+                  setSelectedVehicleId(value);
+                }}
+              >
                 <SelectTrigger
                   className={`otg-schedule-select-trigger h-11 bg-white text-slate-950 ${
                     vehicleRequiredError ? "!border-red-500 !ring-2 !ring-red-300" : ""
@@ -1012,6 +1171,12 @@ function CustomerSchedulePageContent() {
                       {`${buildVehicleLabel(vehicle)} - ${buildVehicleDetailLabel(vehicle)}`}
                     </SelectItem>
                   ))}
+                  <SelectItem
+                    value={ADD_NEW_VEHICLE_OPTION}
+                    className="otg-schedule-select-item"
+                  >
+                    Other / Add new vehicle
+                  </SelectItem>
                 </SelectContent>
               </Select>
               {vehicleRequiredError ? (
@@ -1020,6 +1185,76 @@ function CustomerSchedulePageContent() {
                 </p>
               ) : null}
             </div>
+
+            {shouldShowVehicleAddPrompt ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="text-sm font-semibold text-slate-950">
+                  Add a vehicle to continue scheduling
+                </div>
+                <p className="mt-1 text-sm text-slate-900">
+                  Enter your vehicle here using the same filtered catalog dropdowns used in the
+                  account Add Vehicle flow.
+                </p>
+                <div className="mt-4">
+                  <VehicleCatalogFields
+                    year={newVehicleYear}
+                    make={newVehicleMake}
+                    model={newVehicleModel}
+                    engineSize={newVehicleEngineSize}
+                    licensePlate={newVehicleLicensePlate}
+                    vin={newVehicleVin}
+                    useCustomMake={newVehicleUseCustomMake}
+                    useCustomModel={newVehicleUseCustomModel}
+                    useCustomEngineSize={newVehicleUseCustomEngineSize}
+                    normalizeYear={normalizeYear}
+                    normalizeVin={normalizeVin}
+                    normalizeLicensePlate={normalizeLicensePlate}
+                    setYear={setNewVehicleYear}
+                    setMake={setNewVehicleMake}
+                    setModel={setNewVehicleModel}
+                    setEngineSize={setNewVehicleEngineSize}
+                    setLicensePlate={setNewVehicleLicensePlate}
+                    setVin={setNewVehicleVin}
+                    setUseCustomMake={setNewVehicleUseCustomMake}
+                    setUseCustomModel={setNewVehicleUseCustomModel}
+                    setUseCustomEngineSize={setNewVehicleUseCustomEngineSize}
+                    makeListId="customer-schedule-add-vehicle-make"
+                    modelListId="customer-schedule-add-vehicle-model"
+                    engineListId="customer-schedule-add-vehicle-engine"
+                    className="grid grid-cols-1 gap-3 md:grid-cols-2"
+                  />
+                  <div className="mt-3 space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                      Mileage
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={newVehicleMileage}
+                      onChange={(event) => setNewVehicleMileage(formatMileage(event.target.value))}
+                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-950"
+                      placeholder="75,000"
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      type="button"
+                      onClick={handleCreateVehicleForScheduling}
+                      disabled={addingVehicle}
+                      className="h-10 rounded-xl bg-slate-900 px-4 text-white hover:bg-slate-700"
+                    >
+                      {addingVehicle ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {addingVehicle ? "Saving Vehicle..." : "Save Vehicle"}
+                    </Button>
+                  </div>
+                  {vehiclePromptMessage ? (
+                    <div className="mt-3 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-950">
+                      {vehiclePromptMessage}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -1271,7 +1506,7 @@ function CustomerSchedulePageContent() {
 
             {vehicles.length === 0 && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
-                No vehicle is linked to this customer account yet, so scheduling is disabled.
+                Scheduling stays disabled until at least one vehicle is saved above.
               </div>
             )}
 

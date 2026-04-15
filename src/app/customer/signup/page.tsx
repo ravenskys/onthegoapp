@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { formatPhoneNumber, normalizeEmail, normalizePhoneExtension } from "@/lib/input-formatters";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
 
 export default function CustomerSignupPage() {
   const router = useRouter();
@@ -152,9 +153,28 @@ export default function CustomerSignupPage() {
         }
       }
 
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (signInError) {
+        throw new Error(signInError.message);
+      }
+
+      const { user: signedInUser, roles } = await getUserRoles();
+
+      if (!signedInUser) {
+        throw new Error("Account was created, but automatic sign-in failed.");
+      }
+
+      if (!roles.length) {
+        throw new Error("Account was created, but no portal role was found.");
+      }
+
+      sessionStorage.setItem("customerSignupAutoLoginSuccess", "1");
       setLoading(false);
-      alert("Account created. You can now sign in.");
-      router.push("/customer/login");
+      router.push(getPostLoginRoute(roles));
     } catch (error) {
       setLoading(false);
       alert(error instanceof Error ? error.message : "Signup failed.");
