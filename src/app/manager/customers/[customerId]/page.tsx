@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, Save, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, Save, Plus, Trash2 } from "lucide-react";
 import {
   formatPhoneNumber,
   normalizePhoneExtension,
@@ -44,8 +44,56 @@ type Vehicle = {
   vin: string | null;
 };
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Unknown error";
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
+};
+
+const getSupabaseRpcErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return getErrorMessage(error);
+  }
+
+  const supabaseError = error as {
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    code?: unknown;
+  };
+
+  const message =
+    typeof supabaseError.message === "string" ? supabaseError.message.trim() : "";
+  const details =
+    typeof supabaseError.details === "string" ? supabaseError.details.trim() : "";
+  const hint = typeof supabaseError.hint === "string" ? supabaseError.hint.trim() : "";
+  const code = typeof supabaseError.code === "string" ? supabaseError.code.trim() : "";
+
+  const segments = [message, details, hint ? `Hint: ${hint}` : "", code ? `Code: ${code}` : ""].filter(
+    Boolean,
+  );
+  if (segments.length) {
+    return segments.join(" | ");
+  }
+
+  const keys = Object.getOwnPropertyNames(error);
+  if (keys.length) {
+    return `Unknown RPC error with fields: ${keys.join(", ")}`;
+  }
+
+  return "Unknown RPC error. Ensure the latest customer deletion migrations are applied.";
+};
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -54,6 +102,7 @@ export default function CustomerDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -182,6 +231,53 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleDeleteCustomer = async () => {
+    if (!customer) return;
+
+    const customerName =
+      `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim() || "this customer";
+    const deleteReasonInput = window.prompt(
+      "Reason for deleting this customer (optional, saved to audit log):",
+      "",
+    );
+    if (deleteReasonInput === null) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${customerName}? This removes the customer record and logs who deleted it and when.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+
+    try {
+      const { error } = await supabase.rpc("delete_customer_with_audit", {
+        p_customer_id: customerId,
+        p_reason: deleteReasonInput.trim() || null,
+      });
+
+      if (error) {
+        throw new Error(getSupabaseRpcErrorMessage(error));
+      }
+
+      alert("Customer deleted. The action has been logged.");
+      router.push("/manager/customers");
+    } catch (error: unknown) {
+      const ownKeys = error && typeof error === "object" ? Object.getOwnPropertyNames(error) : [];
+      console.error("Error deleting customer:", {
+        error,
+        ownKeys,
+        message: getErrorMessage(error),
+      });
+      alert(`Failed to delete customer: ${getErrorMessage(error)}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -263,7 +359,7 @@ export default function CustomerDetailPage() {
             <BackToPortalButton />
             <Button
               onClick={handleSaveCustomer}
-              disabled={saving}
+              disabled={saving || deleting}
               className={headerActionButtonClassName}
             >
               {saving ? (
@@ -272,6 +368,18 @@ export default function CustomerDetailPage() {
                 <Save className="mr-2 h-4 w-4" />
               )}
               Save Changes
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCustomer}
+              disabled={saving || deleting}
+            >
+              {deleting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Delete Customer
             </Button>
           </div>
         </div>

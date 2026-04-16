@@ -3,12 +3,27 @@ import { supabase } from "@/lib/supabase";
 export type PortalRole = "customer" | "technician" | "manager" | "admin";
 export type PortalDestination = "customer" | "tech" | "manager" | "admin";
 
+/**
+ * Which roles may use each portal destination (inheritance / hierarchy):
+ * - Admin → customer, tech, manager, and admin areas
+ * - Manager → customer, tech, and manager (not admin)
+ * - Technician → customer and tech
+ * - Customer → customer only
+ */
 const portalAccessMap: Record<PortalDestination, PortalRole[]> = {
-  customer: ["customer"],
+  customer: ["customer", "technician", "manager", "admin"],
   tech: ["technician", "manager", "admin"],
   manager: ["manager", "admin"],
   admin: ["admin"],
 };
+
+/** Display / sort order: highest privilege first. */
+export const PORTAL_ROLE_HIERARCHY: PortalRole[] = [
+  "admin",
+  "manager",
+  "technician",
+  "customer",
+];
 
 export const getDistinctRoles = (roles: PortalRole[]) =>
   Array.from(new Set(roles));
