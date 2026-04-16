@@ -22,9 +22,27 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (tracks **`origin/main`** — canonical repo **`onthegoapp`**, Vercel deploys from here).
 - **`origin`**: normal **`git push`** / **`git pull`** target.
 - **`secondary`**: same history kept as a **backup mirror** (not the default push target). After pushing to `origin`, run **`git push secondary main`** to refresh the backup (or push both in one go when you care).
-- After pushing, run `git log -1 --oneline` for the current tip (avoids stale hashes in this file).
+- **Latest pushed tip (update after each deploy):** `a3a611a` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file).
+
+## Session checkpoint — 2026-04-16 (portal + tech workflow)
+- **`SESSION_HANDOFF.md` was not updated in the same commit as `a3a611a`;** this section was added immediately afterward so the next session has accurate context.
+- **Pushed to `origin/main`:** `a3a611a` — *Portal: validation hints, account closure, job updates, tech workflow.* Vercel (`onthegoapp.vercel.app`) should auto-deploy from GitHub; confirm in the Vercel dashboard.
+- **Hosted Supabase — apply these migrations if not already applied** (required for new flows):
+  - `supabase/migrations/20260416143000_add_customer_account_closure_request_flow.sql` — customer delete-account request columns + `request_customer_account_closure` RPC.
+  - `supabase/migrations/20260416150000_add_job_customer_updates_and_intake_state.sql` — `job_customer_updates`, job intake columns, `claim_job_for_current_tech`, `update_job_intake_state`.
+  - `supabase/migrations/20260416180000_tech_workflow_checklist_and_customer_approval.sql` — service checklist timestamps on `jobs`, `job_services.completed_*`, intake state `awaiting_customer_approval`, update type `customer_approval`.
+- **Shipped in that push (summary):**
+  - Shared **`src/lib/input-validation-feedback.ts`** and amber hints on filtered fields across customer/manager/tech forms.
+  - Customer **account**: unified email change via Supabase auth + `customers.email`; **delete account** request (portal) and **admin/manager** queues to finalize deletion.
+  - **Admin** ops snapshot: richer open-job cards, clickable job/customer navigation; **deleted accounts** section.
+  - **Manager**: customers page closure queue; **schedule** + **availability** layout aligned with portal styling.
+  - **Technician**: resilient **`/tech/jobs`** loading; **`/tech/jobs/[jobId]/workflow`** — planned services (or estimate lines), customer-visible message composer, intake quick actions, inspection link to **`/tech?jobId=`**; job cards show **appointment**, **location**, **notes**; **Start Service** neon yellow → green by checklist state.
+  - **`src/lib/tech-customer-update-templates.ts`** (shared with **`src/app/tech/page.tsx`**).
+  - **`globals.css`**: outline **Badge** text readable on `otg-portal-dark` panels.
+- **Quick resume files:** `src/app/tech/jobs/page.tsx`, `src/app/tech/jobs/[jobId]/workflow/page.tsx`, `src/lib/job-customer-updates.ts`, `supabase/migrations/` files listed above.
 
 ## Next session — start here
+- **First:** Confirm Vercel production shows deploy for commit `a3a611a` (or newer). Apply the three **20260416143… / 20260416150… / 20260416180…** migrations on **hosted** Supabase; smoke-test tech workflow, customer updates, and account closure RPCs.
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
 - **Manager home layout**: Rework **`src/app/manager/page.tsx`** (dashboard card grid, header, alignment with `otg-manager-shell` / portal patterns) so it matches the clarity of the Jobs hub and scales as more tiles are added.
 - **Manager create job + scheduler (on-page)**: Add a **scheduling section** to **`/manager/jobs/new`** so the manager can pick date/time with the customer while creating the shop job (same conceptual flow as customer scheduling: availability, duration, travel buffer, service address as already captured on the form). Reuse or mirror logic from **`/customer/schedule`** (`get_customer_available_schedule_slots`, job insert with `scheduled_start` / `scheduled_end`, etc.) and/or patterns from **`/manager/schedule`**, with **manager-appropriate RPCs or RLS** if the customer-only functions are too restrictive. Decide UX: optional “Schedule now” vs “Leave unscheduled”; persist `assigned_tech_user_id` from chosen slot.
@@ -188,6 +206,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Full production builds may still hit Windows/OneDrive `EPERM` file-lock issues in `.next` output folders.
 
 ## Important Supabase Note
+- **2026-04-16 portal/tech batch:** Hosted DB must include `20260416143000_*`, `20260416150000_*`, and `20260416180000_*` (see session checkpoint above) or account-closure RPCs, job customer updates / intake, and tech workflow columns will fail live.
 - The new scheduler migration must be applied to the live Supabase database before customer scheduler slots and job creation will work live.
 - The new customer vehicle write-policy migration `20260407100000_add_customer_vehicle_write_rls.sql` must also be applied before customer vehicle editing will work live.
 - The new unscheduled customer request function must be applied before `Repair / Other` request submission will work live:
@@ -278,6 +297,14 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - `src/lib/vehicleCatalog.ts` (vehicle make/model/engine library)
 - `src/components/vehicle/VehicleCatalogFields.tsx`
 - `src/app/manager/page.tsx` (manager home — layout pass next)
+- `src/lib/input-validation-feedback.ts`
+- `src/lib/job-customer-updates.ts`
+- `src/lib/tech-customer-update-templates.ts`
+- `src/app/tech/jobs/page.tsx`
+- `src/app/tech/jobs/[jobId]/workflow/page.tsx`
+- `supabase/migrations/20260416143000_add_customer_account_closure_request_flow.sql`
+- `supabase/migrations/20260416150000_add_job_customer_updates_and_intake_state.sql`
+- `supabase/migrations/20260416180000_tech_workflow_checklist_and_customer_approval.sql`
 
 ## Good Resume Prompt
 Use this when resuming:
