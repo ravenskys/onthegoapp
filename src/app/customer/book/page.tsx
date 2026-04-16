@@ -174,15 +174,10 @@ export default function CustomerBookPage() {
   return (
     <CustomerPortalShell
       title="Get service"
-      subtitle="Primary customer flow: choose intent and vehicle here, then continue to scheduler with details prefilled."
+      subtitle="Book an appointment or send a request, then continue with your vehicle."
       onLogout={handleLogout}
     >
       <div className="space-y-6">
-        <div className="rounded-2xl border border-lime-400/30 bg-lime-400/10 px-4 py-3 text-sm text-slate-800">
-          <span className="font-semibold text-slate-900">Recommended: </span>
-          use <strong>Book a date & time</strong> for routine services. Use{" "}
-          <strong>Send a request first</strong> for repairs/custom work that need shop review.
-        </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-4">
           {steps.map((s, i) => (
             <div key={s.id} className="flex items-center gap-2 sm:gap-4">
@@ -353,12 +348,6 @@ export default function CustomerBookPage() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </button>
               </div>
-              <p className="text-center text-xs text-slate-500 sm:text-left">
-                Prefer the full page without steps?{" "}
-                <Link href="/customer/schedule" className="font-semibold text-lime-700 underline-offset-2 hover:underline">
-                  Open scheduler directly
-                </Link>
-              </p>
             </div>
           )}
         </div>

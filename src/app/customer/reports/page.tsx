@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { Download, FileText } from "lucide-react";
+import { ChevronDown, Download, FileText } from "lucide-react";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import {
   buildVehicleLabel,
@@ -171,7 +171,7 @@ function CustomerReportsPageContent() {
           <div>
             <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">Customer Report History</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Report history is grouped by vehicle so each car keeps its own timeline of completed inspections.
+              Vehicles are listed A–Z. Newest reports appear first within each vehicle. Expand a row for notes, photos, and PDF actions.
             </p>
             {selectedVehicleKey && filteredVehicleLabel ? (
               <div className="mt-3 inline-flex rounded-full border border-lime-400/35 bg-lime-400 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-black">
@@ -214,33 +214,59 @@ function CustomerReportsPageContent() {
                   </div>
                 </div>
 
-                <div className="space-y-5 px-5 py-5">
+                <div className="space-y-3 px-5 py-5">
                   {group.reports.map((report) => {
                     const inspection = getSingleRelation(report.inspections);
                     const inspectionPhotos = inspection?.id
                       ? photosByInspection[inspection.id] || []
                       : [];
+                    const reportDate = new Date(report.created_at);
 
                     return (
-                      <div key={report.id} className="rounded-[24px] border border-slate-200 bg-white/70 p-5">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
+                      <details
+                        key={report.id}
+                        className="group overflow-hidden rounded-[24px] border border-slate-200 bg-white/70 open:border-lime-300/40 open:shadow-sm"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5 [&::-webkit-details-marker]:hidden">
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-slate-900">
-                              Report from {new Date(report.created_at).toLocaleDateString()}
+                              {reportDate.toLocaleDateString(undefined, {
+                                weekday: "short",
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
                             </div>
-                          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
-                              <span>Technician: {inspection?.tech_name || "-"}</span>
-                              <span>Inspection ID: {inspection?.id || "-"}</span>
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                              <span>{reportDate.toLocaleTimeString(undefined, { timeStyle: "short" })}</span>
+                              <span>Technician: {inspection?.tech_name || "—"}</span>
+                              {inspection?.id ? (
+                                <span className="font-mono text-xs text-slate-500">
+                                  ID {inspection.id.slice(0, 8)}…
+                                </span>
+                              ) : null}
                             </div>
+                            <p className="mt-2 text-xs text-slate-500">Tap to show notes, photos, and PDF actions</p>
                           </div>
+                          <ChevronDown
+                            aria-hidden
+                            className="h-5 w-5 shrink-0 text-slate-500 transition-transform duration-200 group-open:rotate-180"
+                          />
+                        </summary>
 
+                        <div className="space-y-5 border-t border-slate-200 px-4 pb-5 pt-4 sm:px-5">
                           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                            <button onClick={() => handleOpenPdf(report.pdf_path)} className="otg-btn otg-btn-primary sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPdf(report.pdf_path)}
+                              className="otg-btn otg-btn-primary sm:w-auto"
+                            >
                               <FileText className="mr-2 h-4 w-4" />
                               View PDF
                             </button>
 
                             <button
+                              type="button"
                               onClick={() => handleDownloadPdf(report.id, report.pdf_path)}
                               disabled={downloadingReportId === report.id}
                               className="otg-btn otg-btn-secondary disabled:opacity-60 sm:w-auto"
@@ -249,55 +275,55 @@ function CustomerReportsPageContent() {
                               {downloadingReportId === report.id ? "Downloading..." : "Download PDF"}
                             </button>
                           </div>
-                        </div>
 
-                        <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Inspection Notes
+                          <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Inspection Notes
+                              </div>
+                              <div className="mt-3 text-sm leading-7 text-slate-700">
+                                {inspection?.notes || "No technician notes were attached to this report."}
+                              </div>
                             </div>
-                            <div className="mt-3 text-sm leading-7 text-slate-700">
-                              {inspection?.notes || "No technician notes were attached to this report."}
+
+                            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Photo Gallery
+                              </div>
+                              {inspectionPhotos.length > 0 ? (
+                                <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+                                  {inspectionPhotos.slice(0, 4).map((photo) =>
+                                    photo.signedUrl ? (
+                                      <button
+                                        key={photo.id}
+                                        type="button"
+                                        onClick={() => handleOpenPhoto(photo.file_path || photo.file_url)}
+                                        className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-950/50"
+                                      >
+                                        <Image
+                                          src={photo.signedUrl}
+                                          alt={photo.photo_type || "Inspection photo"}
+                                          width={480}
+                                          height={224}
+                                          unoptimized
+                                          className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                        />
+                                        <div className="p-2 text-left text-xs font-medium text-slate-600">
+                                          {photo.photo_type || "Photo"}
+                                        </div>
+                                      </button>
+                                    ) : null
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="mt-4 text-sm text-slate-600">
+                                  No inspection photos were attached to this report.
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Photo Gallery
-                            </div>
-                            {inspectionPhotos.length > 0 ? (
-                              <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-                                {inspectionPhotos.slice(0, 4).map((photo) =>
-                                  photo.signedUrl ? (
-                                    <button
-                                      key={photo.id}
-                                      type="button"
-                                      onClick={() => handleOpenPhoto(photo.file_path || photo.file_url)}
-                                      className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-950/50"
-                                    >
-                                      <Image
-                                        src={photo.signedUrl}
-                                        alt={photo.photo_type || "Inspection photo"}
-                                        width={480}
-                                        height={224}
-                                        unoptimized
-                                        className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                      />
-                                      <div className="p-2 text-left text-xs font-medium text-slate-600">
-                                        {photo.photo_type || "Photo"}
-                                      </div>
-                                    </button>
-                                  ) : null
-                                )}
-                              </div>
-                            ) : (
-                              <div className="mt-4 text-sm text-slate-600">
-                                No inspection photos were attached to this report.
-                              </div>
-                            )}
-                          </div>
                         </div>
-                      </div>
+                      </details>
                     );
                   })}
                 </div>

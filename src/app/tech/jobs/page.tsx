@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, Trash2 } from "lucide-react";
+import { CalendarClock, Loader2, MapPin, StickyNote, Trash2 } from "lucide-react";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -17,6 +17,7 @@ import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { TECH_SAVED_DRAFTS_STORAGE_KEY } from "@/lib/tech-inspection";
 import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
+import { cn } from "@/lib/utils";
 
 const ACTIVE_JOB_STATUSES = ["new", "new_request", "in_progress", "draft"] as const;
 
@@ -26,11 +27,24 @@ type TechnicianJob = {
   vehicle_id: string | null;
   business_job_number: string | null;
   service_type: string | null;
+  service_description: string | null;
   status: string | null;
   notes: string | null;
   assigned_tech_user_id: string | null;
+  intake_state: string | null;
+  claimed_at: string | null;
+  claimed_by_user_id: string | null;
   created_at: string;
   requested_date: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  service_location_name: string | null;
+  service_address: string | null;
+  service_city: string | null;
+  service_state: string | null;
+  service_zip: string | null;
+  service_checklist_started_at: string | null;
+  service_checklist_completed_at: string | null;
   customer: {
     first_name: string | null;
     last_name: string | null;
@@ -53,7 +67,7 @@ type SavedTechDraft = {
   savedAt: string;
 };
 
-type QueueView = "open" | "unassigned" | "drafts";
+type QueueView = "unclaimed" | "claimed" | "needsUpdate" | "blocked" | "drafts";
 
 const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
   if (Array.isArray(value)) {
@@ -63,14 +77,74 @@ const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
   return value ?? null;
 };
 
+const getSupabaseErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+  return "Request failed.";
+};
+
+const formatAppointment = (start: string | null, end: string | null) => {
+  if (!start) return null;
+  try {
+    const s = new Date(start).toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    if (!end) return s;
+    const e = new Date(end).toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
+    return `${s} – ${e}`;
+  } catch {
+    return start;
+  }
+};
+
+const formatJobLocation = (job: TechnicianJob) => {
+  const parts = [
+    job.service_location_name,
+    job.service_address,
+    [job.service_city, job.service_state].filter(Boolean).join(", ") || null,
+    job.service_zip,
+  ].filter((p) => p && String(p).trim());
+  return parts.length ? parts.join(" · ") : null;
+};
+
+const startServiceButtonClass = (job: TechnicianJob) => {
+  if (job.service_checklist_completed_at) {
+    return "!bg-[#39FF14] !text-black border-black/25 hover:!bg-[#32e612]";
+  }
+  if (job.service_checklist_started_at) {
+    return "!bg-[#EEFF00] !text-black border-black/30 hover:!bg-[#dde600]";
+  }
+  return "";
+};
+
 export default function TechnicianJobsPage() {
   const router = useRouter();
+  const portalRolesRef = useRef<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [jobs, setJobs] = useState<TechnicianJob[]>([]);
+  const [customerUpdateMetaByJobId, setCustomerUpdateMetaByJobId] = useState<
+    Record<string, { count: number; latestAt: string | null }>
+  >({});
   const [savedDrafts, setSavedDrafts] = useState<SavedTechDraft[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [view, setView] = useState<QueueView>("open");
+  const [view, setView] = useState<QueueView>("unclaimed");
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [claimingJobId, setClaimingJobId] = useState<string | null>(null);
+  const [intakeUpdatePending, setIntakeUpdatePending] = useState<{ jobId: string; intakeState: string } | null>(
+    null,
+  );
 
   const loadSavedDrafts = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -85,38 +159,173 @@ export default function TechnicianJobsPage() {
   }, []);
 
   const loadJobs = useCallback(async (userId: string, roles: string[]) => {
-    let query = supabase
-      .from("jobs")
-      .select(`
-        id,
-        customer_id,
-        vehicle_id,
-        business_job_number,
-        service_type,
-        status,
-        notes,
-        assigned_tech_user_id,
-        created_at,
-        requested_date,
-        customer:customers(first_name, last_name, email, phone),
-        vehicle:vehicles(year, make, model, license_plate, vin)
-      `)
-      .in("status", [...ACTIVE_JOB_STATUSES])
-      .order("created_at", { ascending: false });
+    const applyRoleScope = <T,>(query: T): T => {
+      if (!roles.includes("manager") && !roles.includes("admin")) {
+        return (query as {
+          or: (filters: string) => T;
+        }).or(`assigned_tech_user_id.eq.${userId},assigned_tech_user_id.is.null`);
+      }
+      return query;
+    };
 
-    if (!roles.includes("manager") && !roles.includes("admin")) {
-      query = query.or(`assigned_tech_user_id.eq.${userId},assigned_tech_user_id.is.null`);
+    const runJobsQuery = async (selectClause: string) => {
+      let query = applyRoleScope(
+        supabase
+          .from("jobs")
+          .select(selectClause)
+          .in("status", [...ACTIVE_JOB_STATUSES])
+          .order("created_at", { ascending: false }),
+      ) as {
+        then: (onfulfilled?: (value: { data: unknown[] | null; error: unknown | null }) => unknown) => unknown;
+      };
+
+      return (await query) as { data: unknown[] | null; error: unknown | null };
+    };
+
+    const selectFull = `
+      id,
+      customer_id,
+      vehicle_id,
+      business_job_number,
+      service_type,
+      service_description,
+      status,
+      intake_state,
+      claimed_at,
+      claimed_by_user_id,
+      notes,
+      assigned_tech_user_id,
+      created_at,
+      requested_date,
+      scheduled_start,
+      scheduled_end,
+      service_location_name,
+      service_address,
+      service_city,
+      service_state,
+      service_zip,
+      service_checklist_started_at,
+      service_checklist_completed_at,
+      customer:customers(first_name, last_name, email, phone),
+      vehicle:vehicles(year, make, model, license_plate, vin)
+    `;
+    const selectWithoutServiceDescription = `
+      id,
+      customer_id,
+      vehicle_id,
+      business_job_number,
+      service_type,
+      status,
+      intake_state,
+      claimed_at,
+      claimed_by_user_id,
+      notes,
+      assigned_tech_user_id,
+      created_at,
+      requested_date,
+      scheduled_start,
+      scheduled_end,
+      service_location_name,
+      service_address,
+      service_city,
+      service_state,
+      service_zip,
+      service_checklist_started_at,
+      service_checklist_completed_at,
+      customer:customers(first_name, last_name, email, phone),
+      vehicle:vehicles(year, make, model, license_plate, vin)
+    `;
+    const selectLegacy = `
+      id,
+      customer_id,
+      vehicle_id,
+      business_job_number,
+      service_type,
+      status,
+      notes,
+      assigned_tech_user_id,
+      created_at,
+      requested_date,
+      customer:customers(first_name, last_name, email, phone),
+      vehicle:vehicles(year, make, model, license_plate, vin)
+    `;
+
+    let { data, error } = await runJobsQuery(selectFull);
+
+    if (error) {
+      console.warn("Technician queue full select failed; retrying without service_description.", error);
+      const retryNoDesc = await runJobsQuery(selectWithoutServiceDescription);
+      data = retryNoDesc.data;
+      error = retryNoDesc.error;
     }
 
-    const { data, error } = await query;
+    if (error) {
+      console.warn("Technician queue intake-aware select failed; retrying with legacy columns.", error);
+      const retryResult = await runJobsQuery(selectLegacy);
+      data = retryResult.data;
+      error = retryResult.error;
+    }
+
     if (error) throw error;
-    setJobs(
-      (data ?? []).map((job) => ({
+    const hydratedJobs = ((data ?? []) as Array<Record<string, unknown>>).map((job) => ({
         ...job,
+        service_description: "service_description" in job ? job.service_description : null,
+        intake_state: "intake_state" in job ? job.intake_state : null,
+        claimed_at: "claimed_at" in job ? job.claimed_at : null,
+        claimed_by_user_id: "claimed_by_user_id" in job ? job.claimed_by_user_id : null,
+        scheduled_start: "scheduled_start" in job ? (job.scheduled_start as string | null) : null,
+        scheduled_end: "scheduled_end" in job ? (job.scheduled_end as string | null) : null,
+        service_location_name: "service_location_name" in job ? (job.service_location_name as string | null) : null,
+        service_address: "service_address" in job ? (job.service_address as string | null) : null,
+        service_city: "service_city" in job ? (job.service_city as string | null) : null,
+        service_state: "service_state" in job ? (job.service_state as string | null) : null,
+        service_zip: "service_zip" in job ? (job.service_zip as string | null) : null,
+        service_checklist_started_at:
+          "service_checklist_started_at" in job
+            ? (job.service_checklist_started_at as string | null)
+            : null,
+        service_checklist_completed_at:
+          "service_checklist_completed_at" in job
+            ? (job.service_checklist_completed_at as string | null)
+            : null,
         customer: getSingleRelation(job.customer),
         vehicle: getSingleRelation(job.vehicle),
-      }))
+      })) as TechnicianJob[];
+    setJobs(hydratedJobs);
+
+    if (!hydratedJobs.length) {
+      setCustomerUpdateMetaByJobId({});
+      return;
+    }
+
+    const { data: updatesData, error: updatesError } = await supabase
+      .from("job_customer_updates")
+      .select("job_id, visibility, created_at")
+      .in(
+        "job_id",
+        hydratedJobs.map((job) => job.id),
+      )
+      .eq("visibility", "customer")
+      .order("created_at", { ascending: false });
+    if (updatesError) {
+      // Keep queue usable when the updates migration is not yet applied.
+      setCustomerUpdateMetaByJobId({});
+      console.warn("Job update metadata unavailable; showing queue without update freshness.", updatesError);
+      return;
+    }
+    const meta = (updatesData ?? []).reduce<Record<string, { count: number; latestAt: string | null }>>(
+      (acc, row) => {
+        const current = acc[row.job_id] ?? { count: 0, latestAt: null };
+        current.count += 1;
+        if (!current.latestAt) {
+          current.latestAt = row.created_at;
+        }
+        acc[row.job_id] = current;
+        return acc;
+      },
+      {},
     );
+    setCustomerUpdateMetaByJobId(meta);
   }, []);
 
   useEffect(() => {
@@ -134,6 +343,8 @@ export default function TechnicianJobsPage() {
       }
 
       try {
+        setCurrentUserId(user.id);
+        portalRolesRef.current = roles;
         await loadJobs(user.id, roles);
         loadSavedDrafts();
       } catch (error) {
@@ -148,9 +359,24 @@ export default function TechnicianJobsPage() {
 
   const filteredJobs = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
+    const staleUpdateThresholdMs = 2 * 60 * 60 * 1000;
+    const now = Date.now();
 
     return jobs.filter((job) => {
-      if (view === "unassigned" && job.assigned_tech_user_id) {
+      const updateMeta = customerUpdateMetaByJobId[job.id];
+      const latestUpdateAtMs = updateMeta?.latestAt ? new Date(updateMeta.latestAt).getTime() : null;
+      const needsCustomerUpdate =
+        (job.intake_state === "on_site" || job.intake_state === "in_service" || job.intake_state === "waiting_parts") &&
+        (!latestUpdateAtMs || now - latestUpdateAtMs > staleUpdateThresholdMs);
+
+      if (view === "unclaimed" && job.assigned_tech_user_id) return false;
+      if (view === "claimed" && job.assigned_tech_user_id !== currentUserId) return false;
+      if (view === "needsUpdate" && !needsCustomerUpdate) return false;
+      if (
+        view === "blocked" &&
+        job.intake_state !== "waiting_parts" &&
+        job.intake_state !== "awaiting_customer_approval"
+      ) {
         return false;
       }
 
@@ -159,6 +385,7 @@ export default function TechnicianJobsPage() {
         .toLowerCase();
       const jobNumber = (job.business_job_number ?? "").toLowerCase();
       const serviceType = (job.service_type ?? "").toLowerCase();
+      const serviceDescription = (job.service_description ?? "").toLowerCase();
       const plate = (job.vehicle?.license_plate ?? "").toLowerCase();
       const vin = (job.vehicle?.vin ?? "").toLowerCase();
 
@@ -170,11 +397,12 @@ export default function TechnicianJobsPage() {
         customerName.includes(term) ||
         jobNumber.includes(term) ||
         serviceType.includes(term) ||
+        serviceDescription.includes(term) ||
         plate.includes(term) ||
         vin.includes(term)
       );
     });
-  }, [jobs, searchTerm, view]);
+  }, [jobs, searchTerm, view, customerUpdateMetaByJobId, currentUserId]);
 
   const filteredDrafts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -213,6 +441,91 @@ export default function TechnicianJobsPage() {
       setDeletingJobId(null);
     }
   }, []);
+
+  const handleClaimJob = useCallback(async (jobId: string) => {
+    setClaimingJobId(jobId);
+    const roles = portalRolesRef.current;
+    try {
+      const { error } = await supabase.rpc("claim_job_for_current_tech", { p_job_id: jobId });
+      if (error) throw error;
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === jobId
+            ? {
+                ...j,
+                assigned_tech_user_id: currentUserId,
+                intake_state: j.intake_state ?? "claimed",
+                claimed_at: j.claimed_at ?? new Date().toISOString(),
+                claimed_by_user_id: currentUserId,
+                status:
+                  j.status === "new" || j.status === "new_request" || j.status === "draft"
+                    ? "in_progress"
+                    : j.status,
+              }
+            : j,
+        ),
+      );
+      await loadJobs(currentUserId, roles.length ? roles : ["technician"]);
+    } catch (error) {
+      alert(getSupabaseErrorMessage(error));
+    } finally {
+      setClaimingJobId(null);
+    }
+  }, [currentUserId, loadJobs]);
+
+  const handleSetIntakeState = useCallback(
+    async (jobId: string, intakeState: string, nextStatus?: string | null) => {
+      setIntakeUpdatePending({ jobId, intakeState });
+      const roles = portalRolesRef.current;
+      try {
+        const { error: rpcError } = await supabase.rpc("update_job_intake_state", {
+          p_job_id: jobId,
+          p_intake_state: intakeState,
+          p_status: nextStatus ?? null,
+        });
+
+        if (rpcError) {
+          const { error: directError } = await supabase
+            .from("jobs")
+            .update({
+              intake_state: intakeState,
+              ...(nextStatus ? { status: nextStatus } : {}),
+            })
+            .eq("id", jobId);
+          if (directError) throw directError;
+        }
+
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  intake_state: intakeState,
+                  status: nextStatus ?? j.status,
+                }
+              : j,
+          ),
+        );
+        await loadJobs(currentUserId, roles.length ? roles : ["technician"]);
+      } catch (error) {
+        alert(getSupabaseErrorMessage(error));
+      } finally {
+        setIntakeUpdatePending(null);
+      }
+    },
+    [currentUserId, loadJobs],
+  );
+
+  const handleOpenServiceWorkflow = useCallback(
+    (job: TechnicianJob) => {
+      if (job.assigned_tech_user_id !== currentUserId) {
+        alert("Claim this job first.");
+        return;
+      }
+      router.push(`/tech/jobs/${job.id}/workflow`);
+    },
+    [currentUserId, router],
+  );
 
   if (loading) {
     return (
@@ -266,11 +579,17 @@ export default function TechnicianJobsPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant={view === "open" ? "default" : "outline"} onClick={() => setView("open")}>
-                  Open
+                <Button type="button" variant={view === "unclaimed" ? "default" : "outline"} onClick={() => setView("unclaimed")}>
+                  Unclaimed
                 </Button>
-                <Button type="button" variant={view === "unassigned" ? "default" : "outline"} onClick={() => setView("unassigned")}>
-                  Unassigned
+                <Button type="button" variant={view === "claimed" ? "default" : "outline"} onClick={() => setView("claimed")}>
+                  My Claimed
+                </Button>
+                <Button type="button" variant={view === "needsUpdate" ? "default" : "outline"} onClick={() => setView("needsUpdate")}>
+                  Needs Customer Update
+                </Button>
+                <Button type="button" variant={view === "blocked" ? "default" : "outline"} onClick={() => setView("blocked")}>
+                  Held (parts / approval)
                 </Button>
                 <Button type="button" variant={view === "drafts" ? "default" : "outline"} onClick={() => setView("drafts")}>
                   Drafts
@@ -322,8 +641,41 @@ export default function TechnicianJobsPage() {
                         {[job.vehicle?.year, job.vehicle?.make, job.vehicle?.model].filter(Boolean).join(" ") || "Vehicle"}
                       </div>
                       <div className="text-sm text-slate-500">
-                        {job.vehicle?.license_plate || job.vehicle?.vin || job.service_type || "No vehicle info"}
+                        {job.service_description || job.service_type || "No requested work listed"}
                       </div>
+                      {formatAppointment(job.scheduled_start, job.scheduled_end) ||
+                      formatJobLocation(job) ||
+                      job.notes ? (
+                        <div className="mt-3 space-y-2 border-t border-slate-200/80 pt-3 text-xs">
+                          {formatAppointment(job.scheduled_start, job.scheduled_end) ? (
+                            <div className="flex gap-2 text-slate-600">
+                              <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-lime-600" />
+                              <div>
+                                <span className="font-medium text-slate-700">Appointment: </span>
+                                {formatAppointment(job.scheduled_start, job.scheduled_end)}
+                              </div>
+                            </div>
+                          ) : null}
+                          {formatJobLocation(job) ? (
+                            <div className="flex gap-2 text-slate-600">
+                              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-lime-600" />
+                              <div>
+                                <span className="font-medium text-slate-700">Location: </span>
+                                {formatJobLocation(job)}
+                              </div>
+                            </div>
+                          ) : null}
+                          {job.notes ? (
+                            <div className="flex gap-2 text-slate-600">
+                              <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+                              <div>
+                                <span className="font-medium text-slate-700">Notes for technician: </span>
+                                <span className="whitespace-pre-wrap">{job.notes}</span>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
@@ -335,10 +687,64 @@ export default function TechnicianJobsPage() {
                           Unassigned
                         </Badge>
                       )}
+                      {job.intake_state ? (
+                        <Badge variant="outline" className="rounded-full">
+                          {job.intake_state.replaceAll("_", " ")}
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
+                    {!job.assigned_tech_user_id ? (
+                      <Button
+                        type="button"
+                        disabled={claimingJobId === job.id}
+                        onClick={() => void handleClaimJob(job.id)}
+                      >
+                        {claimingJobId === job.id ? "Claiming..." : "Claim Job"}
+                      </Button>
+                    ) : null}
+                    {job.assigned_tech_user_id === currentUserId ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(headerActionButtonClassName, startServiceButtonClass(job))}
+                          disabled={!!intakeUpdatePending && intakeUpdatePending.jobId === job.id}
+                          onClick={() => handleOpenServiceWorkflow(job)}
+                        >
+                          {job.service_checklist_completed_at
+                            ? "Service checklist done"
+                            : job.service_checklist_started_at
+                              ? "Continue service"
+                              : "Start Service"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={!!intakeUpdatePending && intakeUpdatePending.jobId === job.id}
+                          onClick={() => void handleSetIntakeState(job.id, "waiting_parts", "in_progress")}
+                        >
+                          {intakeUpdatePending?.jobId === job.id &&
+                          intakeUpdatePending.intakeState === "waiting_parts" ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Updating…
+                            </>
+                          ) : (
+                            "Mark Waiting on Parts"
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => router.push(`/tech?jobId=${job.id}&composeUpdate=1`)}
+                        >
+                          Send Update
+                        </Button>
+                      </>
+                    ) : null}
                     <Button type="button" variant="outline" onClick={() => router.push(`/tech?jobId=${job.id}`)}>
                       Open on Tech Page
                     </Button>

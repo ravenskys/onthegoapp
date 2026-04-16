@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatPhoneNumber, normalizeEmail, normalizePhoneExtension } from "@/lib/input-formatters";
+import { getEmailInputWarning } from "@/lib/input-validation-feedback";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
@@ -16,6 +17,7 @@ export default function CustomerSignupPage() {
   const [phone, setPhone] = useState("");
   const [phoneExtension, setPhoneExtension] = useState("");
   const [email, setEmail] = useState("");
+  const [emailFormatHint, setEmailFormatHint] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -229,10 +231,17 @@ export default function CustomerSignupPage() {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(normalizeEmail(e.target.value))}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setEmailFormatHint(getEmailInputWarning(raw));
+                    setEmail(normalizeEmail(raw));
+                  }}
                   className="otg-input"
                   placeholder="customer@email.com"
                 />
+                {emailFormatHint ? (
+                  <p className="text-xs text-amber-800">{emailFormatHint}</p>
+                ) : null}
               </div>
 
               <div className="space-y-2">

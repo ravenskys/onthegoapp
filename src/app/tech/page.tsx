@@ -21,6 +21,14 @@ import {
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
+import {
+  getEmailInputWarning,
+  getLicensePlateInputWarning,
+  getMileageInputWarning,
+  getPhoneInputWarning,
+  getVinInputWarning,
+  getYearInputWarning,
+} from "@/lib/input-validation-feedback";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import { UsStateSelect } from "@/components/forms/UsStateSelect";
 import { DEFAULT_US_STATE_CODE, resolveUsStateForForm } from "@/lib/us-states";
@@ -53,6 +61,13 @@ import {
   TECH_SAVED_DRAFTS_STORAGE_KEY,
 } from "@/lib/tech-inspection";
 import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
+import {
+  createJobCustomerUpdate,
+  fetchJobCustomerUpdates,
+  type JobCustomerUpdateRow,
+  type JobCustomerUpdateType,
+} from "@/lib/job-customer-updates";
+import { techCustomerUpdateTemplates } from "@/lib/tech-customer-update-templates";
 
 const conditionOptions = [
   { value: "ok", label: "OK" },
@@ -608,6 +623,10 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [preServicePhotos, setPreServicePhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
   const [postWorkPhotos, setPostWorkPhotos] = useState<ConditionPhotoState>(createEmptyConditionPhotoState);
 
+  const [vehicleFieldFormatWarnings, setVehicleFieldFormatWarnings] = useState<
+    Partial<Record<VehicleFieldKey, string | null>>
+  >({});
+
   const normalizeVehicleFieldValue = (key: VehicleFieldKey, value: string) => {
     switch (key) {
       case "phone":
@@ -627,8 +646,32 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
-  const updateVehicle = (key: VehicleFieldKey, value: string) =>
+  const formatWarningForVehicleField = (key: VehicleFieldKey, raw: string): string | null => {
+    switch (key) {
+      case "phone":
+        return getPhoneInputWarning(raw);
+      case "email":
+        return getEmailInputWarning(raw);
+      case "year":
+        return getYearInputWarning(raw);
+      case "mileage":
+        return getMileageInputWarning(raw);
+      case "vin":
+        return getVinInputWarning(raw);
+      case "licensePlate":
+        return getLicensePlateInputWarning(raw);
+      default:
+        return null;
+    }
+  };
+
+  const updateVehicle = (key: VehicleFieldKey, value: string) => {
+    setVehicleFieldFormatWarnings((prev) => ({
+      ...prev,
+      [key]: formatWarningForVehicleField(key, value),
+    }));
     setVehicle((prev) => ({ ...prev, [key]: normalizeVehicleFieldValue(key, value) }));
+  };
 
   const updateTire = (tire: TirePosition, key: TireFieldKey, value: string) => {
     setTireData((prev) => ({
@@ -678,6 +721,13 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [activeJobNotes, setActiveJobNotes] = useState("");
   const [activeJobServiceType, setActiveJobServiceType] = useState<string | null>(null);
   const [activeJobServiceAddress, setActiveJobServiceAddress] = useState("");
+  const [jobCustomerUpdates, setJobCustomerUpdates] = useState<JobCustomerUpdateRow[]>([]);
+  const [jobUpdatesLoading, setJobUpdatesLoading] = useState(false);
+  const [sendingCustomerUpdate, setSendingCustomerUpdate] = useState(false);
+  const [customerUpdateType, setCustomerUpdateType] = useState<JobCustomerUpdateType>("status");
+  const [customerUpdateTitle, setCustomerUpdateTitle] = useState("");
+  const [customerUpdateMessage, setCustomerUpdateMessage] = useState("");
+  const [customerUpdateVisibility, setCustomerUpdateVisibility] = useState<"internal" | "customer">("customer");
   const [recordSyncState, setRecordSyncState] = useState("idle");
   const [recordSyncMessage, setRecordSyncMessage] = useState("");
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepsState>(createEmptyWorkflowSteps);
@@ -843,6 +893,45 @@ export default function OnTheGoTechnicianAppPrototype() {
     if (!d) return "";
     return `https://maps.apple.com/?daddr=${encodeURIComponent(d)}&dirflg=d`;
   }, [activeJobAddressLabel]);
+
+  useEffect(() => {
+    if (!activeJobId) {
+      setJobCustomerUpdates([]);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setJobUpdatesLoading(true);
+      try {
+        const updates = await fetchJobCustomerUpdates(activeJobId);
+        if (!cancelled) {
+          setJobCustomerUpdates(updates);
+        }
+      } catch {
+        if (!cancelled) {
+          setJobCustomerUpdates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setJobUpdatesLoading(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeJobId) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("composeUpdate") !== "1") return;
+    const fallback = techCustomerUpdateTemplates.find((item) => item.id === "status");
+    setCustomerUpdateType("status");
+    setCustomerUpdateTitle(fallback?.title || "Service status update");
+    setCustomerUpdateMessage(fallback?.message || "");
+  }, [activeJobId]);
 
   const getMissingRequiredReasonMessage = useCallback(() => {
     const missingMaintenanceReason = activeMaintenanceItems.find(
@@ -1154,6 +1243,11 @@ export default function OnTheGoTechnicianAppPrototype() {
     setActiveJobNotes("");
     setActiveJobServiceType(null);
     setActiveJobServiceAddress("");
+    setJobCustomerUpdates([]);
+    setCustomerUpdateType("status");
+    setCustomerUpdateTitle("");
+    setCustomerUpdateMessage("");
+    setCustomerUpdateVisibility("customer");
     setRecordSyncState("idle");
     setRecordSyncMessage("");
     setUseCustomMake(false);
@@ -1271,6 +1365,53 @@ export default function OnTheGoTechnicianAppPrototype() {
       alert(getErrorMessage(error, "Failed to update the job."));
     } finally {
       setJobUpdateSaving(false);
+    }
+  };
+
+  const handleUseCustomerUpdateTemplate = (updateType: JobCustomerUpdateType) => {
+    setCustomerUpdateType(updateType);
+    const match = techCustomerUpdateTemplates.find((item) => item.id === updateType);
+    if (!match) return;
+    setCustomerUpdateTitle(match.title);
+    setCustomerUpdateMessage(match.message);
+  };
+
+  const handleSendCustomerUpdate = async () => {
+    if (!activeJobId) {
+      alert("Load a job before sending an update.");
+      return;
+    }
+    const title = customerUpdateTitle.trim();
+    const message = customerUpdateMessage.trim();
+    if (!title || !message) {
+      alert("Add both a title and message before sending.");
+      return;
+    }
+
+    setSendingCustomerUpdate(true);
+    try {
+      await createJobCustomerUpdate({
+        job_id: activeJobId,
+        update_type: customerUpdateType,
+        status_snapshot: activeJobStatus || null,
+        title,
+        message,
+        visibility: customerUpdateVisibility,
+      });
+      const updates = await fetchJobCustomerUpdates(activeJobId);
+      setJobCustomerUpdates(updates);
+      setRecordSyncState("saved");
+      setRecordSyncMessage(
+        customerUpdateVisibility === "customer"
+          ? "Customer update sent and saved to the job timeline."
+          : "Internal update saved to the job timeline.",
+      );
+      setCustomerUpdateTitle("");
+      setCustomerUpdateMessage("");
+    } catch (error) {
+      alert(getErrorMessage(error, "Failed to send customer update."));
+    } finally {
+      setSendingCustomerUpdate(false);
     }
   };
 
@@ -2414,6 +2555,83 @@ if (!isAuthorized) {
                   </Button>
                 </div>
               </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <Label className="text-sm font-semibold">Customer Update Composer</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {techCustomerUpdateTemplates.map((template) => (
+                      <Button
+                        key={template.id}
+                        type="button"
+                        variant={customerUpdateType === template.id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleUseCustomerUpdateTemplate(template.id)}
+                      >
+                        {template.id.replaceAll("_", " ")}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Title</Label>
+                    <Input
+                      value={customerUpdateTitle}
+                      onChange={(e) => setCustomerUpdateTitle(e.target.value)}
+                      placeholder="Update title"
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Message</Label>
+                    <Textarea
+                      value={customerUpdateMessage}
+                      onChange={(e) => setCustomerUpdateMessage(e.target.value)}
+                      placeholder="What should the customer know?"
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Visibility</Label>
+                    <Select
+                      value={customerUpdateVisibility}
+                      onValueChange={(value) => setCustomerUpdateVisibility(value as "internal" | "customer")}
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="customer">Customer-visible</SelectItem>
+                        <SelectItem value="internal">Internal only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="button" onClick={() => void handleSendCustomerUpdate()} disabled={sendingCustomerUpdate}>
+                    {sendingCustomerUpdate ? "Sending Update..." : "Save Update"}
+                  </Button>
+                </div>
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <Label className="text-sm font-semibold">Recent Job Updates</Label>
+                  {jobUpdatesLoading ? (
+                    <p className="text-sm text-slate-600">Loading updates...</p>
+                  ) : jobCustomerUpdates.length === 0 ? (
+                    <p className="text-sm text-slate-600">No updates saved yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {jobCustomerUpdates.slice(0, 6).map((update) => (
+                        <div key={update.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-semibold text-slate-900">{update.title}</p>
+                            <Badge variant="outline">{update.visibility}</Badge>
+                          </div>
+                          <p className="mt-1 text-slate-700">{update.message}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {new Date(update.created_at).toLocaleString()} • {(update.update_type || "general").replaceAll("_", " ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -2550,6 +2768,9 @@ if (!isAuthorized) {
                           className="bg-white"
                         />
                       )}
+                      {vehicleFieldFormatWarnings[key] ? (
+                        <p className="text-xs text-amber-800">{vehicleFieldFormatWarnings[key]}</p>
+                      ) : null}
                       {key === "email" && (
                         <p className="text-xs text-slate-500">
                           Required. Email is the main key we use to create and reconnect customer records.

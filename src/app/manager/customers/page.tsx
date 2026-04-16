@@ -22,6 +22,9 @@ type Customer = {
   email: string | null;
   phone: string | null;
   tax_exempt: boolean;
+  account_closure_requested_at?: string | null;
+  account_closure_request_status?: string | null;
+  account_closure_request_note?: string | null;
 };
 
 type Vehicle = {
@@ -51,8 +54,11 @@ export default function ManagerCustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicleCounts, setVehicleCounts] = useState<Record<string, number>>({});
   const [deletedCustomers, setDeletedCustomers] = useState<DeletedCustomerAuditEntry[]>([]);
+  const [closureQueue, setClosureQueue] = useState<Customer[]>([]);
   const [deletedCustomersLoading, setDeletedCustomersLoading] = useState(true);
   const [deletedCustomersMessage, setDeletedCustomersMessage] = useState("");
+  const [closureActionMessage, setClosureActionMessage] = useState("");
+  const [closingCustomerId, setClosingCustomerId] = useState<string | null>(null);
 
   const fetchDeletedCustomers = useCallback(async () => {
     setDeletedCustomersLoading(true);
@@ -133,7 +139,9 @@ export default function ManagerCustomersPage() {
   const fetchCustomers = async () => {
     const { data: customerData, error: customerError } = await supabase
       .from("customers")
-      .select("id, first_name, last_name, email, phone, tax_exempt")
+      .select(
+        "id, first_name, last_name, email, phone, tax_exempt, account_closure_requested_at, account_closure_request_status, account_closure_request_note",
+      )
       .order("last_name", { ascending: true })
       .order("first_name", { ascending: true });
 
@@ -157,8 +165,50 @@ export default function ManagerCustomersPage() {
       {},
     );
 
-    setCustomers(customerData ?? []);
+    const allCustomers = customerData ?? [];
+    setCustomers(allCustomers);
+    setClosureQueue(
+      allCustomers
+        .filter((row) => row.account_closure_request_status === "requested")
+        .sort((a, b) => {
+          const aTime = new Date(a.account_closure_requested_at || 0).getTime();
+          const bTime = new Date(b.account_closure_requested_at || 0).getTime();
+          return aTime - bTime;
+        }),
+    );
     setVehicleCounts(counts);
+  };
+
+  const handleFinalizeAccountDeletion = async (customer: Customer) => {
+    const customerName =
+      `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim() || "this customer";
+    const confirmed = window.confirm(
+      `Delete ${customerName} permanently now? This removes the customer record from active data and cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setClosingCustomerId(customer.id);
+    setClosureActionMessage("");
+
+    try {
+      const { error } = await supabase.rpc("delete_customer_with_audit", {
+        p_customer_id: customer.id,
+        p_reason: "Customer initiated account deletion from portal after 2-business-day hold.",
+      });
+      if (error) {
+        throw error;
+      }
+
+      setClosureActionMessage("Account deleted and recorded in deletion audit.");
+      await Promise.all([fetchCustomers(), fetchDeletedCustomers()]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete account.";
+      setClosureActionMessage(message);
+    } finally {
+      setClosingCustomerId(null);
+    }
   };
 
   const filteredCustomers = customers.filter((customer) => {
@@ -317,6 +367,63 @@ export default function ManagerCustomersPage() {
             })}
           </div>
         )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg text-slate-900">Deleted Account Queue</CardTitle>
+            <p className="mt-1 text-sm text-slate-600">
+              Customer-facing delete button places accounts here first. After hold/verification, finalize deletion.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {closureActionMessage ? (
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                {closureActionMessage}
+              </div>
+            ) : null}
+            {closureQueue.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                No customer deletion holds are waiting.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {closureQueue.map((customer) => {
+                  const fullName =
+                    `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim() || "Unnamed customer";
+                  const requestedAt = customer.account_closure_requested_at
+                    ? new Date(customer.account_closure_requested_at).toLocaleString()
+                    : "Unknown";
+                  return (
+                    <div
+                      key={`closure-${customer.id}`}
+                      className="rounded-xl border border-red-200 bg-red-50 p-4"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="text-sm text-slate-700">
+                          <p className="font-semibold text-slate-900">{fullName}</p>
+                          <p>{customer.email || "No email on file"}</p>
+                          <p className="mt-1 text-xs text-slate-600">Requested: {requestedAt}</p>
+                          {customer.account_closure_request_note ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              Note: {customer.account_closure_request_note}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          variant="destructive"
+                          onClick={() => void handleFinalizeAccountDeletion(customer)}
+                          disabled={closingCustomerId === customer.id}
+                        >
+                          {closingCustomerId === customer.id ? "Deleting..." : "Delete Account"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-3">

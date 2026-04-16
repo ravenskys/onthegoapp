@@ -790,6 +790,13 @@ img {
   border-color: rgba(115, 145, 126, 0.28) !important;
 }
 
+/* Outline badges use text-foreground (often dark) while portal panels force a dark surface — keep label readable */
+.otg-portal-dark [data-slot="badge"][data-variant="outline"] {
+  border-color: rgba(163, 230, 53, 0.38) !important;
+  background: rgba(18, 28, 22, 0.92) !important;
+  color: #e8f8ec !important;
+}
+
 .otg-portal-dark .otg-input,
 .otg-portal-dark .otg-select,
 .otg-portal-dark .otg-textarea,

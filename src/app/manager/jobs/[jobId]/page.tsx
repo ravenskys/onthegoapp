@@ -30,6 +30,7 @@ import {
   resolvePartUnitPriceForSave,
   unitSellPriceFromUnitCost,
 } from "@/lib/pricing";
+import { fetchJobCustomerUpdates, type JobCustomerUpdateRow } from "@/lib/job-customer-updates";
 
 // Types
 interface Job {
@@ -292,6 +293,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [customerUpdates, setCustomerUpdates] = useState<JobCustomerUpdateRow[]>([]);
   const [technicians, setTechnicians] = useState<
     Array<{
         id: string;
@@ -456,6 +458,8 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         .eq("job_id", jobId)
         .order("created_at", { ascending: false });
       setNotes(notesData || []);
+      const updatesData = await fetchJobCustomerUpdates(jobId);
+      setCustomerUpdates(updatesData);
 
             // 6. Fetch Technicians for dropdown
       const { data: techRoles, error: techRolesError } = await supabase
@@ -1694,71 +1698,102 @@ const [estimateLineItems, setEstimateLineItems] = useState<
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Visit Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Service Type
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Visit Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Service Type
+                      </div>
+                      <div className="mt-1 text-sm text-slate-900">
+                        {job?.service_type || "—"}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-slate-900">
-                      {job?.service_type || "—"}
+
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Requested Date
+                      </div>
+                      <div className="mt-1 text-sm text-slate-900">
+                        {job?.requested_date
+                          ? new Date(job.requested_date).toLocaleDateString()
+                          : "—"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Assigned Technician
+                      </div>
+                      <div className="mt-1 text-sm text-slate-900">
+                        {(() => {
+                          const tech = technicians.find((t) => t.id === assignedTechId);
+                          if (!tech) return "Unassigned";
+                          return (
+                            `${tech.first_name ?? ""} ${tech.last_name ?? ""}`.trim() ||
+                            tech.email ||
+                            "Unnamed technician"
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
 
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Requested Date
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Service Description
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+                        {job?.service_description || "—"}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-slate-900">
-                      {job?.requested_date
-                        ? new Date(job.requested_date).toLocaleDateString()
-                        : "—"}
-                    </div>
-                  </div>
 
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Assigned Technician
-                    </div>
-                    <div className="mt-1 text-sm text-slate-900">
-                      {(() => {
-                        const tech = technicians.find((t) => t.id === assignedTechId);
-                        if (!tech) return "Unassigned";
-                        return (
-                          `${tech.first_name ?? ""} ${tech.last_name ?? ""}`.trim() ||
-                          tech.email ||
-                          "Unnamed technician"
-                        );
-                      })()}
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Notes
+                      </div>
+                      <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+                        {job?.notes || "—"}
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Service Description
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Technician Customer Updates</CardTitle>
+                  <CardDescription>
+                    Timeline of customer/internal updates captured by technicians on this job.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {customerUpdates.length === 0 ? (
+                    <p className="text-sm text-slate-600">No updates logged yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {customerUpdates.slice(0, 10).map((update) => (
+                        <div key={update.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-semibold text-slate-900">{update.title}</p>
+                            <Badge variant="outline">{update.visibility}</Badge>
+                          </div>
+                          <p className="mt-1 text-slate-700">{update.message}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {(update.update_type || "general").replaceAll("_", " ")} •{" "}
+                            {new Date(update.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.service_description || "—"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Notes
-                    </div>
-                    <div className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
-                      {job?.notes || "—"}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Services Tab */}

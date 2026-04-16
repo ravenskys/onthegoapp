@@ -42,6 +42,7 @@ import {
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
+import { getPhoneInputWarning } from "@/lib/input-validation-feedback";
 import {
   laborSellTotalFromHours,
   laborShopCostFromHours,
@@ -222,6 +223,7 @@ function NewJobPageContent() {
   const [newCustomerFirst, setNewCustomerFirst] = useState("");
   const [newCustomerLast, setNewCustomerLast] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerPhoneFormatHint, setNewCustomerPhoneFormatHint] = useState<string | null>(null);
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   /** Inline validation for Step 1 — Add customer (highlights fields + messages). */
@@ -905,7 +907,9 @@ function NewJobPageContent() {
                   autoComplete="tel"
                   value={newCustomerPhone}
                   onChange={(e) => {
-                    setNewCustomerPhone(formatPhoneNumber(e.target.value));
+                    const raw = e.target.value;
+                    setNewCustomerPhoneFormatHint(getPhoneInputWarning(raw));
+                    setNewCustomerPhone(formatPhoneNumber(raw));
                     if (newCustomerErrors.phone) {
                       setNewCustomerErrors((prev) => {
                         const next = { ...prev };
@@ -925,6 +929,8 @@ function NewJobPageContent() {
                   <p className="text-sm font-medium text-red-600" role="alert">
                     {newCustomerErrors.phone}
                   </p>
+                ) : newCustomerPhoneFormatHint ? (
+                  <p className="text-xs text-amber-800">{newCustomerPhoneFormatHint}</p>
                 ) : (
                   <p className="text-xs text-slate-500">10 digits; formatting applies as you type.</p>
                 )}

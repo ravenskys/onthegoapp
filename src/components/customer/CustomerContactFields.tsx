@@ -1,5 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import {
+  getEmailInputWarning,
+  getPhoneExtensionInputWarning,
+  getPhoneInputWarning,
+} from "@/lib/input-validation-feedback";
+
 type CustomerContactFieldsProps = {
   firstName: string;
   lastName: string;
@@ -15,6 +22,8 @@ type CustomerContactFieldsProps = {
   lastNameRequired?: boolean;
   phoneRequired?: boolean;
   emailRequired?: boolean;
+  /** Shown on the email field when `email` / `setEmail` are provided. */
+  emailLabel?: string;
 };
 
 export function CustomerContactFields({
@@ -32,7 +41,12 @@ export function CustomerContactFields({
   lastNameRequired = true,
   phoneRequired = true,
   emailRequired = true,
+  emailLabel = "Email",
 }: CustomerContactFieldsProps) {
+  const [phoneHint, setPhoneHint] = useState<string | null>(null);
+  const [extensionHint, setExtensionHint] = useState<string | null>(null);
+  const [emailHint, setEmailHint] = useState<string | null>(null);
+
   return (
     <>
       <div className="space-y-2">
@@ -66,7 +80,11 @@ export function CustomerContactFields({
             type="tel"
             required={phoneRequired}
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setPhoneHint(getPhoneInputWarning(raw));
+              setPhone(raw);
+            }}
             className="otg-input min-w-0 flex-1"
             placeholder="(555) 555-5555"
             autoComplete="tel-national"
@@ -80,7 +98,11 @@ export function CustomerContactFields({
                 type="text"
                 inputMode="numeric"
                 value={phoneExtension}
-                onChange={(e) => setPhoneExtension(e.target.value)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setExtensionHint(getPhoneExtensionInputWarning(raw));
+                  setPhoneExtension(raw);
+                }}
                 className="otg-input w-full"
                 placeholder="Ext."
                 autoComplete="tel-extension"
@@ -89,19 +111,32 @@ export function CustomerContactFields({
             </div>
           ) : null}
         </div>
+        {phoneHint ? (
+          <p className="text-xs text-amber-800">{phoneHint}</p>
+        ) : null}
+        {typeof setPhoneExtension === "function" && extensionHint ? (
+          <p className="text-xs text-amber-800">{extensionHint}</p>
+        ) : null}
       </div>
 
       {typeof email === "string" && setEmail ? (
         <div className="space-y-2">
-          <label className="otg-label">Email</label>
+          <label className="otg-label">{emailLabel}</label>
           <input
             type="email"
             required={emailRequired}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setEmailHint(getEmailInputWarning(raw));
+              setEmail(raw);
+            }}
             className="otg-input"
             placeholder="customer@email.com"
           />
+          {emailHint ? (
+            <p className="text-xs text-amber-800">{emailHint}</p>
+          ) : null}
         </div>
       ) : null}
     </>

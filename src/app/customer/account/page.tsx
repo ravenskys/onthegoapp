@@ -14,6 +14,7 @@ import {
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
+import { getMileageInputWarning } from "@/lib/input-validation-feedback";
 import {
   CustomerPortalAddress,
   CustomerPortalRecord,
@@ -237,6 +238,9 @@ export default function CustomerAccountPage() {
   const [accountPhoneExtension, setAccountPhoneExtension] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
   const [vehicleDrafts, setVehicleDrafts] = useState<EditableVehicleDraft[]>([]);
+  const [mileageFormatWarningsByIndex, setMileageFormatWarningsByIndex] = useState<
+    Record<number, string | null>
+  >({});
   const [addressDrafts, setAddressDrafts] = useState<EditableAddressDraft[]>([]);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingVehicleIndex, setSavingVehicleIndex] = useState<number | null>(null);
@@ -244,6 +248,10 @@ export default function CustomerAccountPage() {
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [accountMessage, setAccountMessage] = useState("");
+  const [closureRequestNote, setClosureRequestNote] = useState("");
+  const [submittingClosureRequest, setSubmittingClosureRequest] = useState(false);
+  const [signInEmail, setSignInEmail] = useState("");
+  const [pendingAuthEmail, setPendingAuthEmail] = useState<string | null>(null);
   const [vehicleMessage, setVehicleMessage] = useState("");
   const [addressMessage, setAddressMessage] = useState("");
   const vehicleDuplicateCounts = vehicleDrafts.reduce<Record<string, number>>(
@@ -286,6 +294,54 @@ export default function CustomerAccountPage() {
     );
   };
 
+  /**
+   * Reads Supabase Auth (sign-in + pending verification), then ensures `customers.email`
+   * matches the verified login email so portal, shop records, and account linking stay aligned.
+   */
+  const reconcileAuthAndCustomerEmail = async (nextAuthUserId: string) => {
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !authData.user) {
+      return;
+    }
+    const au = authData.user;
+    if (!au.email) {
+      setSignInEmail("");
+      setPendingAuthEmail(null);
+      return;
+    }
+
+    const authE = normalizeEmail(au.email);
+    const rawPending = (au as { new_email?: string | null }).new_email;
+    const pending = rawPending ? normalizeEmail(rawPending) : null;
+    setSignInEmail(authE);
+    setPendingAuthEmail(pending);
+
+    if (pending) {
+      return;
+    }
+
+    const { data: row, error: rowErr } = await supabase
+      .from("customers")
+      .select("id, email")
+      .eq("auth_user_id", au.id)
+      .maybeSingle();
+
+    if (rowErr || !row?.id) {
+      return;
+    }
+    if (normalizeEmail(row.email || "") === authE) {
+      return;
+    }
+
+    const { error: upErr } = await supabase.from("customers").update({ email: authE }).eq("id", row.id);
+    if (upErr) {
+      console.error("Failed to sync customer email with login:", upErr);
+      return;
+    }
+
+    await refreshPortalData(nextAuthUserId);
+  };
+
   useEffect(() => {
     const loadPage = async () => {
       try {
@@ -303,6 +359,7 @@ export default function CustomerAccountPage() {
 
         setAuthUserId(user.id);
         await refreshPortalData(user.id);
+        await reconcileAuthAndCustomerEmail(user.id);
       } catch (error) {
         console.error("Customer account load failed:", error);
       } finally {
@@ -311,6 +368,17 @@ export default function CustomerAccountPage() {
     };
 
     void loadPage();
+  }, []);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id) {
+        void reconcileAuthAndCustomerEmail(session.user.id);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -397,45 +465,66 @@ export default function CustomerAccountPage() {
         throw new Error("Your login email could not be confirmed.");
       }
 
-      const canUpdateCustomerEmail = normalizedCustomerEmail === authEmail;
-      const customerUpdate = {
+      const baseUpdate = {
         first_name: trimmedFirstName,
         last_name: trimmedLastName,
         phone: trimmedPhone,
         phone_extension: trimmedExtension || null,
-        email: canUpdateCustomerEmail ? normalizedCustomerEmail : authEmail,
       };
 
-      const { error } = await supabase
-        .from("customers")
-        .update(customerUpdate)
-        .eq("id", customer.id);
+      if (normalizedCustomerEmail === authEmail) {
+        const { error } = await supabase
+          .from("customers")
+          .update({ ...baseUpdate, email: normalizedCustomerEmail })
+          .eq("id", customer.id);
 
-      if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
-      const savedEmail = canUpdateCustomerEmail
-        ? normalizedCustomerEmail
-        : authEmail;
+        setCustomer((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...baseUpdate,
+                email: normalizedCustomerEmail,
+              }
+            : prev
+        );
+        setAccountEmail(normalizedCustomerEmail);
 
-      setCustomer((prev) =>
-        prev
-          ? {
-              ...prev,
-              first_name: trimmedFirstName,
-              last_name: trimmedLastName,
-              phone: trimmedPhone,
-              phone_extension: trimmedExtension || null,
-              email: savedEmail,
-            }
-          : prev
-      );
-      setAccountEmail(savedEmail);
+        setAccountMessage("Account information updated.");
+        await reconcileAuthAndCustomerEmail(user.id);
+      } else {
+        const { error: authEmailError } = await supabase.auth.updateUser({
+          email: normalizedCustomerEmail,
+        });
+        if (authEmailError) {
+          throw authEmailError;
+        }
 
-      setAccountMessage(
-        canUpdateCustomerEmail
-          ? "Account information updated."
-          : "Contact information updated. Email was not changed because portal email changes must be handled through the login email first."
-      );
+        const { error } = await supabase.from("customers").update(baseUpdate).eq("id", customer.id);
+
+        if (error) {
+          throw error;
+        }
+
+        setCustomer((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...baseUpdate,
+              }
+            : prev
+        );
+        setAccountEmail(normalizedCustomerEmail);
+
+        setAccountMessage(
+          `We sent a confirmation link to ${normalizedCustomerEmail}. Open that email and confirm before the new address is used to sign in. After you confirm, your shop profile and portal login will match that address (usually within a minute). Your name and phone were saved.`
+        );
+
+        await reconcileAuthAndCustomerEmail(user.id);
+      }
     } catch (error) {
       setAccountMessage(getErrorMessage(error, "Failed to update account information."));
     } finally {
@@ -522,6 +611,39 @@ export default function CustomerAccountPage() {
       );
     } finally {
       setSavingVehicleIndex(null);
+    }
+  };
+
+  const handleRequestAccountClosure = async () => {
+    const confirmed = window.confirm(
+      "Delete account? Your account enters deletion hold for 2 business days and access is removed immediately. After that window, recovery may not be possible.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setSubmittingClosureRequest(true);
+    setAccountMessage("");
+
+    try {
+      const { error } = await supabase.rpc("request_customer_account_closure", {
+        p_note: closureRequestNote.trim() || null,
+      });
+      if (error) {
+        throw error;
+      }
+
+      await supabase.auth.signOut();
+      window.location.href =
+        "/customer/login?message=Account+closure+requested.+Portal+access+is+disabled+until+staff+review+your+request.";
+    } catch (error) {
+      setAccountMessage(
+        getErrorMessage(
+          error,
+          "Could not submit account closure request. Please try again or contact the shop.",
+        ),
+      );
+      setSubmittingClosureRequest(false);
     }
   };
 
@@ -696,8 +818,18 @@ export default function CustomerAccountPage() {
               Profile Details
             </div>
             <p className="mt-3 text-sm text-slate-600">
-              Email is required because it is the main way portal access and service history stay linked to the correct account.
+              Current sign-in email:{" "}
+              <span className="font-medium text-slate-900">{signInEmail || "—"}</span>. To change it, edit the
+              email below and save—we will send a confirmation link. After you verify, your login, shop contact
+              record, scheduling, and history all use the same address.
             </p>
+            {pendingAuthEmail ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Verification pending: open the link we sent to{" "}
+                <span className="font-semibold">{pendingAuthEmail}</span>. Until you confirm, sign in with{" "}
+                <span className="font-semibold">{signInEmail}</span>.
+              </p>
+            ) : null}
           </div>
 
           <form onSubmit={handleSaveAccountInfo} className="mt-6 space-y-4">
@@ -707,6 +839,7 @@ export default function CustomerAccountPage() {
               phone={accountPhone}
               phoneExtension={accountPhoneExtension}
               email={accountEmail}
+              emailLabel="Email"
               setFirstName={setAccountFirstName}
               setLastName={setAccountLastName}
               setPhone={(value) => setAccountPhone(formatPhoneNumber(value))}
@@ -728,6 +861,39 @@ export default function CustomerAccountPage() {
               {accountMessage}
             </div>
           ) : null}
+
+          <div className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">
+              Delete Account
+            </div>
+            <p className="mt-3 text-sm text-red-900">
+              Your account is held for 2 business days before permanent deletion.
+            </p>
+            {customer?.account_closure_request_status === "requested" ? (
+              <p className="mt-3 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-900">
+                Your account is in the 2-business-day deletion hold period.
+              </p>
+            ) : null}
+            <div className="mt-4 space-y-2">
+              <label className="otg-label text-red-900">Reason for closure (optional)</label>
+              <textarea
+                value={closureRequestNote}
+                onChange={(event) => setClosureRequestNote(event.target.value)}
+                rows={3}
+                className="otg-input min-h-24"
+                placeholder="Optional note for staff reviewing the request"
+                disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleRequestAccountClosure()}
+              disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
+              className="otg-btn mt-4 bg-red-700 text-white hover:bg-red-800 disabled:opacity-50 sm:w-auto"
+            >
+              {submittingClosureRequest ? "Deleting..." : "Delete Account"}
+            </button>
+          </div>
         </div>
 
         <div id="customer-account-vehicles" className="otg-card scroll-mt-6 p-4 sm:p-6">
@@ -895,16 +1061,26 @@ export default function CustomerAccountPage() {
                             type="text"
                             inputMode="numeric"
                             value={draft.mileage}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              setMileageFormatWarningsByIndex((prev) => ({
+                                ...prev,
+                                [index]: getMileageInputWarning(raw),
+                              }));
                               handleVehicleDraftChange(
                                 index,
                                 "mileage",
-                                formatMileage(event.target.value)
-                              )
-                            }
+                                formatMileage(raw)
+                              );
+                            }}
                             className="otg-input"
                             placeholder="75,000"
                           />
+                          {mileageFormatWarningsByIndex[index] ? (
+                            <p className="text-xs text-amber-800">
+                              {mileageFormatWarningsByIndex[index]}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </>

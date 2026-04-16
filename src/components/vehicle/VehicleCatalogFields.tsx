@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -15,6 +15,9 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MAX_MODEL_YEAR } from "@/lib/input-formatters";
 import { cn } from "@/lib/utils";
+import { normalizeVin } from "@/lib/input-formatters";
+import { getLicensePlateInputWarning, getVinInputWarning } from "@/lib/input-validation-feedback";
+import { mapNhtsaDecodeToVehicleFields } from "@/lib/vin";
 import {
   findVehicleCatalogMake,
   getVehicleCatalogEngines,
@@ -56,6 +59,8 @@ type VehicleCatalogFieldsProps = {
   onYearCommit?: (value: string) => void;
   /** When false, hides the helper line under the license plate field. Defaults to true. */
   showLicensePlateHint?: boolean;
+  /** When true, shows "Lookup VIN" to decode and autofill year/make/model (NHTSA). Default true. */
+  enableVinLookup?: boolean;
 };
 
 type SearchableOption = {
@@ -210,7 +215,12 @@ export function VehicleCatalogFields({
   onVinCommit,
   onYearCommit,
   showLicensePlateHint = true,
+  enableVinLookup = true,
 }: VehicleCatalogFieldsProps) {
+  const [vinLookupLoading, setVinLookupLoading] = useState(false);
+  const [vinLookupMessage, setVinLookupMessage] = useState<string | null>(null);
+  const [vinFormatWarning, setVinFormatWarning] = useState<string | null>(null);
+  const [licensePlateFormatWarning, setLicensePlateFormatWarning] = useState<string | null>(null);
   const yearOptions = useMemo(
     () =>
       Array.from({ length: MAX_MODEL_YEAR - 1984 }, (_, index) => {
@@ -298,6 +308,83 @@ export function VehicleCatalogFields({
 
     setUseCustomEngineSize(() => false);
     setEngineSize(value);
+  };
+
+  const handleVinLookup = async () => {
+    const normalized = normalizeVin(vin);
+    if (normalized.length !== 17) {
+      setVinLookupMessage("Enter all 17 characters before lookup.");
+      return;
+    }
+
+    setVinLookupLoading(true);
+    setVinLookupMessage(null);
+
+    try {
+      const res = await fetch("/api/vehicles/decode-vin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vin: normalized }),
+      });
+
+      const data = (await res.json()) as {
+        error?: string;
+        modelYear?: string;
+        make?: string;
+        model?: string;
+        checkDigitValid?: boolean;
+      };
+
+      if (!res.ok) {
+        setVinLookupMessage(data.error || "Could not decode VIN.");
+        return;
+      }
+
+      setVin(normalized);
+      onVinCommit?.(normalized);
+
+      const applied = mapNhtsaDecodeToVehicleFields(
+        data.modelYear ?? "",
+        data.make ?? "",
+        data.model ?? "",
+      );
+
+      handleYearChange(applied.year);
+
+      if (!applied.useCustomMake) {
+        handleMakeChange(applied.make);
+      } else {
+        setUseCustomMake(() => true);
+        setUseCustomModel(() => false);
+        setUseCustomEngineSize(() => false);
+        setMake(applied.make);
+        setModel("");
+        setEngineSize("");
+      }
+
+      if (!applied.useCustomModel) {
+        handleModelChange(applied.model);
+      } else {
+        setUseCustomModel(() => true);
+        setUseCustomEngineSize(() => false);
+        setModel(applied.model);
+        setEngineSize("");
+      }
+
+      onMakeCommit?.(applied.make);
+      onModelCommit?.(applied.model);
+
+      const warnCheck = data.checkDigitValid === false;
+      setVinLookupMessage(
+        warnCheck
+          ? "Year, make, and model filled from VIN. Note: check digit did not verify—confirm the VIN if unsure."
+          : "Year, make, and model filled from VIN.",
+      );
+    } catch {
+      setVinLookupMessage("Network error. Try again.");
+    } finally {
+      setVinLookupLoading(false);
+    }
   };
 
   return (
@@ -476,10 +563,17 @@ export function VehicleCatalogFields({
         <Label>License Plate</Label>
         <Input
           value={licensePlate}
-          onChange={(e) => setLicensePlate(normalizeLicensePlate(e.target.value))}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setLicensePlateFormatWarning(getLicensePlateInputWarning(raw));
+            setLicensePlate(normalizeLicensePlate(raw));
+          }}
           onBlur={(e) => onPlateCommit?.(normalizeLicensePlate(e.target.value))}
           placeholder="ABC123"
         />
+        {licensePlateFormatWarning ? (
+          <p className="text-xs text-amber-800">{licensePlateFormatWarning}</p>
+        ) : null}
         {showLicensePlateHint ? (
           <p className="text-xs text-slate-500">
             Custom and specialty plates are allowed. This only normalizes spacing
@@ -489,13 +583,58 @@ export function VehicleCatalogFields({
       </div>
 
       <div className="space-y-2 md:col-span-2 lg:col-span-2">
-        <Label>VIN</Label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <Label>VIN</Label>
+          {enableVinLookup ? (
+            <button
+              type="button"
+              onClick={() => void handleVinLookup()}
+              disabled={vinLookupLoading || normalizeVin(vin).length !== 17}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-lime-500/50 bg-lime-400/90 px-3 py-1.5 text-sm font-semibold text-black shadow-sm transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {vinLookupLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Looking up…
+                </>
+              ) : (
+                "Lookup VIN"
+              )}
+            </button>
+          ) : null}
+        </div>
         <Input
           value={vin}
-          onChange={(e) => setVin(normalizeVin(e.target.value))}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setVinFormatWarning(getVinInputWarning(raw));
+            setVin(normalizeVin(raw));
+          }}
           onBlur={(e) => onVinCommit?.(normalizeVin(e.target.value))}
           placeholder="17-character VIN"
+          autoComplete="off"
+          spellCheck={false}
         />
+        {vinFormatWarning ? (
+          <p className="text-xs text-amber-800">{vinFormatWarning}</p>
+        ) : null}
+        {enableVinLookup ? (
+          <p className="text-xs text-slate-500">
+            U.S. NHTSA database: enter the full VIN, then use Lookup to fill year, make, and model when
+            they match your catalog.
+          </p>
+        ) : null}
+        {vinLookupMessage ? (
+          <p
+            className={`text-xs ${
+              vinLookupMessage.includes("Note:") || vinLookupMessage.includes("Network")
+                ? "text-amber-800"
+                : "text-emerald-800"
+            }`}
+          >
+            {vinLookupMessage}
+          </p>
+        ) : null}
       </div>
     </div>
   );

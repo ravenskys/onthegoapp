@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { normalizeEmail } from "@/lib/input-formatters";
 import {
@@ -68,10 +69,20 @@ type OperationsDetailView = "openJobs" | "unassignedJobs" | "customers" | "techA
 type OperationsJobRow = {
   id: string;
   business_job_number: string | null;
-  status: string | null;
-  priority: string | null;
-  customer_id: string | null;
-  scheduled_start: string | null;
+  assigned_tech_user_id: string | null;
+  service_type: string | null;
+  service_description: string | null;
+  customer: {
+    first_name: string | null;
+    last_name: string | null;
+  }[] | null;
+  vehicles: {
+    year: string | number | null;
+    make: string | null;
+    model: string | null;
+    engine_size: string | null;
+    license_plate: string | null;
+  }[] | null;
 };
 
 type OperationsCustomerRow = {
@@ -82,19 +93,40 @@ type OperationsCustomerRow = {
   phone: string | null;
 };
 
+type PendingClosureRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  account_closure_requested_at: string | null;
+  account_closure_request_note: string | null;
+};
+
 const OPERATIONS_DETAIL_PAGE_SIZE = 10;
 const OPERATIONS_DETAIL_FETCH_LIMIT = 1000;
 
 function operationsJobMatchesSearch(job: OperationsJobRow, term: string) {
   if (!term) return true;
   const t = term.toLowerCase();
+  const customer = job.customer?.[0];
+  const vehicle = job.vehicles?.[0];
+  const customerName = `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.trim();
+  const vehicleLabel = [
+    vehicle?.year,
+    vehicle?.make,
+    vehicle?.model,
+    vehicle?.engine_size,
+    vehicle?.license_plate,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const workNeeded = (job.service_description || job.service_type || "").replaceAll("_", " ");
   const haystack = [
     job.id,
     job.business_job_number,
-    job.status,
-    job.priority,
-    job.customer_id,
-    job.scheduled_start,
+    customerName,
+    vehicleLabel,
+    workNeeded,
   ]
     .filter(Boolean)
     .map((v) => String(v).toLowerCase());
@@ -187,6 +219,7 @@ const ADMIN_ROLE_OPTIONS: { value: PortalRole; label: string; hint: string }[] =
 ];
 
 export default function AdminPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [email, setEmail] = useState("");
@@ -230,6 +263,10 @@ export default function AdminPage() {
   const [deletedCustomersById, setDeletedCustomersById] = useState<
     Record<string, DeletedCustomerAuditEntry>
   >({});
+  const [pendingClosures, setPendingClosures] = useState<PendingClosureRow[]>([]);
+  const [pendingClosuresLoading, setPendingClosuresLoading] = useState(true);
+  const [pendingClosuresMessage, setPendingClosuresMessage] = useState("");
+  const [finalizingClosureId, setFinalizingClosureId] = useState<string | null>(null);
 
   const fetchDeletionAudit = useCallback(async (range: DeletedJobsRange) => {
     setDeletionAuditLoading(true);
@@ -436,20 +473,26 @@ export default function AdminPage() {
           .not("assigned_tech_user_id", "is", null),
         supabase
           .from("jobs")
-          .select("id, business_job_number, status, priority, customer_id, scheduled_start")
+          .select(
+            "id, business_job_number, assigned_tech_user_id, service_type, service_description, customer:customers(first_name,last_name), vehicles:vehicles(year,make,model,engine_size,license_plate)",
+          )
           .in("status", ["new_request", "in_progress"])
           .order("updated_at", { ascending: false })
           .limit(OPERATIONS_DETAIL_FETCH_LIMIT),
         supabase
           .from("jobs")
-          .select("id, business_job_number, status, priority, customer_id, scheduled_start")
+          .select(
+            "id, business_job_number, assigned_tech_user_id, service_type, service_description, customer:customers(first_name,last_name), vehicles:vehicles(year,make,model,engine_size,license_plate)",
+          )
           .in("status", ["new_request", "in_progress"])
           .is("assigned_tech_user_id", null)
           .order("updated_at", { ascending: false })
           .limit(OPERATIONS_DETAIL_FETCH_LIMIT),
         supabase
           .from("jobs")
-          .select("id, business_job_number, status, priority, customer_id, scheduled_start")
+          .select(
+            "id, business_job_number, assigned_tech_user_id, service_type, service_description, customer:customers(first_name,last_name), vehicles:vehicles(year,make,model,engine_size,license_plate)",
+          )
           .in("status", ["new_request", "in_progress"])
           .not("assigned_tech_user_id", "is", null)
           .order("updated_at", { ascending: false })
@@ -487,6 +530,57 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchPendingClosures = useCallback(async () => {
+    setPendingClosuresLoading(true);
+    setPendingClosuresMessage("");
+    try {
+      const { data, error } = await supabase
+        .from("customers")
+        .select(
+          "id, first_name, last_name, email, account_closure_requested_at, account_closure_request_note",
+        )
+        .eq("account_closure_request_status", "requested")
+        .order("account_closure_requested_at", { ascending: true });
+      if (error) {
+        throw error;
+      }
+      setPendingClosures((data ?? []) as PendingClosureRow[]);
+    } catch (error) {
+      setPendingClosures([]);
+      setPendingClosuresMessage(getErrorMessage(error, "Could not load pending account deletions."));
+    } finally {
+      setPendingClosuresLoading(false);
+    }
+  }, []);
+
+  const handleFinalizeClosure = async (row: PendingClosureRow) => {
+    const customerName =
+      `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() || "this customer";
+    const confirmed = window.confirm(
+      `Delete ${customerName} permanently now? This action cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setFinalizingClosureId(row.id);
+    setPendingClosuresMessage("");
+    try {
+      const { error } = await supabase.rpc("delete_customer_with_audit", {
+        p_customer_id: row.id,
+        p_reason: "Customer initiated account deletion from portal after hold period.",
+      });
+      if (error) {
+        throw error;
+      }
+      await Promise.all([fetchPendingClosures(), fetchDeletionAudit(deletionAuditRange)]);
+    } catch (error) {
+      setPendingClosuresMessage(getErrorMessage(error, "Could not delete customer account."));
+    } finally {
+      setFinalizingClosureId(null);
+    }
+  };
+
   useEffect(() => {
     const checkAccess = async () => {
       const { user, roles: roleNames } = await getUserRoles();
@@ -521,6 +615,13 @@ export default function AdminPage() {
 
     void fetchDeletionAudit(deletionAuditRange);
   }, [authorized, deletionAuditRange, fetchDeletionAudit]);
+
+  useEffect(() => {
+    if (!authorized) {
+      return;
+    }
+    void fetchPendingClosures();
+  }, [authorized, fetchPendingClosures]);
 
   useEffect(() => {
     if (!authorized) {
@@ -902,7 +1003,16 @@ export default function AdminPage() {
                           {operationsDetailPagination.customersPage.map((customer) => (
                             <div
                               key={customer.id}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => router.push(`/manager/customers/${customer.id}`)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  router.push(`/manager/customers/${customer.id}`);
+                                }
+                              }}
+                              className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-lime-300 hover:bg-lime-50"
                             >
                               <div className="font-semibold text-slate-900">
                                 {[customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
@@ -912,6 +1022,7 @@ export default function AdminPage() {
                                 {customer.email || "No email"}{" "}
                                 {customer.phone ? `• ${customer.phone}` : ""}
                               </div>
+                              <div className="mt-1 text-xs font-semibold text-lime-700">Open customer details</div>
                             </div>
                           ))}
                         </div>
@@ -927,18 +1038,61 @@ export default function AdminPage() {
                         {operationsDetailPagination.jobsPage.map((job) => (
                           <div
                             key={job.id}
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => router.push(`/manager/jobs/${job.id}`)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                router.push(`/manager/jobs/${job.id}`);
+                              }
+                            }}
+                            className="cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-lime-300 hover:bg-lime-50"
                           >
+                            {(() => {
+                              const customer = job.customer?.[0];
+                              const vehicle = job.vehicles?.[0];
+                              return (
+                                <>
                             <div className="font-semibold text-slate-900">
                               Job #{job.business_job_number || job.id.slice(0, 8)}
                             </div>
                             <div className="text-xs text-slate-600">
-                              {(job.status || "unknown").replaceAll("_", " ")}
-                              {job.priority ? ` • ${job.priority} priority` : ""}
-                              {job.scheduled_start
-                                ? ` • ${new Date(job.scheduled_start).toLocaleString()}`
-                                : ""}
+                              Customer:{" "}
+                              {`${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.trim() ||
+                                "Unknown customer"}
                             </div>
+                            <div className="text-xs text-slate-600">
+                              Vehicle:{" "}
+                              {[
+                                vehicle?.year,
+                                vehicle?.make,
+                                vehicle?.model,
+                                vehicle?.engine_size,
+                                vehicle?.license_plate,
+                              ]
+                                .filter(Boolean)
+                                .join(" ") || "No vehicle details"}
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              Work needed:{" "}
+                              {(job.service_description || job.service_type || "General service").replaceAll(
+                                "_",
+                                " ",
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              {operationsDetailView === "openJobs"
+                                ? job.assigned_tech_user_id
+                                  ? "Assignment: Assigned"
+                                  : "Assignment: Unassigned"
+                                : operationsDetailView === "techAssigned"
+                                ? "Assignment: Assigned to technician"
+                                : "Assignment: Pending assignment"}
+                            </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
@@ -1203,6 +1357,68 @@ export default function AdminPage() {
           {message && (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               {message}
+            </div>
+          )}
+        </div>
+
+        <div className="otg-app-panel">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Deleted Accounts</h2>
+              <p className="mt-2 text-slate-600">
+                Customer delete actions land here first. Use this section to finalize actual deletion.
+              </p>
+            </div>
+            <button type="button" onClick={() => void fetchPendingClosures()} className="otg-btn otg-btn-dark">
+              Refresh Queue
+            </button>
+          </div>
+
+          {pendingClosuresLoading ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Loading pending account deletions...
+            </div>
+          ) : pendingClosuresMessage ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {pendingClosuresMessage}
+            </div>
+          ) : pendingClosures.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              No pending customer account deletions.
+            </div>
+          ) : (
+            <div className="mt-6 space-y-3">
+              {pendingClosures.map((row) => {
+                const customerName =
+                  `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() || "Unnamed customer";
+                return (
+                  <div key={row.id} className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">{customerName}</p>
+                        <p>{row.email || "No email on file"}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Requested:{" "}
+                          {row.account_closure_requested_at
+                            ? new Date(row.account_closure_requested_at).toLocaleString()
+                            : "Unknown"}
+                        </p>
+                        {row.account_closure_request_note ? (
+                          <p className="mt-1 text-xs text-slate-600">Note: {row.account_closure_request_note}</p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleFinalizeClosure(row)}
+                        disabled={finalizingClosureId === row.id}
+                        className="otg-btn bg-red-700 text-white hover:bg-red-800 disabled:opacity-50"
+                      >
+                        {finalizingClosureId === row.id ? "Deleting..." : "Delete Account"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

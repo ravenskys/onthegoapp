@@ -361,18 +361,6 @@ export default function CustomerDashboardPage() {
           />
         </div>
 
-        <div className="rounded-[24px] border border-lime-400/30 bg-lime-400/10 px-4 py-3 text-sm text-slate-800 sm:px-5">
-          <span className="font-semibold text-slate-900">Best flow: </span>
-          <a href="/customer/book" className="font-semibold text-lime-700 underline-offset-2 hover:underline">
-            Get service
-          </a>{" "}
-          to choose book/request and vehicle first, then finish in scheduler. Use{" "}
-          <a href="/customer/schedule" className="font-semibold text-lime-700 underline-offset-2 hover:underline">
-            full scheduler
-          </a>{" "}
-          directly only when you already know the visit details.
-        </div>
-
         <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="min-w-0 space-y-4 sm:space-y-6">
             <div className="otg-card min-w-0 overflow-hidden p-0">
@@ -514,7 +502,7 @@ export default function CustomerDashboardPage() {
                       href="/customer/schedule"
                       className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-800 transition hover:border-lime-300 hover:bg-lime-50 sm:w-auto lg:w-full"
                     >
-                      Open full scheduler
+                      Schedule service
                     </a>
                     <button
                       type="button"

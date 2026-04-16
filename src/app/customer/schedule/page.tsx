@@ -26,6 +26,7 @@ import {
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
+import { getMileageInputWarning } from "@/lib/input-validation-feedback";
 import {
   CUSTOMER_OTHER_SERVICE_ID,
   REPAIR_OTHER_SERVICE_CODE,
@@ -312,6 +313,7 @@ function CustomerSchedulePageContent() {
   const [newVehicleModel, setNewVehicleModel] = useState("");
   const [newVehicleEngineSize, setNewVehicleEngineSize] = useState("");
   const [newVehicleMileage, setNewVehicleMileage] = useState("");
+  const [newVehicleMileageFormatHint, setNewVehicleMileageFormatHint] = useState<string | null>(null);
   const [newVehicleVin, setNewVehicleVin] = useState("");
   const [newVehicleLicensePlate, setNewVehicleLicensePlate] = useState("");
   const [newVehicleUseCustomMake, setNewVehicleUseCustomMake] = useState(false);
@@ -967,17 +969,9 @@ function CustomerSchedulePageContent() {
   return (
     <CustomerPortalShell
       title="Schedule Service"
-      subtitle="Use this when you already have service details. For the guided first step, start from Get service."
+      subtitle="Choose service details and an available time."
       onLogout={handleLogout}
     >
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        <span className="font-semibold text-slate-900">Flow tip: </span>
-        Need help choosing request type and vehicle first? Start at{" "}
-        <a href="/customer/book" className="font-semibold text-lime-700 underline-offset-2 hover:underline">
-          Get service
-        </a>
-        . This page stays the full scheduler for direct use.
-      </div>
       {searchParams.get("guided") === "1" ? (
         <div className="rounded-2xl border border-lime-400/35 bg-lime-400/10 px-4 py-3 text-sm text-slate-800 shadow-sm">
           <span className="font-semibold text-slate-900">Guided setup: </span>
@@ -1231,10 +1225,17 @@ function CustomerSchedulePageContent() {
                       type="text"
                       inputMode="numeric"
                       value={newVehicleMileage}
-                      onChange={(event) => setNewVehicleMileage(formatMileage(event.target.value))}
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        setNewVehicleMileageFormatHint(getMileageInputWarning(raw));
+                        setNewVehicleMileage(formatMileage(raw));
+                      }}
                       className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-950"
                       placeholder="75,000"
                     />
+                    {newVehicleMileageFormatHint ? (
+                      <p className="mt-1 text-xs text-amber-800">{newVehicleMileageFormatHint}</p>
+                    ) : null}
                   </div>
                   <div className="mt-4">
                     <Button

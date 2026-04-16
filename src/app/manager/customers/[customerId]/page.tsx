@@ -16,6 +16,11 @@ import {
   normalizeVin,
   normalizeYear,
 } from "@/lib/input-formatters";
+import {
+  getEmailInputWarning,
+  getPhoneExtensionInputWarning,
+  getPhoneInputWarning,
+} from "@/lib/input-validation-feedback";
 import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
@@ -122,6 +127,9 @@ export default function CustomerDetailPage() {
   const [phone, setPhone] = useState("");
   const [phoneExtension, setPhoneExtension] = useState("");
   const [taxExempt, setTaxExempt] = useState(false);
+  const [emailFormatHint, setEmailFormatHint] = useState<string | null>(null);
+  const [phoneFormatHint, setPhoneFormatHint] = useState<string | null>(null);
+  const [phoneExtensionFormatHint, setPhoneExtensionFormatHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!customerId) return;
@@ -406,9 +414,16 @@ export default function CustomerDetailPage() {
               <Input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(normalizeEmail(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setEmailFormatHint(getEmailInputWarning(raw));
+                  setEmail(normalizeEmail(raw));
+                }}
                 placeholder="customer@email.com"
               />
+              {emailFormatHint ? (
+                <p className="text-xs text-amber-800">{emailFormatHint}</p>
+              ) : null}
               <p className="text-xs text-slate-500">
                 Required. We use email to match customer records, portal access, and service history.
               </p>
@@ -421,7 +436,11 @@ export default function CustomerDetailPage() {
                   type="tel"
                   className="min-w-0 flex-1"
                   value={phone}
-                  onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setPhoneFormatHint(getPhoneInputWarning(raw));
+                    setPhone(formatPhoneNumber(raw));
+                  }}
                   placeholder="(555) 555-5555"
                   autoComplete="tel-national"
                 />
@@ -431,13 +450,23 @@ export default function CustomerDetailPage() {
                     type="text"
                     inputMode="numeric"
                     value={phoneExtension}
-                    onChange={(e) => setPhoneExtension(normalizePhoneExtension(e.target.value))}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setPhoneExtensionFormatHint(getPhoneExtensionInputWarning(raw));
+                      setPhoneExtension(normalizePhoneExtension(raw));
+                    }}
                     placeholder="Ext."
                     maxLength={10}
                     autoComplete="tel-extension"
                   />
                 </div>
               </div>
+              {phoneFormatHint ? (
+                <p className="text-xs text-amber-800">{phoneFormatHint}</p>
+              ) : null}
+              {phoneExtensionFormatHint ? (
+                <p className="text-xs text-amber-800">{phoneExtensionFormatHint}</p>
+              ) : null}
             </div>
 
             <div className="space-y-2 md:col-span-2">

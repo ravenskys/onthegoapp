@@ -9,6 +9,9 @@ export type CustomerPortalRecord = {
   phone_extension?: string | null;
   email?: string | null;
   auth_user_id?: string | null;
+  account_closure_requested_at?: string | null;
+  account_closure_request_status?: string | null;
+  account_closure_request_note?: string | null;
 };
 
 export type CustomerPortalVehicle = {
@@ -85,6 +88,10 @@ export type CustomerPortalData = {
   addresses: CustomerPortalAddress[];
   latestInspection: CustomerPortalInspection;
   latestInspectionPhotoCount: number;
+  /** Most recent inspection per account vehicle id (for multi-vehicle service progress). */
+  latestInspectionByVehicleId: Record<string, CustomerPortalInspection | null>;
+  /** Photo counts keyed by inspection id (workflow "photos" step). */
+  inspectionPhotoCountsById: Record<string, number>;
   reports: CustomerPortalReport[];
   reportGroups: {
     key: string;
@@ -100,6 +107,8 @@ const getEmptyCustomerPortalData = (): CustomerPortalData => ({
   addresses: [],
   latestInspection: null,
   latestInspectionPhotoCount: 0,
+  latestInspectionByVehicleId: {},
+  inspectionPhotoCountsById: {},
   reports: [],
   reportGroups: [],
   photosByInspection: {},
@@ -190,10 +199,22 @@ export const groupReportsByVehicle = (reports: CustomerPortalReport[]) => {
     reportGroups.get(key)?.reports.push(report);
   });
 
-  return Array.from(reportGroups.values()).sort((a, b) => {
-    const aDate = a.reports[0]?.created_at ? new Date(a.reports[0].created_at).getTime() : 0;
-    const bDate = b.reports[0]?.created_at ? new Date(b.reports[0].created_at).getTime() : 0;
-    return bDate - aDate;
+  const groups = Array.from(reportGroups.values()).map((g) => ({
+    ...g,
+    reports: [...g.reports].sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    }),
+  }));
+
+  return groups.sort((a, b) => {
+    const labelA = buildVehicleLabel(a.vehicle).toLowerCase();
+    const labelB = buildVehicleLabel(b.vehicle).toLowerCase();
+    if (labelA !== labelB) {
+      return labelA.localeCompare(labelB);
+    }
+    return a.key.localeCompare(b.key);
   });
 };
 
@@ -470,6 +491,8 @@ export const fetchCustomerPortalData = async (
 
   const addresses = (addressRows || []) as CustomerPortalAddress[];
 
+  const INSPECTION_HISTORY_LIMIT = 100;
+
   const { data: inspectionRows, error: inspectionError } = await supabase
     .from("inspections")
     .select(`
@@ -496,28 +519,72 @@ export const fetchCustomerPortalData = async (
     `)
     .eq("customer_id", customer.id)
     .order("created_at", { ascending: false })
-    .limit(1);
+    .limit(INSPECTION_HISTORY_LIMIT);
 
   if (inspectionError) {
     throw inspectionError;
   }
 
-  const latestInspection =
-    (inspectionRows?.[0] as CustomerPortalInspection | undefined) ?? null;
+  const inspectionsOrdered = (inspectionRows || []) as CustomerPortalInspection[];
+  const latestInspection = inspectionsOrdered[0] ?? null;
 
-  let latestInspectionPhotoCount = 0;
+  const latestByVehicleId = new Map<string, CustomerPortalInspection>();
+  for (const inv of inspectionsOrdered) {
+    if (!inv) {
+      continue;
+    }
+    const vid = getSingleRelation(inv.vehicles)?.id;
+    if (!vid) {
+      continue;
+    }
+    if (!latestByVehicleId.has(vid)) {
+      latestByVehicleId.set(vid, inv);
+    }
+  }
 
+  const latestInspectionByVehicleId: Record<string, CustomerPortalInspection | null> = {};
+  for (const v of vehicles) {
+    const vid = v.id;
+    if (!vid) {
+      continue;
+    }
+    latestInspectionByVehicleId[vid] = latestByVehicleId.get(vid) ?? null;
+  }
+
+  const inspectionIdsForPhotoCounts = new Set<string>();
   if (latestInspection?.id) {
-    const { count, error: latestPhotoCountError } = await supabase
-      .from("inspection_photos")
-      .select("id", { count: "exact", head: true })
-      .eq("inspection_id", latestInspection.id);
+    inspectionIdsForPhotoCounts.add(latestInspection.id);
+  }
+  for (const inv of latestByVehicleId.values()) {
+    if (inv?.id) {
+      inspectionIdsForPhotoCounts.add(inv.id);
+    }
+  }
 
-    if (latestPhotoCountError) {
-      throw latestPhotoCountError;
+  let inspectionPhotoCountsById: Record<string, number> = {};
+
+  if (inspectionIdsForPhotoCounts.size > 0) {
+    const { data: photoIdRows, error: photoIdsError } = await supabase
+      .from("inspection_photos")
+      .select("inspection_id")
+      .in("inspection_id", [...inspectionIdsForPhotoCounts]);
+
+    if (photoIdsError) {
+      throw photoIdsError;
     }
 
-    latestInspectionPhotoCount = count ?? 0;
+    inspectionPhotoCountsById = (photoIdRows || []).reduce<Record<string, number>>(
+      (acc, row: { inspection_id: string }) => {
+        acc[row.inspection_id] = (acc[row.inspection_id] ?? 0) + 1;
+        return acc;
+      },
+      {},
+    );
+  }
+
+  let latestInspectionPhotoCount = 0;
+  if (latestInspection?.id) {
+    latestInspectionPhotoCount = inspectionPhotoCountsById[latestInspection.id] ?? 0;
   }
 
   const { data: reportRows, error: reportError } = await supabase
@@ -569,6 +636,8 @@ export const fetchCustomerPortalData = async (
       addresses,
       latestInspection,
       latestInspectionPhotoCount,
+      latestInspectionByVehicleId,
+      inspectionPhotoCountsById,
       reports,
       reportGroups,
       photosByInspection: {},
@@ -624,6 +693,8 @@ export const fetchCustomerPortalData = async (
     addresses,
     latestInspection,
     latestInspectionPhotoCount,
+    latestInspectionByVehicleId,
+    inspectionPhotoCountsById,
     reports,
     reportGroups,
     photosByInspection,

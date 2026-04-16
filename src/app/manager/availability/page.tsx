@@ -419,19 +419,19 @@ export default function ManagerAvailabilityPage() {
   }
 
   return (
-    <div className="otg-manager-shell otg-theme-light min-h-screen bg-[#eef3e8] p-4 text-slate-950 sm:p-6">
+    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6 text-slate-950">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="otg-surface-dark overflow-hidden rounded-[2rem] bg-[#10180f] p-5 text-white shadow-[0_24px_70px_rgba(15,23,42,0.25)] sm:p-7">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="max-w-3xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-lime-300/40 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-lime-200">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-700">
                 <CalendarClock className="h-4 w-4" />
                 Employee Availability
               </div>
-              <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
-                Build regular weekly schedules once.
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Employee Availability
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-200 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
                 Save or update an employee&apos;s normal working hours across a date range. The scheduling calendar reads these same availability blocks.
               </p>
             </div>
@@ -453,7 +453,7 @@ export default function ManagerAvailabilityPage() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <Card className="border-0 bg-white shadow-sm">
+          <Card>
             <CardContent className="space-y-6 p-5 sm:p-7">
               <div className="grid gap-4 lg:grid-cols-[1fr_180px_180px]">
                 <div className="space-y-2">
@@ -515,7 +515,7 @@ export default function ManagerAvailabilityPage() {
               <div className="rounded-[1.5rem] border border-lime-200 bg-lime-50 p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-black text-slate-950">Weekly Hours</h2>
+                    <h2 className="text-xl font-bold text-slate-950">Weekly Hours</h2>
                     <p className="mt-1 text-sm text-slate-700">
                       Turn on the days this employee normally works, then set each day&apos;s hours.
                     </p>
@@ -566,7 +566,7 @@ export default function ManagerAvailabilityPage() {
                         <button
                           type="button"
                           onClick={() => toggleWeeklyScheduleDay(day.weekday)}
-                          className={`rounded-xl border px-4 py-3 text-left text-sm font-black transition ${
+                          className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
                             day.enabled
                               ? "border-lime-600 bg-lime-300 text-black"
                               : "border-slate-300 bg-white text-slate-700 hover:border-lime-400"
@@ -632,10 +632,10 @@ export default function ManagerAvailabilityPage() {
           </Card>
 
           <div className="space-y-6">
-            <Card className="border-0 bg-white shadow-sm">
+            <Card>
               <CardContent className="space-y-4 p-5">
                 <div>
-                  <h2 className="text-xl font-black text-slate-950">Current Range</h2>
+                  <h2 className="text-xl font-bold text-slate-950">Current Range</h2>
                   <p className="mt-1 text-sm text-slate-600">
                     {selectedTechnician
                       ? `${getTechnicianLabel(selectedTechnician)} has ${selectedEmployeeBlocks.length} regular availability block(s) in this range.`
@@ -647,7 +647,7 @@ export default function ManagerAvailabilityPage() {
                   {weeklySummary.map((day) => (
                     <div key={day.value} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-black text-slate-950">{day.label}</div>
+                        <div className="font-semibold text-slate-950">{day.label}</div>
                         <div className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700">
                           {day.count} block{day.count === 1 ? "" : "s"}
                         </div>
@@ -673,11 +673,11 @@ export default function ManagerAvailabilityPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-0 bg-white shadow-sm">
+            <Card>
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2 text-slate-950">
                   <UserRound className="h-5 w-5" />
-                  <h2 className="text-xl font-black">How This Updates Calendar</h2>
+                  <h2 className="text-xl font-bold">How This Updates Calendar</h2>
                 </div>
                 <p className="text-sm leading-6 text-slate-600">
                   The schedule calendar displays rows from `technician_schedule_blocks`. Saving a weekly schedule here replaces the employee&apos;s active regular availability in the selected range, then creates fresh blocks for the new weekly hours.
