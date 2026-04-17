@@ -3,6 +3,6 @@ export const siteNavItems = [
   { href: "/services", label: "Services" },
   { href: "/fleet-services", label: "Fleet Services" },
   { href: "/about", label: "About" },
-  { href: "/contact", label: "Book Now" },
+  { href: "/contact", label: "Contact Us" },
   { href: "/portal", label: "Login" },
 ];

@@ -41,6 +41,32 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
   - **`globals.css`**: outline **Badge** text readable on `otg-portal-dark` panels.
 - **Quick resume files:** `src/app/tech/jobs/page.tsx`, `src/app/tech/jobs/[jobId]/workflow/page.tsx`, `src/lib/job-customer-updates.ts`, `supabase/migrations/` files listed above.
 
+## Session checkpoint — 2026-04-17 (site header + customer portal shell)
+- **Goal:** One continuous experience between the marketing site and signed-in customers: same header/footer, customer tab row, **Contact Us** naming, booking entry points, and multi-portal switching without the old `/portal` chooser page.
+- **Layout / chrome**
+  - `src/app/customer/layout.tsx` wraps customer routes in **`PublicSiteLayout`** (`SiteHeader` + `SiteFooter`) with `activePath` from `usePathname()`.
+  - `customer/login` no longer nests its own `PublicSiteLayout` (parent provides it).
+  - **`CustomerPortalShell`** + **`CustomerPortalPageHeader`**: light, marketing-aligned cards (no duplicate logo/tabs in shell; portal tabs live in `SiteHeader`).
+  - **`customer/dashboard`**: same page header pattern; sidebar tiles use light surfaces (no duplicate dark portal header block).
+- **Main nav (`SiteHeader`, `site-config.ts`)**
+  - **Contact Us** label (replaces “Book Now”); **logged-in** link label **My Portal**; `getPostLoginRoute` → **`getPrimaryPortalRoute`** only (no redirect to `/portal`).
+  - **Customers** (`roles.includes("customer")`): hide duplicate **Contact Us** in the top bar (scheduler + sub-tab still reach contact).
+  - **My Portal** is shown for all signed-in users again (including multi-role); links to primary portal home.
+  - Customer **sub-strip** (`PortalTopNav` `section="customer"`): horizontal tabs from `portal-nav-config`, **Portals** dropdown + **Log out**; tab order is **tabs → Portals → Log out**.
+- **Portals / `/portal`**
+  - **`PortalSwitcherDropdown`**: shared switcher; **`BackToPortalButton`** renders it (light trigger on tech/manager/admin headers).
+  - **`/portal`**: redirects signed-in users to **`getPrimaryPortalRoute`** (`src/app/portal/page.tsx`).
+  - **`getUserRoles`** in `portal-auth.ts`: **single in-flight** promise to reduce browser **Web Locks** contention with concurrent `supabase.auth.getUser()` (`AbortError` / “steal” lock noise).
+  - Helpers: `PORTAL_DESTINATION_HOME`, `PORTAL_DESTINATION_LABEL`, `getPortalDestinationFromPathname`.
+- **Contact / booking UX**
+  - **`src/lib/site-booking.ts`**: `getBookNowHref`, `isBookNowNavActive`; **`BookNowLink`** on home/services/fleet/about for CTAs (guests → `/contact`, customers → `/customer/schedule`).
+  - **`portal-nav-config`**: **Contact Us** tab → `/contact`.
+  - **`contact/layout.tsx`**: document title **Contact Us** (`absolute`); hero copy **Contact / Us**.
+- **Dropdown styling**
+  - Portals menu panel matches **`.otg-site-header`**: `var(--otg-black)`, lime bottom accent, white/lime pill states; `z-[1100]`, opens **`side="top"`** above the tab bar where needed; `overflow-visible` on header strip containers.
+- **Files to resume:** `SiteHeader.tsx`, `PortalTopNav.tsx`, `PortalSwitcherDropdown.tsx`, `portal-auth.ts`, `portal-nav-config.ts`, `site-booking.ts`, `BookNowLink.tsx`, `customer/layout.tsx`, `CustomerPortalShell.tsx`, `CustomerPortalPageHeader.tsx`, `PortalRouteGuard.tsx`, `app/portal/page.tsx`.
+- **Verify after pull:** `npx tsc --noEmit`; smoke: guest vs customer **Contact Us** / **BookNowLink**; multi-role **Portals** + **My Portal**; `/portal` redirect.
+
 ## Next session — start here
 - **First:** Confirm Vercel production shows deploy for commit `a3a611a` (or newer). Apply the three **20260416143… / 20260416150… / 20260416180…** migrations on **hosted** Supabase; smoke-test tech workflow, customer updates, and account closure RPCs.
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.

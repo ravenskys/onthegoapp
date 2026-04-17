@@ -30,6 +30,11 @@ export const portalNavGroups: PortalNavGroup[] = [
       { href: "/customer/progress", label: "Service Progress" },
       { href: "/customer/reports", label: "Customer Report History" },
       { href: "/customer/account", label: "Account" },
+      {
+        href: "/contact",
+        label: "Contact Us",
+        matchPrefixes: ["/contact"],
+      },
     ],
   },
   {

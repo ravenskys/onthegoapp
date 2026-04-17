@@ -12,8 +12,8 @@ export default function ContactPage() {
   return (
     <PublicSiteLayout activePath="/contact">
       <PublicPageHero
-        title="Book"
-        accent="Now"
+        title="Contact"
+        accent="Us"
         body="Schedule mobile maintenance, inspections, or fleet support and we will follow up to confirm service details."
       />
 

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 
@@ -99,9 +100,9 @@ export default function AboutPage() {
             Whether you need personal vehicle service or support for working
             vehicles, we can help bring maintenance to you.
           </p>
-          <Link href="/contact" className="otg-btn otg-btn-primary">
+          <BookNowLink className="otg-btn otg-btn-primary">
             Schedule Service
-          </Link>
+          </BookNowLink>
         </div>
       </section>
     </PublicSiteLayout>

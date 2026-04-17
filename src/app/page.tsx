@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 
 export default function HomePage() {
@@ -18,9 +19,9 @@ export default function HomePage() {
             </p>
 
             <div className="otg-hero-buttons">
-              <Link href="/contact" className="otg-btn otg-btn-primary">
+              <BookNowLink className="otg-btn otg-btn-primary">
                 Schedule Service
-              </Link>
+              </BookNowLink>
               <Link href="/services" className="otg-btn otg-btn-outline-dark">
                 View Services
               </Link>
@@ -171,9 +172,9 @@ export default function HomePage() {
             Schedule maintenance for your personal vehicle or fleet and let us
             bring dependable service directly to you.
           </p>
-          <Link href="/contact" className="otg-btn otg-btn-primary">
+          <BookNowLink className="otg-btn otg-btn-primary">
             Book an Appointment
-          </Link>
+          </BookNowLink>
         </div>
       </section>
 
@@ -208,9 +209,9 @@ export default function HomePage() {
                 portal if you already have access.
               </p>
               <div className="otg-button-row">
-                <Link href="/contact" className="otg-btn otg-btn-primary">
+                <BookNowLink className="otg-btn otg-btn-primary">
                   Request Appointment
-                </Link>
+                </BookNowLink>
                 <Link href="/portal" className="otg-btn otg-btn-secondary">
                   Open Portal
                 </Link>

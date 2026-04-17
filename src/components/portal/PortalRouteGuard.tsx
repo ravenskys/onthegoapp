@@ -79,8 +79,9 @@ export function PortalRouteGuard({
 
   if (!ready) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-600" aria-hidden />
+        <p className="text-sm text-slate-600">Loading…</p>
       </div>
     );
   }

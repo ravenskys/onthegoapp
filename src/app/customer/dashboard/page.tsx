@@ -28,13 +28,8 @@ import {
   type CustomerPortalVehicle,
   type CustomerPortalData,
 } from "@/lib/customer-portal";
-import { BrandLogo } from "@/components/brand/BrandLogo";
+import { CustomerPortalPageHeader } from "@/components/customer/CustomerPortalPageHeader";
 import { getErrorDebugFields, getErrorMessage } from "@/lib/tech-inspection";
-import {
-  BackToPortalButton,
-  headerActionButtonClassName,
-} from "@/components/portal/BackToPortalButton";
-import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
 const EMPTY_VEHICLES: CustomerPortalVehicle[] = [];
 
@@ -231,8 +226,8 @@ export default function CustomerDashboardPage() {
 
   if (loading) {
     return (
-      <div className="otg-page">
-        <div className="otg-container">
+      <div className="otg-section pb-12 pt-8">
+        <div className="otg-site-container">
           <div className="otg-card p-8">
             <p className="otg-body">Loading customer portal...</p>
           </div>
@@ -243,8 +238,8 @@ export default function CustomerDashboardPage() {
 
   if (loadError) {
     return (
-      <div className="otg-page">
-        <div className="otg-container max-w-3xl">
+      <div className="otg-section pb-12 pt-8">
+        <div className="otg-site-container max-w-3xl">
           <div className="otg-card border-red-200 bg-red-50/80 p-8">
             <h1 className="otg-section-title text-red-950">Something went wrong</h1>
             <p className="otg-body mt-3 text-red-900">{loadError}</p>
@@ -263,8 +258,8 @@ export default function CustomerDashboardPage() {
 
   if (!customer) {
     return (
-      <div className="otg-page">
-        <div className="otg-container max-w-3xl">
+      <div className="otg-section pb-12 pt-8">
+        <div className="otg-site-container max-w-3xl">
           <div className="otg-card p-8">
             <h1 className="otg-section-title">Customer account not linked yet</h1>
             <p className="otg-body mt-3">
@@ -282,8 +277,8 @@ export default function CustomerDashboardPage() {
   }
 
   return (
-    <div className="otg-page otg-portal-dark overflow-x-hidden">
-      <div className="otg-container min-w-0 space-y-4 sm:space-y-6">
+    <div className="otg-section overflow-x-hidden pb-12 pt-6 sm:pt-8">
+      <div className="otg-site-container min-w-0 space-y-4 sm:space-y-6">
         {showSignupSuccessMessage ? (
           <div
             className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm"
@@ -294,36 +289,11 @@ export default function CustomerDashboardPage() {
           </div>
         ) : null}
 
-        <div className="otg-card min-w-0 overflow-hidden p-0">
-          <div className="flex flex-col gap-5 border-b border-lime-500/20 bg-[linear-gradient(135deg,rgba(57,255,20,0.18),rgba(7,17,10,0.88)_35%,rgba(7,17,10,0.96)_100%)] px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between md:px-8">
-            <div className="space-y-3">
-              <BrandLogo priority className="max-w-[190px] sm:max-w-[220px]" surface="dark" />
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                  Customer Vehicle Center
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm text-lime-50/85">
-                  Start with the overview cards below—each one opens the right area.
-                  Your vehicles and last visit stay in the panels underneath.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
-              <BackToPortalButton className="w-full sm:w-auto" />
-              <button onClick={handleLogout} className={`${headerActionButtonClassName} w-full sm:w-auto`}>
-                Log Out
-              </button>
-            </div>
-          </div>
-
-          <div className="px-4 py-4 sm:px-6 md:px-8">
-            <PortalTopNav
-              section="customer"
-              className="!border-lime-500/25 !bg-[#0d1610]"
-            />
-          </div>
-        </div>
+        <CustomerPortalPageHeader
+          title="Customer Vehicle Center"
+          subtitle="Start with the overview cards below—each one opens the right area. Your vehicles and last visit stay in the panels underneath."
+          onLogout={handleLogout}
+        />
 
         <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
           <OverviewHubTile
@@ -364,22 +334,22 @@ export default function CustomerDashboardPage() {
         <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="min-w-0 space-y-4 sm:space-y-6">
             <div className="otg-card min-w-0 overflow-hidden p-0">
-              <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(57,255,20,0.24),transparent_40%),linear-gradient(180deg,rgba(12,22,15,0.98),rgba(9,16,11,0.98))] p-4 sm:p-6">
+              <div className="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 sm:p-6">
                 <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="rounded-[22px] bg-lime-400/90 p-3 text-black shadow-[0_0_24px_rgba(57,255,20,0.24)] sm:rounded-[24px] sm:p-4">
+                  <div className="rounded-[22px] bg-lime-400/90 p-3 text-black shadow-sm sm:rounded-[24px] sm:p-4">
                     <CarFront className="h-7 w-7 sm:h-9 sm:w-9" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xl font-semibold text-white sm:text-2xl">
+                    <div className="text-xl font-semibold text-slate-900 sm:text-2xl">
                       {[customer.first_name, customer.last_name]
                         .filter(Boolean)
                         .join(" ") || "Customer"}
                     </div>
-                    <div className="mt-2 text-sm text-lime-50/80">
+                    <div className="mt-2 text-sm text-slate-600">
                       {vehicles.length} vehicle{vehicles.length === 1 ? "" : "s"} on
                       file
                     </div>
-                    <div className="mt-3 inline-flex max-w-full rounded-full border border-lime-400/40 bg-lime-400/10 px-3 py-1 text-[11px] font-semibold uppercase leading-5 tracking-[0.12em] text-lime-200 sm:text-xs sm:tracking-[0.18em]">
+                    <div className="mt-3 inline-flex max-w-full rounded-full border border-lime-400/50 bg-lime-50 px-3 py-1 text-[11px] font-semibold uppercase leading-5 tracking-[0.12em] text-lime-900 sm:text-xs sm:tracking-[0.18em]">
                       {completedReportsCount
                         ? "Report history available"
                         : "Awaiting first report"}
@@ -388,7 +358,7 @@ export default function CustomerDashboardPage() {
                 </div>
 
                 <div className="mt-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-lime-200">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Vehicles on Your Account
                   </div>
                   <div className="-mx-1 mt-3 flex max-w-full gap-3 overflow-x-auto px-1 pb-2">
@@ -400,15 +370,15 @@ export default function CustomerDashboardPage() {
                             `${vehicle.year}-${vehicle.make}-${vehicle.model}-${vehicle.vin || vehicle.license_plate || ""}`
                           }
                           href={`/customer/reports?vehicle=${encodeURIComponent(buildVehicleReportKey(vehicle))}`}
-                          className="min-w-[170px] max-w-[78vw] rounded-[22px] border border-lime-400/25 bg-white/10 p-3 backdrop-blur-sm transition-colors hover:border-lime-300/60 hover:bg-white/15 sm:min-w-[220px] sm:p-4"
+                          className="min-w-[170px] max-w-[78vw] rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm transition-colors hover:border-lime-300 hover:bg-lime-50/50 sm:min-w-[220px] sm:p-4"
                         >
-                          <div className="text-sm font-semibold text-white">
+                          <div className="text-sm font-semibold text-slate-900">
                             {buildVehicleLabel(vehicle)}
                           </div>
-                          <div className="mt-2 text-xs text-lime-50/80">
+                          <div className="mt-2 text-xs text-slate-600">
                             {formatVehicleMiles(vehicle.mileage)}
                           </div>
-                          <div className="mt-1 text-xs text-lime-50/80">
+                          <div className="mt-1 text-xs text-slate-600">
                             {buildVehicleDetailLabel(vehicle)}
                           </div>
                           <div className="mt-3 inline-flex rounded-full border border-lime-400/35 bg-lime-400 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-black">
@@ -419,9 +389,9 @@ export default function CustomerDashboardPage() {
                     ) : (
                       <a
                         href={ADD_VEHICLE_ACCOUNT_HREF}
-                        className="block w-full min-w-[170px] rounded-[22px] border border-lime-400/25 bg-white/10 px-4 py-3 text-left text-sm leading-relaxed text-lime-50/80 transition-colors hover:border-lime-300/60 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime-300"
+                        className="block w-full min-w-[170px] rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm leading-relaxed text-slate-700 transition-colors hover:border-lime-300 hover:bg-lime-50/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime-400"
                       >
-                        <span className="font-semibold text-lime-100">No vehicles on file.</span>{" "}
+                        <span className="font-semibold text-slate-900">No vehicles on file.</span>{" "}
                         Click here to add a vehicle — opens the Vehicles section on Account.
                       </a>
                     )}

@@ -1,6 +1,44 @@
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 export type PortalRole = "customer" | "technician" | "manager" | "admin";
+
+type UserRolesResult = {
+  user: User | null;
+  roles: PortalRole[];
+};
+
+/**
+ * Supabase `auth.getUser()` uses the Web Locks API in the browser. Many components
+ * calling `getUserRoles()` at once can trigger "Lock broken by another request
+ * with the 'steal' option" (AbortError). Share one in-flight request instead.
+ */
+let inflightUserRoles: Promise<UserRolesResult> | null = null;
+
+async function loadUserRoles(): Promise<UserRolesResult> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { user: null, roles: [] as PortalRole[] };
+  }
+
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id);
+
+  if (error || !data) {
+    return { user, roles: [] as PortalRole[] };
+  }
+
+  return {
+    user,
+    roles: getDistinctRoles(data.map((row) => row.role as PortalRole)),
+  };
+}
 export type PortalDestination = "customer" | "tech" | "manager" | "admin";
 
 /**
@@ -41,29 +79,16 @@ export const getAccessiblePortals = (roles: PortalRole[]) =>
 export const hasMultiplePortalAccess = (roles: PortalRole[]) =>
   getAccessiblePortals(roles).length > 1;
 
-export const getUserRoles = async () => {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { user: null, roles: [] as PortalRole[] };
+export const getUserRoles = async (): Promise<UserRolesResult> => {
+  if (inflightUserRoles) {
+    return inflightUserRoles;
   }
 
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", user.id);
+  inflightUserRoles = loadUserRoles().finally(() => {
+    inflightUserRoles = null;
+  });
 
-  if (error || !data) {
-    return { user, roles: [] as PortalRole[] };
-  }
-
-  return {
-    user,
-    roles: getDistinctRoles(data.map((row) => row.role as PortalRole)),
-  };
+  return inflightUserRoles;
 };
 
 export const getPrimaryPortalRoute = (roles: PortalRole[]) => {
@@ -74,13 +99,45 @@ export const getPrimaryPortalRoute = (roles: PortalRole[]) => {
   return "/customer/login";
 };
 
-export const getPostLoginRoute = (roles: PortalRole[]) => {
-  if (hasMultiplePortalAccess(roles)) {
-    return "/portal";
-  }
+/**
+ * After login, send users to their highest-priority portal home.
+ * Multi-role switching uses the **Portals** menu in the header (not `/portal`).
+ */
+export const getPostLoginRoute = (roles: PortalRole[]) =>
+  getPrimaryPortalRoute(roles);
 
-  return getPrimaryPortalRoute(roles);
+/** Home URL for each portal area (used by nav / switcher). */
+export const PORTAL_DESTINATION_HOME: Record<PortalDestination, string> = {
+  customer: "/customer/dashboard",
+  tech: "/tech",
+  manager: "/manager",
+  admin: "/admin",
 };
+
+export const PORTAL_DESTINATION_LABEL: Record<PortalDestination, string> = {
+  customer: "Customer",
+  tech: "Technician",
+  manager: "Manager",
+  admin: "Admin",
+};
+
+export function getPortalDestinationFromPathname(
+  pathname: string,
+): PortalDestination | null {
+  if (pathname.startsWith("/customer")) {
+    return "customer";
+  }
+  if (pathname.startsWith("/tech")) {
+    return "tech";
+  }
+  if (pathname.startsWith("/manager")) {
+    return "manager";
+  }
+  if (pathname.startsWith("/admin")) {
+    return "admin";
+  }
+  return null;
+}
 
 export const hasAnyRole = (roles: PortalRole[], allowedRoles: PortalRole[]) =>
   allowedRoles.some((role) => roles.includes(role));

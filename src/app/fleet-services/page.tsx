@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 
@@ -159,9 +160,9 @@ export default function FleetServicesPage() {
             Contact us to discuss mobile maintenance for your business vehicles,
             work trucks, service vans, or growing fleet.
           </p>
-          <Link href="/contact" className="otg-btn otg-btn-primary">
+          <BookNowLink className="otg-btn otg-btn-primary">
             Book Fleet Service
-          </Link>
+          </BookNowLink>
         </div>
       </section>
     </PublicSiteLayout>

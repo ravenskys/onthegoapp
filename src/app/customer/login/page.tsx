@@ -4,7 +4,6 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
-import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 import { normalizeEmail } from "@/lib/input-formatters";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
@@ -83,7 +82,7 @@ export default function CustomerLoginPage() {
   };
 
   return (
-    <PublicSiteLayout activePath="/portal">
+    <>
       <PublicPageHero
         title="Customer"
         accent="Login"
@@ -197,6 +196,6 @@ export default function CustomerLoginPage() {
           </div>
         </div>
       </section>
-    </PublicSiteLayout>
+    </>
   );
 }

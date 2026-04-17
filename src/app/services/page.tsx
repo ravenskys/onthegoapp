@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 
@@ -143,9 +144,9 @@ export default function ServicesPage() {
             Book maintenance or inspection service and let us bring the work to your
             location.
           </p>
-          <Link href="/contact" className="otg-btn otg-btn-primary">
+          <BookNowLink className="otg-btn otg-btn-primary">
             Request Service
-          </Link>
+          </BookNowLink>
         </div>
       </section>
     </PublicSiteLayout>
