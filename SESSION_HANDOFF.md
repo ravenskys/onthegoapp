@@ -22,7 +22,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (tracks **`origin/main`** — canonical repo **`onthegoapp`**, Vercel deploys from here).
 - **`origin`**: normal **`git push`** / **`git pull`** target.
 - **`secondary`**: same history kept as a **backup mirror** (not the default push target). After pushing to `origin`, run **`git push secondary main`** to refresh the backup (or push both in one go when you care).
-- **Latest pushed tip (update after each deploy):** `e3a64a2` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file).
+- **Latest pushed tip (update after each deploy):** `08ffae7` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file).
 
 ## Session checkpoint — 2026-04-16 (portal + tech workflow)
 - **`SESSION_HANDOFF.md` was not updated in the same commit as `a3a611a`;** this section was added immediately afterward so the next session has accurate context.
