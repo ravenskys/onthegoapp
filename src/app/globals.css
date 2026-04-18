@@ -1066,6 +1066,21 @@ img {
     padding: 14px 0;
   }
 
+  /* Single top row: logo + hamburger; menu opens in panel below */
+  .otg-site-nav.otg-site-nav--mobile-bar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    min-height: 0;
+  }
+
+  .otg-site-nav.otg-site-nav--mobile-bar .otg-site-logo {
+    flex-direction: row;
+    align-items: center;
+    min-width: 0;
+  }
+
   .otg-site-nav-links {
     gap: 14px;
   }
