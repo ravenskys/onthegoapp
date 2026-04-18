@@ -22,7 +22,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (tracks **`origin/main`** — canonical repo **`onthegoapp`**, Vercel deploys from here).
 - **`origin`**: normal **`git push`** / **`git pull`** target.
 - **`secondary`**: same history kept as a **backup mirror** (not the default push target). After pushing to `origin`, run **`git push secondary main`** to refresh the backup (or push both in one go when you care).
-- **Latest pushed tip (update after each deploy):** `ae4ab88` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file). Includes `1d6230e` (mobile portal nav + viewport) plus this handoff doc.
+- **Latest pushed tip (update after each deploy):** always confirm with `git log -1 --oneline` on `main`. Notable commits: `1d6230e` (mobile portal nav + viewport); `ae4ab88`+ (this handoff update).
 
 ## Session checkpoint — 2026-04-18 (mobile portal nav + viewport)
 - **Pushed to `origin/main`:** `1d6230e` — *fix: mobile portal navigation and viewport safe areas.* Rebased onto newer `origin/main` (upstream had added `body { display: flex; flex-direction: column; }`); conflict in `globals.css` resolved by **keeping both** flex column layout and **safe-area** padding on `body`.
