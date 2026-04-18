@@ -35,6 +35,10 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
@@ -52,6 +56,7 @@ img {
 
 .otg-site-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--otg-bg);
 }
 
@@ -447,6 +452,7 @@ img {
 
 .otg-page {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 3rem 1rem;
   background: linear-gradient(to bottom, #f7f7f7, #eceff3);
 }
@@ -693,6 +699,8 @@ img {
 .otg-portal-dark.otg-page,
 .otg-portal-dark.otg-manager-shell,
 .otg-portal-dark.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at top, rgba(57, 255, 20, 0.14), transparent 24%),
     linear-gradient(to bottom, #08110a, #101b12 45%, #0a120c 100%) !important;
@@ -1039,9 +1047,12 @@ img {
     overflow-x: hidden;
   }
 
-  .otg-portal-dark .otg-portal-nav ul {
-    display: grid;
-    grid-template-columns: 1fr;
+  /* Customer nav keeps horizontal scroll; grid here was stacking every link full-width. */
+  .otg-portal-dark .otg-portal-nav:not(.otg-portal-nav--customer) ul {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .otg-portal-dark .otg-portal-nav [data-slot="button"],
