@@ -22,7 +22,17 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Branch: `main` (tracks **`origin/main`** — canonical repo **`onthegoapp`**, Vercel deploys from here).
 - **`origin`**: normal **`git push`** / **`git pull`** target.
 - **`secondary`**: same history kept as a **backup mirror** (not the default push target). After pushing to `origin`, run **`git push secondary main`** to refresh the backup (or push both in one go when you care).
-- **Latest pushed tip (update after each deploy):** `9f3ffea` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file).
+- **Latest pushed tip (update after each deploy):** `1d6230e` — always confirm with `git log -1 --oneline` (avoids stale hashes in this file).
+
+## Session checkpoint — 2026-04-18 (mobile portal nav + viewport)
+- **Pushed to `origin/main`:** `1d6230e` — *fix: mobile portal navigation and viewport safe areas.* Rebased onto newer `origin/main` (upstream had added `body { display: flex; flex-direction: column; }`); conflict in `globals.css` resolved by **keeping both** flex column layout and **safe-area** padding on `body`.
+- **Problem:** At `max-width: 768px`, `.otg-portal-dark .otg-portal-nav ul` was forced to a **single-column grid**, which overrode the customer nav’s **horizontal-scroll** flex row and stacked every tab **full-width**, consuming most of the phone screen.
+- **Changes:**
+  - `src/components/portal/PortalTopNav.tsx` — customer section adds class **`otg-portal-nav--customer`** on the nav wrapper so mobile CSS can exclude it from the wrapping/stacking rules meant for manager/tech dropdown navs.
+  - `src/app/globals.css` — non-customer portal nav uses **flex-wrap** on small screens instead of a tall single column; **`100dvh`** (with **`100vh`** fallback) on `.otg-page`, `.otg-site-shell`, and portal dark shells; **`body`** safe-area insets (combined with upstream column flex).
+  - `src/app/layout.tsx` — exported **`viewport`** with **`viewportFit: "cover"`** so `env(safe-area-inset-*)` applies on notched devices.
+- **Optional cleanup:** Working tree may still show an **untracked** odd-named migration under `supabase/migrations/` (name-clash artifact); do not commit unless intentionally recovered — prefer the canonical `20260407133000_add_job_services_estimated_cost.sql` if duplicating.
+- **Resume files:** `PortalTopNav.tsx`, `globals.css`, `layout.tsx`.
 
 ## Session checkpoint — 2026-04-16 (portal + tech workflow)
 - **`SESSION_HANDOFF.md` was not updated in the same commit as `a3a611a`;** this section was added immediately afterward so the next session has accurate context.
@@ -68,7 +78,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - **Verify after pull:** `npx tsc --noEmit`; smoke: guest vs customer **Contact Us** / **BookNowLink**; multi-role **Portals** + **My Portal**; `/portal` redirect.
 
 ## Next session — start here
-- **First:** Confirm Vercel production shows deploy for commit `a3a611a` (or newer). Apply the three **20260416143… / 20260416150… / 20260416180…** migrations on **hosted** Supabase; smoke-test tech workflow, customer updates, and account closure RPCs.
+- **First:** Confirm Vercel production shows deploy for commit `1d6230e` (or newer), including the **mobile portal nav** fix. Still apply the three **20260416143… / 20260416150… / 20260416180…** migrations on **hosted** Supabase if not already; smoke-test tech workflow, customer updates, and account closure RPCs. On a **phone**, spot-check customer portal tabs (horizontal scroll, not a tall stack) and that content is not clipped by the notch/home indicator.
 - **Vehicle library**: Expand and curate make / model / engine data in **`src/lib/vehicleCatalog.ts`** (and `vehicleCatalogOverrides` in the same module). That object feeds **`VehicleCatalogFields`** everywhere (manager new job, customer account, etc.); filling gaps improves dropdown quality and reduces “type your own” paths.
 - **Manager home layout**: Rework **`src/app/manager/page.tsx`** (dashboard card grid, header, alignment with `otg-manager-shell` / portal patterns) so it matches the clarity of the Jobs hub and scales as more tiles are added.
 - **Manager create job + scheduler (on-page)**: Add a **scheduling section** to **`/manager/jobs/new`** so the manager can pick date/time with the customer while creating the shop job (same conceptual flow as customer scheduling: availability, duration, travel buffer, service address as already captured on the form). Reuse or mirror logic from **`/customer/schedule`** (`get_customer_available_schedule_slots`, job insert with `scheduled_start` / `scheduled_end`, etc.) and/or patterns from **`/manager/schedule`**, with **manager-appropriate RPCs or RLS** if the customer-only functions are too restrictive. Decide UX: optional “Schedule now” vs “Leave unscheduled”; persist `assigned_tech_user_id` from chosen slot.
@@ -139,6 +149,7 @@ Follow in order: [LOCAL_SUPABASE_REPAIR_PLAN.md](./LOCAL_SUPABASE_REPAIR_PLAN.md
 - Customer dashboard and scheduler vehicle labels now show consistent plate/VIN detail text.
 - Customer scheduler saved-address labels now mirror the new location-type wording from the account page.
 - Customer portal nav now shows direct top tabs for customer pages instead of a single `Customer` dropdown, with a mobile-friendly horizontal-scroll tab row.
+- **2026-04-18:** Mobile CSS no longer forces customer portal nav links into a single-column grid on small screens; viewport `viewportFit: cover`, safe-area padding on `body`, and `100dvh` min-heights improve phone layout (see session checkpoint above).
 - Customer account vehicle edit/delete actions were adjusted for mobile touch targets.
 - Customer scheduler service choices are now fixed customer-facing options:
   - `Oil Change` (`30` min)
