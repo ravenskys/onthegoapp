@@ -95,7 +95,7 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
     return (
       <div
         className={cn(
-          "otg-portal-nav overflow-visible rounded-[28px] border border-lime-500/40 bg-[#0b120d] p-2 shadow-[0_12px_36px_rgba(0,0,0,0.35)]",
+          "otg-portal-nav otg-portal-nav--customer overflow-visible rounded-[28px] border border-lime-500/40 bg-[#0b120d] p-2 shadow-[0_12px_36px_rgba(0,0,0,0.35)]",
           className,
         )}
       >
@@ -138,7 +138,6 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
     <div
       className={cn(
         "otg-portal-nav rounded-[28px] border border-lime-500/40 bg-[#0b120d] p-2 shadow-[0_12px_36px_rgba(0,0,0,0.35)]",
-        skipLookup && "otg-portal-nav--customer",
         className,
       )}
     >
