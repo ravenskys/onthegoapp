@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   ClipboardList,
-  Loader2,
   UserPlus,
   Users,
 } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -20,45 +17,18 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function ManagerJobsHubPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
-
-  useEffect(() => {
-    const run = async () => {
-      const { user, roles } = await getUserRoles();
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-      if (!hasPortalAccess(roles, "manager")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-      setAuthorized(true);
-      setLoading(false);
-    };
-    void run();
-  }, []);
-
-  if (loading || !authorized) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
-      </div>
-    );
-  }
 
   return (
-    <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Jobs</h1>
-            <p className="mt-2 max-w-xl text-slate-600">
+    <div className="otg-manager-shell otg-portal-dark otg-portal-page bg-slate-50">
+      <div className="otg-portal-page-inner">
+        <div className="otg-page-header">
+          <div className="otg-page-header-content">
+            <h1>Jobs</h1>
+            <p className="max-w-xl">
               Pick a customer flow first, then create or find the job you need.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="otg-page-header-actions">
             <BackToPortalButton />
             <Button
               variant="outline"

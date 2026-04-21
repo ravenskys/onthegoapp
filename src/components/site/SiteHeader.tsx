@@ -232,7 +232,7 @@ export function SiteHeader({ activePath }: SiteHeaderProps) {
         >
           <div className="otg-site-container flex flex-col gap-1 py-4">
             <p className="px-3 pb-1 text-xs font-bold uppercase tracking-[0.2em] text-lime-400/90">
-              Site
+              Website
             </p>
             {mainNavLinks.map(({ key, href, label, isActive }) => (
               <Link
@@ -265,7 +265,11 @@ export function SiteHeader({ activePath }: SiteHeaderProps) {
                   );
                 })}
                 <div className="mt-2 flex flex-col gap-2 border-t border-white/15 px-3 pt-4">
-                  <PortalSwitcherDropdown variant="dark" align="start" />
+                  <PortalSwitcherDropdown
+                    variant="dark"
+                    align="start"
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
                   <button
                     type="button"
                     onClick={() => {

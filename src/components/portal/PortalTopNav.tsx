@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/lib/supabase";
 import { PortalSwitcherDropdown } from "@/components/portal/PortalSwitcherDropdown";
-import { getUserRoles, hasPortalAccess, type PortalRole } from "@/lib/portal-auth";
+import { hasPortalAccess } from "@/lib/portal-auth";
+import { usePortalRoles } from "@/hooks/usePortalRoles";
 import {
   isPortalNavItemActive,
   portalNavGroups,
@@ -19,54 +20,34 @@ import {
 type PortalTopNavProps = {
   section: PortalNavSection;
   className?: string;
+  /** Horizontal pill bar (default) or stacked links for the mobile site header drawer. */
+  variant?: "bar" | "drawer";
+  /** Fires after a portal link is chosen (e.g. close the parent hamburger menu). */
+  onNavigate?: () => void;
 };
 
 const pillClass = (active: boolean) =>
   cn(
-    "block min-h-11 whitespace-nowrap rounded-[22px] border px-4 py-2 text-sm font-semibold shadow-sm transition-colors sm:px-5",
-    active
-      ? "border-lime-400 bg-lime-400 text-black shadow-[0_0_18px_rgba(163,230,53,0.45)] hover:bg-lime-300"
-      : "border-white/15 bg-[#111a13] text-white hover:border-lime-400/60 hover:bg-[#162119]",
+    "otg-portal-pill",
+    active ? "otg-portal-pill-active" : null,
   );
 
-const actionOutlineClass =
-  "min-h-11 rounded-[22px] border border-white/15 bg-[#111a13] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:border-lime-400/60 hover:bg-[#162119] sm:px-5";
+const actionOutlineClass = "otg-portal-trigger-dark";
 
-export function PortalTopNav({ section, className }: PortalTopNavProps) {
+export function PortalTopNav({
+  section,
+  className,
+  variant = "bar",
+  onNavigate,
+}: PortalTopNavProps) {
   const pathname = usePathname();
-  const [roles, setRoles] = useState<PortalRole[]>([]);
+  const roles = usePortalRoles({
+    onError: (error) => {
+      console.error("Failed to load portal navigation roles:", error);
+    },
+  });
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const isCustomerSection = section === "customer";
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadRoles = async () => {
-      try {
-        const { roles: nextRoles } = await getUserRoles();
-
-        if (!isMounted) {
-          return;
-        }
-
-        setRoles(nextRoles);
-      } catch (error) {
-        console.error("Failed to load portal navigation roles:", error);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setRoles([]);
-      }
-    };
-
-    void loadRoles();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -90,6 +71,58 @@ export function PortalTopNav({ section, className }: PortalTopNavProps) {
   if (isCustomerSection) {
     if (customerItems.length === 0) {
       return null;
+    }
+
+    if (variant === "drawer") {
+      return (
+        <nav
+          aria-label="Customer portal navigation"
+          className={cn("border-t border-lime-500/25 pt-3", className)}
+        >
+          <p className="px-3 pb-2 text-xs font-bold uppercase tracking-[0.18em] text-lime-400/90">
+            Customer portal
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {customerItems.map((item) => {
+              const itemActive = isPortalNavItemActive(pathname, item);
+
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "block rounded-xl px-3 py-3 text-base font-semibold text-white transition hover:bg-white/10",
+                      itemActive && "bg-lime-500/15 text-[var(--otg-primary)]",
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-4 flex flex-col gap-2 border-t border-lime-500/25 px-3 pb-1 pt-4">
+            <PortalSwitcherDropdown
+              variant="dark"
+              align="start"
+              side="bottom"
+              className="w-full justify-center"
+              onNavigate={onNavigate}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate?.();
+                void handleLogout();
+              }}
+              className={cn(actionOutlineClass, "w-full justify-center")}
+            >
+              Log out
+            </button>
+          </div>
+        </nav>
+      );
     }
 
     return (

@@ -19,7 +19,6 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { cn } from "@/lib/utils";
 
@@ -89,7 +88,6 @@ function getTechnicianLabel(tech: Technician) {
 
 export default function ManagerEmployeesPage() {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [payRates, setPayRates] = useState<PayRateRow[]>([]);
   const [payRatesLoadError, setPayRatesLoadError] = useState<string | null>(null);
@@ -159,16 +157,6 @@ export default function ManagerEmployeesPage() {
   useEffect(() => {
     const run = async () => {
       try {
-        const { user, roles } = await getUserRoles();
-        if (!user) {
-          window.location.href = "/customer/login";
-          return;
-        }
-        if (!hasPortalAccess(roles, "manager")) {
-          window.location.href = getPostLoginRoute(roles);
-          return;
-        }
-        setAuthorized(true);
         await loadData();
       } catch (e) {
         console.error("Manager employees load failed:", formatLoadError(e));
@@ -267,7 +255,7 @@ export default function ManagerEmployeesPage() {
     }
   };
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

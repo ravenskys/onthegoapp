@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import {
@@ -21,7 +20,6 @@ export default function ManagerHomePage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
 
   const [openJobsCount, setOpenJobsCount] = useState(0);
   const [unassignedJobsCount, setUnassignedJobsCount] = useState(0);
@@ -29,21 +27,8 @@ export default function ManagerHomePage() {
   const [customersCount, setCustomersCount] = useState(0);
 
   useEffect(() => {
-    const checkAccessAndLoad = async () => {
+    const loadDashboard = async () => {
       try {
-        const { user, roles } = await getUserRoles();
-        if (!user) {
-          window.location.href = "/customer/login";
-          return;
-        }
-
-        if (!hasPortalAccess(roles, "manager")) {
-          window.location.href = getPostLoginRoute(roles);
-          return;
-        }
-
-        setAuthorized(true);
-
         const [
           { count: openJobs, error: openJobsError },
           { count: unassignedJobs, error: unassignedJobsError },
@@ -88,10 +73,10 @@ export default function ManagerHomePage() {
       }
     };
 
-    checkAccessAndLoad();
+    void loadDashboard();
   }, []);
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

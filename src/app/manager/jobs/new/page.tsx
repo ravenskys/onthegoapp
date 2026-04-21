@@ -28,7 +28,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -175,7 +174,6 @@ function NewJobPageContent() {
   const returningPickerOpenedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -428,7 +426,7 @@ function NewJobPageContent() {
   }, [assignedTechId, laborCostAsOfYmd]);
 
   useEffect(() => {
-    if (loading || !authorized) return;
+    if (loading) return;
     if (!canShowScheduler) {
       setSlots([]);
       setSelectedSlotKey("");
@@ -436,7 +434,7 @@ function NewJobPageContent() {
     }
     setSelectedSlotKey("");
     void loadManagerScheduleSlots();
-  }, [loading, authorized, canShowScheduler, loadManagerScheduleSlots]);
+  }, [loading, canShowScheduler, loadManagerScheduleSlots]);
 
   useEffect(() => {
     if (!selectedScheduleSlot) return;
@@ -445,20 +443,16 @@ function NewJobPageContent() {
   }, [selectedScheduleSlot]);
 
   useEffect(() => {
-    const checkAccess = async () => {
-      const { user, roles } = await getUserRoles();
+    const loadPage = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         window.location.href = "/customer/login";
         return;
       }
 
-      if (!hasPortalAccess(roles, "manager")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-
       setCurrentUserId(user.id);
-      setAuthorized(true);
 
        const [
           { data: customersData, error: customersError },
@@ -543,15 +537,15 @@ function NewJobPageContent() {
       setLoading(false);
     };
 
-    checkAccess();
+    void loadPage();
   }, []);
 
   useEffect(() => {
-    if (loading || !authorized) return;
+    if (loading) return;
     if (flow !== "returning" || returningPickerOpenedRef.current) return;
     returningPickerOpenedRef.current = true;
     setCustomerOpen(true);
-  }, [loading, authorized, flow]);
+  }, [loading, flow]);
 
   useEffect(() => {
     if (!newCustomerErrors.name && !newCustomerErrors.email && !newCustomerErrors.phone) {
@@ -716,7 +710,7 @@ function NewJobPageContent() {
     }
   };
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

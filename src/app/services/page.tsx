@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
+import { marketingPageMetadata } from "@/lib/site-seo";
+
+export const metadata: Metadata = marketingPageMetadata({
+  title: "Services",
+  description:
+    "Mobile oil changes, fluid service, preventive maintenance, and vehicle inspections in Idaho—personal vehicles, work trucks, and fleet support from On The Go Maintenance.",
+  path: "/services",
+});
 
 export default function ServicesPage() {
   return (
@@ -18,7 +27,7 @@ export default function ServicesPage() {
           <div className="otg-content-split">
             <div className="otg-site-panel">
               <Image
-                src="/images/oil-change.png"
+                src="/images/oil-change.webp"
                 alt="Oil change service"
                 width={900}
                 height={700}
@@ -68,7 +77,7 @@ export default function ServicesPage() {
             </div>
             <div className="otg-site-panel">
               <Image
-                src="/images/preventive-maintenance.png"
+                src="/images/preventive-maintenance.webp"
                 alt="Preventive maintenance service"
                 width={900}
                 height={700}
@@ -80,7 +89,7 @@ export default function ServicesPage() {
           <div className="otg-content-split" style={{ marginTop: 40 }}>
             <div className="otg-site-panel">
               <Image
-                src="/images/inspection.png"
+                src="/images/inspection.webp"
                 alt="Vehicle inspection service"
                 width={900}
                 height={700}

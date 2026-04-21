@@ -1,11 +1,28 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { BookNowLink } from "@/components/site/BookNowLink";
+import { LocalBusinessJsonLd } from "@/components/site/LocalBusinessJsonLd";
+import {
+  SITE_EMAIL,
+  SITE_PHONE_DISPLAY,
+} from "@/lib/site-contact";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
+import { absoluteUrl, SITE_DEFAULT_DESCRIPTION } from "@/lib/site-seo";
+
+export const metadata: Metadata = {
+  alternates: { canonical: absoluteUrl("/") },
+  openGraph: {
+    url: absoluteUrl("/"),
+    description: SITE_DEFAULT_DESCRIPTION,
+  },
+};
 
 export default function HomePage() {
   return (
-    <PublicSiteLayout activePath="/">
+    <>
+      <LocalBusinessJsonLd />
+      <PublicSiteLayout activePath="/">
       <section className="otg-hero">
         <div className="otg-site-container otg-hero-wrap">
           <div>
@@ -57,7 +74,7 @@ export default function HomePage() {
           <div className="otg-grid-3">
             <article className="otg-service-card">
               <Image
-                src="/images/oil-change.png"
+                src="/images/oil-change.webp"
                 alt="Oil change and fluid service"
                 width={600}
                 height={440}
@@ -78,7 +95,7 @@ export default function HomePage() {
 
             <article className="otg-service-card">
               <Image
-                src="/images/preventive-maintenance.png"
+                src="/images/preventive-maintenance.webp"
                 alt="Preventive maintenance service"
                 width={600}
                 height={440}
@@ -99,7 +116,7 @@ export default function HomePage() {
 
             <article className="otg-service-card">
               <Image
-                src="/images/inspection.png"
+                src="/images/inspection.webp"
                 alt="Vehicle inspection service"
                 width={600}
                 height={440}
@@ -191,8 +208,8 @@ export default function HomePage() {
           <div className="otg-grid-2">
             <div className="otg-contact-card">
               <h3 className="otg-card-title">Contact Information</h3>
-              <p>Phone: 208-410-9470</p>
-              <p>Email: onthegomaint@gmail.com</p>
+              <p>Phone: {SITE_PHONE_DISPLAY}</p>
+              <p>Email: {SITE_EMAIL}</p>
               <p>
                 Saturday - Sunday: 9:00 AM - 7:00 PM
                 <br />
@@ -221,5 +238,6 @@ export default function HomePage() {
         </div>
       </section>
     </PublicSiteLayout>
+    </>
   );
 }

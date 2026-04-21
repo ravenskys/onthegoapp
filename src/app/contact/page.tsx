@@ -5,6 +5,12 @@ import Link from "next/link";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
 import { formatPhoneNumber } from "@/lib/input-formatters";
+import {
+  SITE_EMAIL,
+  SITE_EMAIL_MAILTO_HREF,
+  SITE_PHONE_DISPLAY,
+  SITE_PHONE_TEL_HREF,
+} from "@/lib/site-contact";
 
 export default function ContactPage() {
   const [contactPhone, setContactPhone] = useState("");
@@ -22,8 +28,8 @@ export default function ContactPage() {
           <div>
             <div className="otg-contact-card" style={{ marginBottom: 24 }}>
               <h3 className="otg-card-title">Contact Information</h3>
-              <p>Phone: 208-410-9470</p>
-              <p>Email: onthegomaint@gmail.com</p>
+              <p>Phone: {SITE_PHONE_DISPLAY}</p>
+              <p>Email: {SITE_EMAIL}</p>
               <p>
                 Reach out to discuss service availability, scheduling, and support
                 for personal or fleet vehicles.
@@ -106,10 +112,10 @@ export default function ContactPage() {
             service record or internal workflow.
           </p>
           <div className="otg-button-row" style={{ justifyContent: "center" }}>
-            <a href="tel:2084109470" className="otg-btn otg-btn-primary">
+            <a href={SITE_PHONE_TEL_HREF} className="otg-btn otg-btn-primary">
               Call Now
             </a>
-            <a href="mailto:onthegomaint@gmail.com" className="otg-btn otg-btn-primary">
+            <a href={SITE_EMAIL_MAILTO_HREF} className="otg-btn otg-btn-primary">
               Email Us
             </a>
             <Link href="/portal" className="otg-btn otg-btn-primary">

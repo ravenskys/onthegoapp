@@ -21,7 +21,7 @@ export const portalNavGroups: PortalNavGroup[] = [
     destination: "customer",
     label: "Customer",
     items: [
-      { href: "/customer/dashboard", label: "Home" },
+      { href: "/customer/dashboard", label: "Dashboard" },
       {
         href: "/customer/book",
         label: "Get Service",

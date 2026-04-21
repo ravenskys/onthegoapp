@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Loader2, Search, Filter, Trash2 } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 import {
   BackToPortalButton,
@@ -78,7 +77,6 @@ interface TechnicianOption {
 export default function ManagerJobsListPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -89,22 +87,7 @@ export default function ManagerJobsListPage() {
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkAccess = async () => {
-      const { user, roles } = await getUserRoles();
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (!hasPortalAccess(roles, "manager")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-
-      setAuthorized(true);
-      fetchJobs();
-    };
-    checkAccess();
+    void fetchJobs();
   }, []);
 
   const fetchJobs = async () => {
@@ -249,7 +232,7 @@ export default function ManagerJobsListPage() {
       await deleteJobWithRelatedRecords(job.id);
 
       setJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
-      setFilteredJobs((prev) => prev.filter((currentJob) => currentJob.id !== currentJob.id));
+      setFilteredJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
     } catch (error) {
       console.error("Error deleting job:", error);
       await fetchJobs();
@@ -259,19 +242,17 @@ export default function ManagerJobsListPage() {
     }
   };
 
-  if (!authorized) return null;
-
   return (
-    <div className="otg-manager-shell otg-theme-light min-h-screen bg-transparent p-4 text-slate-950 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">All jobs</h1>
-            <p className="mt-1 text-slate-600">
+    <div className="otg-manager-shell otg-theme-light otg-portal-page bg-transparent text-slate-950">
+      <div className="otg-portal-page-inner">
+        <div className="otg-page-header">
+          <div className="otg-page-header-content">
+            <h1>All jobs</h1>
+            <p>
               Shop-created jobs and customer portal requests share this list; use the source filter to separate them.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="otg-page-header-actions">
             <BackToPortalButton />
             <Button
               variant="outline"
@@ -293,11 +274,11 @@ export default function ManagerJobsListPage() {
 
         <PortalTopNav section="manager" />
 
-        <Card className="bg-transparent">
+        <Card className="otg-jobs-filter-card">
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="otg-jobs-filter-grid">
+              <div className="otg-jobs-search-wrap">
+                <Search className="otg-jobs-search-icon" />
                 <Input
                   placeholder="Search customer, plate, VIN..."
                   value={searchTerm}
@@ -344,7 +325,7 @@ export default function ManagerJobsListPage() {
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center text-sm text-slate-500">
+              <div className="otg-jobs-filter-count">
                 <Filter className="mr-2 h-4 w-4" />
                 Showing {filteredJobs.length} of {jobs.length} jobs
               </div>

@@ -2,30 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { usePortalRoles } from "@/hooks/usePortalRoles";
 import {
   getAccessiblePortals,
   getPortalDestinationFromPathname,
-  getUserRoles,
   PORTAL_DESTINATION_HOME,
   PORTAL_DESTINATION_LABEL,
-  type PortalRole,
 } from "@/lib/portal-auth";
 
-const darkTriggerClass =
-  "min-h-11 rounded-[22px] border border-white/15 bg-[#111a13] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:border-lime-400/60 hover:bg-[#162119] sm:px-5";
+const darkTriggerClass = "otg-portal-trigger-dark";
 
 /** Matches account header actions on light surfaces (legacy `headerActionButtonClassName`). */
 export const portalSwitcherLightTriggerClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50";
+  "otg-header-action-btn";
 
 /** Same surface as `.otg-site-header`: `--otg-black`, bottom lime stripe like the main nav bar. */
-const menuClass =
-  "z-[1100] max-h-[min(70vh,22rem)] w-64 overflow-y-auto rounded-2xl border border-white/15 border-b-[3px] border-b-[var(--otg-primary)] bg-[var(--otg-black)] p-3 text-[var(--otg-white)] shadow-[0_12px_36px_rgba(0,0,0,0.35)] dark:border-white/15 dark:border-b-[var(--otg-primary)] dark:bg-[var(--otg-black)] dark:text-[var(--otg-white)]";
+const menuClass = "otg-portal-switcher-menu";
 
 type PortalSwitcherDropdownProps = {
   className?: string;
@@ -33,6 +30,8 @@ type PortalSwitcherDropdownProps = {
   align?: "start" | "end";
   /** Open above (customer tab bar) or below (light buttons in page headers). Defaults by variant. */
   side?: "top" | "bottom";
+  /** e.g. close the mobile header menu after choosing a portal. */
+  onNavigate?: () => void;
 };
 
 /**
@@ -43,34 +42,12 @@ export function PortalSwitcherDropdown({
   variant = "dark",
   align = "end",
   side: sideProp,
+  onNavigate,
 }: PortalSwitcherDropdownProps) {
   const side = sideProp ?? (variant === "dark" ? "top" : "bottom");
   const pathname = usePathname();
-  const [roles, setRoles] = useState<PortalRole[]>([]);
+  const roles = usePortalRoles();
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const load = async () => {
-      try {
-        const { roles: nextRoles } = await getUserRoles();
-        if (isMounted) {
-          setRoles(nextRoles);
-        }
-      } catch {
-        if (isMounted) {
-          setRoles([]);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const accessible = useMemo(() => getAccessiblePortals(roles), [roles]);
 
@@ -120,12 +97,15 @@ export function PortalSwitcherDropdown({
               <Link
                 key={destination}
                 href={href}
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  onNavigate?.();
+                }}
                 className={cn(
-                  "block rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors duration-200",
+                  "otg-portal-switcher-item",
                   current
-                    ? "border-lime-400 bg-lime-400 text-black shadow-[0_0_18px_rgba(163,230,53,0.35)] hover:bg-lime-300"
-                    : "border-white/15 bg-[#111a13] text-white hover:border-lime-400/60 hover:bg-[#162119]",
+                    ? "otg-portal-switcher-item-current"
+                    : null,
                 )}
               >
                 {label}

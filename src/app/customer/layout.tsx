@@ -1,18 +1,11 @@
-"use client";
-
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { PortalRouteGuard } from "@/components/portal/PortalRouteGuard";
-import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
+import CustomerLayoutClient from "./CustomerLayoutClient";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default function CustomerLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname() ?? "/customer";
-
-  return (
-    <PublicSiteLayout activePath={pathname}>
-      <PortalRouteGuard destination="customer" allowCustomerAuthPaths>
-        {children}
-      </PortalRouteGuard>
-    </PublicSiteLayout>
-  );
+  return <CustomerLayoutClient>{children}</CustomerLayoutClient>;
 }

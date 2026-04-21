@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
+import { marketingPageMetadata } from "@/lib/site-seo";
+
+export const metadata: Metadata = marketingPageMetadata({
+  title: "Fleet Services",
+  description:
+    "Mobile fleet maintenance for Idaho businesses—routine service at your yard, workplace, or job site to help keep work vehicles on the road with less downtime.",
+  path: "/fleet-services",
+});
 
 export default function FleetServicesPage() {
   return (
@@ -36,7 +45,7 @@ export default function FleetServicesPage() {
 
           <div className="otg-site-panel">
             <Image
-              src="/images/inspection.png"
+              src="/images/inspection.webp"
               alt="Fleet vehicle maintenance service"
               width={900}
               height={700}

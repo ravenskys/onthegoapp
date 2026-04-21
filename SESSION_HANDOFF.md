@@ -82,3 +82,9 @@ If a feature fails live, check **migration applied** before debugging app code. 
 ## Resume prompt
 
 `Read SESSION_HANDOFF.md and continue from there.`
+
+## 2026-04-20 — merged to `main` (with origin)
+
+- **SEO:** `src/lib/site-seo.ts`, `site-contact.ts`, `sitemap.ts`, `robots.ts`, `LocalBusinessJsonLd`, per-page metadata; `NEXT_PUBLIC_SITE_URL` for canonicals (set on Vercel when the production domain is ready).
+- **App routes:** `noindex` via server layouts + `*LayoutClient.tsx` splits for customer/manager/tech/admin; `portal/layout.tsx`.
+- **Assets / contact:** WebP hero images, updated public phone/email constants, `SiteHeader` mobile menu aligned with origin (overlay + portal links); “Website” label in the drawer.

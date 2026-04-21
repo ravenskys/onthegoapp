@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowLeft, Search, Users, PlusCircle } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
   BackToPortalButton,
   headerActionButtonClassName,
@@ -49,7 +48,6 @@ export default function ManagerCustomersPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vehicleCounts, setVehicleCounts] = useState<Record<string, number>>({});
@@ -109,20 +107,8 @@ export default function ManagerCustomersPage() {
   }, []);
 
   useEffect(() => {
-    const checkAccessAndLoad = async () => {
+    const load = async () => {
       try {
-        const { user, roles } = await getUserRoles();
-        if (!user) {
-          window.location.href = "/customer/login";
-          return;
-        }
-
-        if (!hasPortalAccess(roles, "manager")) {
-          window.location.href = getPostLoginRoute(roles);
-          return;
-        }
-
-        setAuthorized(true);
         await fetchCustomers();
         await fetchDeletedCustomers();
       } catch (error) {
@@ -133,7 +119,7 @@ export default function ManagerCustomersPage() {
       }
     };
 
-    checkAccessAndLoad();
+    void load();
   }, [fetchDeletedCustomers]);
 
   const fetchCustomers = async () => {
@@ -239,10 +225,6 @@ export default function ManagerCustomersPage() {
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
       </div>
     );
-  }
-
-  if (!authorized) {
-    return null;
   }
 
   return (

@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { deleteJobWithRelatedRecords } from "@/lib/job-deletion";
 import {
   BackToPortalButton,
@@ -229,7 +228,6 @@ export default function JobDetailPage() {
   const [catalogOtherPartUnitCost, setCatalogOtherPartUnitCost] = useState("");
   const [catalogOtherPartUnitPrice, setCatalogOtherPartUnitPrice] = useState("");
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [services, setServices] = useState<JobService[]>([]);
@@ -540,24 +538,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
   useEffect(() => {
     if (!jobId) return;
 
-    const checkAccessAndLoad = async () => {
-      const { user, roles } = await getUserRoles();
-
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (!hasPortalAccess(roles, "manager")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-
-      setAuthorized(true);
-      await fetchJobData();
-    };
-
-    void checkAccessAndLoad();
+    void fetchJobData();
   }, [fetchJobData, jobId]);
 
         const handleAddCatalogService = async () => {
@@ -1382,7 +1363,7 @@ const [estimateLineItems, setEstimateLineItems] = useState<
         }
       };   
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

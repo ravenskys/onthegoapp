@@ -4,12 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { normalizeEmail } from "@/lib/input-formatters";
-import {
-  getPostLoginRoute,
-  getUserRoles,
-  hasPortalAccess,
-  type PortalRole,
-} from "@/lib/portal-auth";
+import { type PortalRole } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -221,7 +216,6 @@ const ADMIN_ROLE_OPTIONS: { value: PortalRole; label: string; hint: string }[] =
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [email, setEmail] = useState("");
   const [selectedRole, setSelectedRole] = useState<PortalRole>("technician");
   const [roleComboOpen, setRoleComboOpen] = useState(false);
@@ -582,52 +576,23 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    const checkAccess = async () => {
-      const { user, roles: roleNames } = await getUserRoles();
-
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (roleNames.length === 0) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (!hasPortalAccess(roleNames, "admin")) {
-        window.location.href = getPostLoginRoute(roleNames);
-        return;
-      }
-
-      setAuthorized(true);
+    const load = async () => {
       await fetchOperationsSnapshot();
       setLoading(false);
     };
 
-    void checkAccess();
+    void load();
   }, [fetchOperationsSnapshot]);
 
   useEffect(() => {
-    if (!authorized) {
-      return;
-    }
-
     void fetchDeletionAudit(deletionAuditRange);
-  }, [authorized, deletionAuditRange, fetchDeletionAudit]);
+  }, [deletionAuditRange, fetchDeletionAudit]);
 
   useEffect(() => {
-    if (!authorized) {
-      return;
-    }
     void fetchPendingClosures();
-  }, [authorized, fetchPendingClosures]);
+  }, [fetchPendingClosures]);
 
   useEffect(() => {
-    if (!authorized) {
-      return;
-    }
-
     let cancelled = false;
 
     const loadProfiles = async () => {
@@ -659,7 +624,7 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, [authorized]);
+  }, []);
 
   const selectedAssignProfile = useMemo(() => {
     const trimmed = email.trim();
@@ -847,10 +812,6 @@ export default function AdminPage() {
         </div>
       </div>
     );
-  }
-
-  if (!authorized) {
-    return null;
   }
 
   return (

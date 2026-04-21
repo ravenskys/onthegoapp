@@ -95,7 +95,7 @@ export default function CustomerLoginPage() {
             <div className="otg-card-dark overflow-hidden p-0">
               <div
                 className="flex h-full min-h-[320px] flex-col justify-end bg-cover bg-center p-8"
-                style={{ backgroundImage: "url('/images/inspection.png')" }}
+                style={{ backgroundImage: "url('/images/inspection.webp')" }}
               >
                 <div className="max-w-lg rounded-2xl p-6 backdrop-blur-sm">
                   <BrandLogo surface="dark" priority />

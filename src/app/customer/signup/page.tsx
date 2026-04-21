@@ -190,7 +190,7 @@ export default function CustomerSignupPage() {
           <div className="otg-card-dark overflow-hidden p-0">
             <div
               className="flex h-full min-h-[320px] flex-col justify-end bg-cover bg-center p-8"
-              style={{ backgroundImage: "url('/preventive-maintenance.png')" }}
+              style={{ backgroundImage: "url('/images/preventive-maintenance.webp')" }}
             >
               <div className="max-w-lg rounded-2xl bg-black/55 p-6 backdrop-blur-sm">
                 <BrandLogo surface="dark" priority />

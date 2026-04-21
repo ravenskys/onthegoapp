@@ -1,8 +1,11 @@
-"use client";
-
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { PortalRouteGuard } from "@/components/portal/PortalRouteGuard";
+import TechLayoutClient from "./TechLayoutClient";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default function TechLayout({ children }: { children: ReactNode }) {
-  return <PortalRouteGuard destination="tech">{children}</PortalRouteGuard>;
+  return <TechLayoutClient>{children}</TechLayoutClient>;
 }

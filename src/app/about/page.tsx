@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { BookNowLink } from "@/components/site/BookNowLink";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { PublicSiteLayout } from "@/components/site/PublicSiteLayout";
+import { marketingPageMetadata } from "@/lib/site-seo";
+
+export const metadata: Metadata = marketingPageMetadata({
+  title: "About Us",
+  description:
+    "On The Go Maintenance brings dependable mobile automotive service to Idaho drivers and businesses—honest recommendations and maintenance at your location.",
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (
@@ -37,7 +46,7 @@ export default function AboutPage() {
 
           <div className="otg-site-panel">
             <Image
-              src="/images/inspection.png"
+              src="/images/inspection.webp"
               alt="Technician performing vehicle inspection"
               width={900}
               height={700}

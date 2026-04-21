@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { getErrorMessage } from "@/lib/tech-inspection";
 import { LABOR_SELL_USD_PER_HOUR } from "@/lib/labor-pricing";
 import { BackToPortalButton } from "@/components/portal/BackToPortalButton";
@@ -105,8 +104,6 @@ export default function AdminSettingsPage() {
   const [savingServiceIndex, setSavingServiceIndex] = useState<number | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
-  const [authorized, setAuthorized] = useState(false);
-
   const [serviceTaxRate, setServiceTaxRate] = useState("0");
   const [partsTaxRate, setPartsTaxRate] = useState("0");
   const [serviceCatalogItems, setServiceCatalogItems] = useState<EditableServiceCatalogItem[]>([]);
@@ -171,19 +168,6 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     const loadPage = async () => {
-      const { user, roles } = await getUserRoles();
-      if (!user) {
-        window.location.href = "/customer/login";
-        return;
-      }
-
-      if (!hasPortalAccess(roles, "admin")) {
-        window.location.href = getPostLoginRoute(roles);
-        return;
-      }
-
-      setAuthorized(true);
-
       const { data: settingsData, error: settingsError } = await supabase
         .from("business_settings")
         .select("id, default_service_tax_rate, default_parts_tax_rate")
@@ -519,7 +503,7 @@ export default function AdminSettingsPage() {
       return searchableText.includes(normalizedServiceSearchQuery);
     });
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

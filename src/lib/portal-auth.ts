@@ -55,16 +55,7 @@ const portalAccessMap: Record<PortalDestination, PortalRole[]> = {
   admin: ["admin"],
 };
 
-/** Display / sort order: highest privilege first. */
-export const PORTAL_ROLE_HIERARCHY: PortalRole[] = [
-  "admin",
-  "manager",
-  "technician",
-  "customer",
-];
-
-export const getDistinctRoles = (roles: PortalRole[]) =>
-  Array.from(new Set(roles));
+const getDistinctRoles = (roles: PortalRole[]) => Array.from(new Set(roles));
 
 export const hasPortalAccess = (
   roles: PortalRole[],
@@ -75,9 +66,6 @@ export const getAccessiblePortals = (roles: PortalRole[]) =>
   (Object.keys(portalAccessMap) as PortalDestination[]).filter((destination) =>
     hasPortalAccess(roles, destination),
   );
-
-export const hasMultiplePortalAccess = (roles: PortalRole[]) =>
-  getAccessiblePortals(roles).length > 1;
 
 export const getUserRoles = async (): Promise<UserRolesResult> => {
   if (inflightUserRoles) {
@@ -139,5 +127,3 @@ export function getPortalDestinationFromPathname(
   return null;
 }
 
-export const hasAnyRole = (roles: PortalRole[], allowedRoles: PortalRole[]) =>
-  allowedRoles.some((role) => roles.includes(role));

@@ -21,7 +21,6 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 
 type ScheduleJob = {
   id: string;
@@ -245,7 +244,6 @@ const buildCalendarDays = (monthDate: Date): CalendarDay[] => {
 
 export default function ManagerSchedulePage() {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [jobs, setJobs] = useState<ScheduleJob[]>([]);
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([]);
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
@@ -260,19 +258,6 @@ export default function ManagerSchedulePage() {
   useEffect(() => {
     const loadSchedule = async () => {
       try {
-        const { user, roles } = await getUserRoles();
-        if (!user) {
-          window.location.href = "/customer/login";
-          return;
-        }
-
-        if (!hasPortalAccess(roles, "manager")) {
-          window.location.href = getPostLoginRoute(roles);
-          return;
-        }
-
-        setAuthorized(true);
-
         const { data: techRoleRows, error: techRoleError } = await supabase
           .from("user_roles")
           .select("user_id")
@@ -419,7 +404,7 @@ export default function ManagerSchedulePage() {
     setSelectedDateKey(toDateKey(today));
   };
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />

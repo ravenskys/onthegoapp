@@ -12,7 +12,6 @@ import {
   headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
-import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 
 type TechnicianOption = {
   id: string;
@@ -93,7 +92,6 @@ const isBlockInRange = (block: ScheduleBlock, techId: string, startDate: Date, e
 
 export default function ManagerAvailabilityPage() {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([]);
@@ -111,18 +109,14 @@ export default function ManagerAvailabilityPage() {
   useEffect(() => {
     const loadAvailability = async () => {
       try {
-        const { user, roles } = await getUserRoles();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
           window.location.href = "/customer/login";
           return;
         }
 
-        if (!hasPortalAccess(roles, "manager")) {
-          window.location.href = getPostLoginRoute(roles);
-          return;
-        }
-
-        setAuthorized(true);
         setCurrentUserId(user.id);
 
         const { data: techRoleRows, error: techRoleError } = await supabase
@@ -410,7 +404,7 @@ export default function ManagerAvailabilityPage() {
     }
   };
 
-  if (loading || !authorized) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
