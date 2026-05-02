@@ -16,6 +16,9 @@
   --otg-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   --otg-radius: 16px;
   --otg-transition: all 0.3s ease;
+  --otg-press-translate: 1px;
+  --otg-press-scale: 0.985;
+  --otg-press-brightness: 0.96;
 }
 
 @theme inline {
@@ -47,6 +50,12 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
 }
 
 img {
@@ -190,7 +199,16 @@ img {
   font-weight: 800;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  transition: var(--otg-transition);
+  transform: translateY(0) scale(1);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    filter 0.12s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+  will-change: transform;
   cursor: pointer;
 }
 
@@ -418,6 +436,33 @@ img {
   border-radius: 10px;
 }
 
+.otg-status-note {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.otg-status-note-info {
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.otg-status-note-success {
+  color: #14532d;
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.otg-status-note-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
 .otg-cta {
   padding: 70px 20px;
   text-align: center;
@@ -603,6 +648,43 @@ img {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
+.otg-btn,
+.otg-header-action-btn,
+.otg-portal-trigger-dark,
+.otg-portal-pill,
+.otg-portal-switcher-item,
+[data-slot="button"] {
+  transform: translateY(0) scale(1);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    filter 0.12s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+  will-change: transform;
+}
+
+.otg-btn:active,
+.otg-header-action-btn:active,
+.otg-portal-trigger-dark:active,
+.otg-portal-pill:active,
+.otg-portal-switcher-item:active,
+[data-slot="button"]:active {
+  transform: translateY(var(--otg-press-translate)) scale(var(--otg-press-scale));
+  filter: brightness(var(--otg-press-brightness));
+}
+
+.otg-btn:focus-visible,
+.otg-header-action-btn:focus-visible,
+.otg-portal-trigger-dark:focus-visible,
+.otg-portal-pill:focus-visible,
+.otg-portal-switcher-item:focus-visible {
+  outline: 3px solid rgba(57, 255, 20, 0.25);
+  outline-offset: 2px;
+}
+
 .otg-manager-shell [data-slot="button"][data-variant="default"] {
   border-color: #0f172a;
 }
@@ -754,7 +836,7 @@ img {
   border-color: #a3e635;
   background: #a3e635;
   color: #000;
-  box-shadow: 0 0 18px rgba(163, 230, 53, 0.45);
+  box-shadow: none;
 }
 
 .otg-portal-pill-active:hover {

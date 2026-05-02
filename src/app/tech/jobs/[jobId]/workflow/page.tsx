@@ -27,10 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  BackToPortalButton,
-  headerActionButtonClassName,
-} from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import {
@@ -543,12 +539,6 @@ export default function TechJobWorkflowPage() {
             </div>
             <div className="flex flex-col items-start gap-2 sm:items-end">
               <PortalTopNav section="tech" />
-              <div className="flex flex-wrap gap-2">
-                <BackToPortalButton className={headerActionButtonClassName} />
-                <Button type="button" variant="outline" className={headerActionButtonClassName} asChild>
-                  <Link href="/tech/jobs">Job queue</Link>
-                </Button>
-              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">

@@ -22,7 +22,6 @@ import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BackToPortalButton,
-  headerActionButtonClassName,
 } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 
@@ -747,11 +746,6 @@ export default function AdminPage() {
         .some((value) => String(value).toLowerCase().includes(term));
     });
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/customer/login";
-  };
-
   const handleAssignRole = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -835,12 +829,6 @@ export default function AdminPage() {
               </div>
               <div className="flex flex-wrap justify-end gap-3">
                 <BackToPortalButton />
-                <button
-                  onClick={handleLogout}
-                  className={headerActionButtonClassName}
-                >
-                  Log Out
-                </button>
               </div>
             </div>
           </div>

@@ -78,6 +78,15 @@ const createDefaultWeeklySchedule = (): WeeklyScheduleDay[] =>
 const getTechnicianLabel = (tech: TechnicianOption) =>
   [tech.first_name, tech.last_name].filter(Boolean).join(" ") || tech.email || "Technician";
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+};
+
 const isBlockInRange = (block: ScheduleBlock, techId: string, startDate: Date, endExclusive: Date) => {
   const startsAt = new Date(block.starts_at);
 
@@ -105,6 +114,8 @@ export default function ManagerAvailabilityPage() {
   const [scheduleNotes, setScheduleNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionTone, setActionTone] = useState<"info" | "success" | "error">("info");
 
   useEffect(() => {
     const loadAvailability = async () => {
@@ -157,7 +168,7 @@ export default function ManagerAvailabilityPage() {
         );
       } catch (error) {
         console.error("Failed to load employee availability:", error);
-        alert("Failed to load employee availability.");
+        alert(getErrorMessage(error, "Failed to load employee availability."));
       } finally {
         setLoading(false);
       }
@@ -223,6 +234,8 @@ export default function ManagerAvailabilityPage() {
     setWeeklyScheduleDays((current) =>
       current.map((day) => (day.enabled ? { ...day, start, end } : day)),
     );
+    setActionTone("info");
+    setActionMessage(`Applied ${start} to ${end} for the enabled workdays.`);
   };
 
   const loadExistingPattern = () => {
@@ -240,6 +253,8 @@ export default function ManagerAvailabilityPage() {
           : { ...day, enabled: false };
       }),
     );
+    setActionTone("info");
+    setActionMessage("Loaded the current schedule pattern into the weekly editor.");
   };
 
   const validateRange = () => {
@@ -347,15 +362,21 @@ export default function ManagerAvailabilityPage() {
 
   const handleClearRegularSchedule = async () => {
     setClearing(true);
+    setActionTone("info");
+    setActionMessage("Clearing the selected employee availability...");
 
     try {
       const removedIds = await clearRegularScheduleRange();
       if (removedIds.length > 0) {
-        alert(`Cleared ${removedIds.length} availability block(s).`);
+        setActionTone("success");
+        setActionMessage(`Cleared ${removedIds.length} availability block(s).`);
       }
     } catch (error) {
       console.error("Failed to clear regular availability:", error);
-      alert("Failed to clear employee availability.");
+      const message = getErrorMessage(error, "Failed to clear employee availability.");
+      setActionTone("error");
+      setActionMessage(message);
+      alert(message);
     } finally {
       setClearing(false);
     }
@@ -376,6 +397,8 @@ export default function ManagerAvailabilityPage() {
     if (!confirmed) return;
 
     setSaving(true);
+    setActionTone("info");
+    setActionMessage("Saving the weekly schedule...");
 
     try {
       await clearRegularScheduleRange(true);
@@ -395,10 +418,16 @@ export default function ManagerAvailabilityPage() {
         })) as ScheduleBlock[]),
       ]);
 
-      alert(`Saved ${rows.length} regular availability block(s). The schedule calendar is updated.`);
+      setActionTone("success");
+      setActionMessage(
+        `Saved ${rows.length} regular availability block(s). The schedule calendar is updated.`,
+      );
     } catch (error) {
       console.error("Failed to save regular availability:", error);
-      alert("Failed to save employee availability.");
+      const message = getErrorMessage(error, "Failed to save employee availability.");
+      setActionTone("error");
+      setActionMessage(message);
+      alert(message);
     } finally {
       setSaving(false);
     }
@@ -622,6 +651,15 @@ export default function ManagerAvailabilityPage() {
                   {clearing ? "Clearing..." : "Clear Employee Availability"}
                 </Button>
               </div>
+
+              {actionMessage ? (
+                <div
+                  className={`otg-status-note otg-status-note-${actionTone}`}
+                  aria-live="polite"
+                >
+                  {actionMessage}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

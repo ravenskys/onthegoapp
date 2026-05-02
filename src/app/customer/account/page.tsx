@@ -981,15 +981,6 @@ export default function CustomerAccountPage() {
                           ) : null}
                           <button
                             type="button"
-                            onClick={() => void handleSaveVehicle(index)}
-                            disabled={savingVehicleIndex === index}
-                            className="otg-btn otg-btn-primary w-full disabled:opacity-50 sm:w-auto"
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            {savingVehicleIndex === index ? "Saving..." : "Save Vehicle"}
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => void handleDeleteVehicle(index)}
                             disabled={savingVehicleIndex === index}
                             className="otg-btn w-full bg-red-600 text-white hover:bg-red-500 disabled:opacity-50 sm:w-auto"
@@ -1082,6 +1073,18 @@ export default function CustomerAccountPage() {
                             </p>
                           ) : null}
                         </div>
+                      </div>
+
+                      <div className="mt-6 flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveVehicle(index)}
+                          disabled={savingVehicleIndex === index}
+                          className="otg-btn otg-btn-primary w-full disabled:opacity-50 sm:w-auto"
+                        >
+                          <Save className="mr-2 h-4 w-4" />
+                          {savingVehicleIndex === index ? "Saving..." : "Save Vehicle"}
+                        </button>
                       </div>
                     </>
                   ) : (
@@ -1264,18 +1267,9 @@ export default function CustomerAccountPage() {
                             onClick={() => setEditingAddressId(null)}
                             className="otg-btn otg-btn-secondary sm:w-auto"
                           >
-                            Cancel
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void handleSaveAddress(index)}
-                          disabled={savingAddressIndex === index}
-                          className="otg-btn otg-btn-primary disabled:opacity-50 sm:w-auto"
-                        >
-                          <Save className="mr-2 h-4 w-4" />
-                          {savingAddressIndex === index ? "Saving..." : "Save Address"}
-                        </button>
+                              Cancel
+                            </button>
+                          ) : null}
                         <button
                           type="button"
                           onClick={() => void handleDeleteAddress(index)}
@@ -1491,6 +1485,18 @@ export default function CustomerAccountPage() {
                           <span>Use as default service address</span>
                         </label>
                       </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveAddress(index)}
+                        disabled={savingAddressIndex === index}
+                        className="otg-btn otg-btn-primary disabled:opacity-50 sm:w-auto"
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        {savingAddressIndex === index ? "Saving..." : "Save Address"}
+                      </button>
                     </div>
                   </>
                 )}

@@ -33,10 +33,7 @@ import { VehicleCatalogFields } from "@/components/vehicle/VehicleCatalogFields"
 import { UsStateSelect } from "@/components/forms/UsStateSelect";
 import { DEFAULT_US_STATE_CODE, resolveUsStateForForm } from "@/lib/us-states";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import {
-  BackToPortalButton,
-  headerActionButtonClassName,
-} from "@/components/portal/BackToPortalButton";
+import { headerActionButtonClassName } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import {
   abbreviatedWorkflowStepOrder,
@@ -220,6 +217,7 @@ const getInspectionModeFromServiceType = (serviceType: string | null | undefined
 
 const techWorkflowTabLabels: Record<string, string> = {
   vehicle: "Vehicle",
+  mileage: "Mileage",
   tires: "Tires",
   brakes: "Brakes",
   maintenance: "Maintenance",
@@ -724,6 +722,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [jobCustomerUpdates, setJobCustomerUpdates] = useState<JobCustomerUpdateRow[]>([]);
   const [jobUpdatesLoading, setJobUpdatesLoading] = useState(false);
   const [sendingCustomerUpdate, setSendingCustomerUpdate] = useState(false);
+  const [sectionSavingStep, setSectionSavingStep] = useState<string | null>(null);
   const [customerUpdateType, setCustomerUpdateType] = useState<JobCustomerUpdateType>("status");
   const [customerUpdateTitle, setCustomerUpdateTitle] = useState("");
   const [customerUpdateMessage, setCustomerUpdateMessage] = useState("");
@@ -756,11 +755,14 @@ export default function OnTheGoTechnicianAppPrototype() {
     let total = 0;
     let completed = 0;
 
-    const requiredFields = [vehicle.firstName, vehicle.lastName, vehicle.year, vehicle.make, vehicle.model, vehicle.mileage, vehicle.techName];
+    const requiredFields = [vehicle.firstName, vehicle.lastName, vehicle.year, vehicle.make, vehicle.model, vehicle.techName];
     requiredFields.forEach((field) => {
       total += 1;
       if (String(field).trim()) completed += 1;
     });
+
+    total += 1;
+    if (String(vehicle.mileage).trim()) completed += 1;
 
     if (inspectionMode === "full") {
       tires.forEach((tire) => {
@@ -1768,6 +1770,27 @@ export default function OnTheGoTechnicianAppPrototype() {
     }
   };
 
+  const handleSaveSection = async (step: string) => {
+    setSectionSavingStep(step);
+
+    try {
+      if (step === "vehicle") {
+        await syncCustomerProfileAndInspection({
+          workflowState: workflowSteps,
+          successMessage: "Customer and vehicle information saved.",
+        });
+        return;
+      }
+
+      await syncInspectionProgress(workflowSteps, `${workflowStepLabels[step]} saved.`);
+    } catch (error) {
+      console.error(`Failed to save ${step} section:`, error);
+      alert(getErrorMessage(error, "Failed to save this section."));
+    } finally {
+      setSectionSavingStep(null);
+    }
+  };
+
   const hasFilledInspectionContent = (value: unknown): boolean => {
     if (value == null) return false;
     if (typeof value === "string") return value.trim().length > 0;
@@ -1798,11 +1821,16 @@ export default function OnTheGoTechnicianAppPrototype() {
             vehicle.year,
             vehicle.make,
             vehicle.model,
-            vehicle.mileage,
             vehicle.vin,
             vehicle.licensePlate,
             vehicle.techName,
           ].some(hasFilledInspectionContent);
+        case "mileage":
+          return (
+            hasFilledInspectionContent(vehicle.mileage) ||
+            hasFilledInspectionContent(vehicle.obdCode) ||
+            Boolean(maintenanceSchedulePreview)
+          );
         case "tires":
           return hasFilledInspectionContent(tireData);
         case "brakes":
@@ -2116,6 +2144,21 @@ const handleGeneratePdf = async () => {
       doc.text(String(value), x + 4, y + 18);
     };
 
+    const isFilledPdfValue = (value: unknown) =>
+      typeof value === "string"
+        ? value.trim().length > 0
+        : hasFilledInspectionContent(value);
+
+    const addLabeledParagraphIfFilled = (
+      label: string,
+      value: unknown,
+      formatter?: (value: string) => string,
+    ) => {
+      const rawValue = String(value ?? "").trim();
+      if (!rawValue) return;
+      addParagraph(`${label}: ${formatter ? formatter(rawValue) : rawValue}`);
+    };
+
     const recommendedItems = getInspectionRecommendations({
       maintenance,
       undercar,
@@ -2140,6 +2183,172 @@ const handleGeneratePdf = async () => {
     doc.text(`Tech: ${vehicle.techName || "-"}`, pageWidth - 55, y + 19);
 
     y += 36;
+
+    {
+      const isFilledPdfValue = (value: unknown) =>
+        typeof value === "string"
+          ? value.trim().length > 0
+          : hasFilledInspectionContent(value);
+
+      const addLabeledParagraphIfFilled = (
+        label: string,
+        value: unknown,
+        formatter?: (value: string) => string,
+      ) => {
+        const rawValue = String(value ?? "").trim();
+        if (!rawValue) return;
+        addParagraph(`${label}: ${formatter ? formatter(rawValue) : rawValue}`);
+      };
+
+      const customerName = [vehicle.firstName, vehicle.lastName].filter(Boolean).join(" ").trim();
+      const vehicleLabel = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim();
+      const plateLabel = [String(vehicle.licensePlate || "").trim(), String(vehicle.state || "").trim()]
+        .filter(Boolean)
+        .join(" ");
+
+      if (
+        [
+          customerName,
+          vehicle.phone,
+          vehicle.email,
+          vehicleLabel,
+          vehicle.mileage,
+          vehicle.vin,
+          plateLabel,
+          vehicle.techName,
+          vehicle.obdCode,
+        ].some(isFilledPdfValue)
+      ) {
+        addSectionTitle("Customer and Vehicle Information");
+        addLabeledParagraphIfFilled("Customer", customerName);
+        addLabeledParagraphIfFilled("Phone", vehicle.phone);
+        addLabeledParagraphIfFilled("Email", vehicle.email);
+        addLabeledParagraphIfFilled("Vehicle", vehicleLabel);
+        addLabeledParagraphIfFilled("Mileage", vehicle.mileage);
+        addLabeledParagraphIfFilled("VIN", vehicle.vin);
+        addLabeledParagraphIfFilled("Plate", plateLabel);
+        addLabeledParagraphIfFilled("Technician", vehicle.techName);
+        addLabeledParagraphIfFilled("OBD Code", vehicle.obdCode);
+        y += 3;
+      }
+
+      addSectionTitle("Inspection Summary");
+      drawSummaryBox(margin, "OK", summaryCounts.ok, [220, 252, 231], green);
+      drawSummaryBox(margin + 59, "Suggested", summaryCounts.sug, [254, 243, 199], amber);
+      drawSummaryBox(margin + 118, "Required", summaryCounts.req, [254, 226, 226], red);
+      y += 32;
+
+      if (recommendedItems.length) {
+        addSectionTitle("Recommended Services");
+        recommendedItems.forEach((item) => addParagraph(`- ${item}`));
+        y += 3;
+      }
+
+      if (hasFilledInspectionContent(brakes)) {
+        addSectionTitle("Brake Findings");
+        addLabeledParagraphIfFilled("Status", brakes.status);
+        addLabeledParagraphIfFilled("LF Pad", brakes.lfPad);
+        addLabeledParagraphIfFilled("RF Pad", brakes.rfPad);
+        addLabeledParagraphIfFilled("LR Pad/Shoe", brakes.lrPad);
+        addLabeledParagraphIfFilled("RR Pad/Shoe", brakes.rrPad);
+        addLabeledParagraphIfFilled("LF Rotor/Drum", brakes.lfRotor);
+        addLabeledParagraphIfFilled("RF Rotor/Drum", brakes.rfRotor);
+        addLabeledParagraphIfFilled("LR Rotor/Drum", brakes.lrRotor);
+        addLabeledParagraphIfFilled("RR Rotor/Drum", brakes.rrRotor);
+        addLabeledParagraphIfFilled("Notes", brakes.brakeNotes);
+        y += 3;
+      }
+
+      const filledTireEntries = tires.filter((tire) => {
+        const tireEntry = tireData[tire];
+        const visibleFlags = tireEntry.flags.filter((flag) => flag !== spareUnavailableFlag);
+        return (
+          tireEntry.flags.includes(spareUnavailableFlag) ||
+          isFilledPdfValue(tireEntry.psiIn) ||
+          isFilledPdfValue(tireEntry.psiOut) ||
+          isFilledPdfValue(tireEntry.treadOuter) ||
+          isFilledPdfValue(tireEntry.treadInner) ||
+          isFilledPdfValue(tireEntry.status) ||
+          visibleFlags.length > 0 ||
+          isFilledPdfValue(tireEntry.recommendation)
+        );
+      });
+
+      if (filledTireEntries.length) {
+        addSectionTitle("Tire Findings");
+        filledTireEntries.forEach((tire) => {
+          const tireEntry = tireData[tire];
+          const visibleFlags = tireEntry.flags.filter((flag) => flag !== spareUnavailableFlag);
+          const tireParts = [];
+
+          if (tireEntry.flags.includes(spareUnavailableFlag)) {
+            tireParts.push(spareUnavailableFlag);
+          } else {
+            if (tireEntry.status) tireParts.push(`Status ${tireEntry.status}`);
+            if (tireEntry.psiIn || tireEntry.psiOut) {
+              tireParts.push(`PSI ${tireEntry.psiIn || "?"} -> ${tireEntry.psiOut || "?"}`);
+            }
+            if (tireEntry.treadOuter || tireEntry.treadInner) {
+              tireParts.push(`Tread ${tireEntry.treadOuter || "?"} / ${tireEntry.treadInner || "?"}`);
+            }
+          }
+
+          addParagraph(`${tire}: ${tireParts.join(" | ")}`);
+
+          if (visibleFlags.length) {
+            addParagraph(`Flags: ${visibleFlags.join(", ")}`, margin + 4);
+          }
+
+          if (tireEntry.recommendation) {
+            addParagraph(`Recommendation: ${tireEntry.recommendation}`, margin + 4);
+          }
+        });
+        y += 3;
+      }
+
+      if (String(vehicle.notes || "").trim()) {
+        addSectionTitle("Technician Notes");
+        addParagraph(vehicle.notes);
+      }
+
+      const safeCustomer = ([vehicle.firstName, vehicle.lastName].filter(Boolean).join(" ") || "customer").replace(/[^a-z0-9]/gi, "_");
+      const safeVehicle = [vehicle.year, vehicle.make, vehicle.model]
+        .filter(Boolean)
+        .join("_")
+        .replace(/[^a-z0-9]/gi, "_");
+
+      const fileName = `${safeCustomer}_${safeVehicle || "vehicle"}_inspection_report.pdf`;
+      const pdfBlob = doc.output("blob");
+      const pdfPath = `${savedCustomerId}/${savedInspectionId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("inspection-reports")
+        .upload(pdfPath, pdfBlob, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { error: reportInsertError } = await supabase
+        .from("inspection_reports")
+        .upsert(
+          [
+            {
+              inspection_id: savedInspectionId,
+              customer_id: savedCustomerId,
+              pdf_path: pdfPath,
+            },
+          ],
+          { onConflict: "inspection_id" }
+        );
+
+      if (reportInsertError) throw reportInsertError;
+
+      doc.save(fileName);
+      alert("PDF generated, uploaded, and linked successfully.");
+      return;
+    }
 
     addSectionTitle("Customer and Vehicle Information");
     addParagraph(`Customer: ${[vehicle.firstName, vehicle.lastName].filter(Boolean).join(" ") || "—"}`);
@@ -2425,27 +2634,6 @@ if (!isAuthorized) {
                 <div className="flex justify-end">
                   <PortalTopNav section="tech" />
                 </div>
-                <div className="flex flex-wrap justify-end gap-3">
-                  <BackToPortalButton className={headerActionButtonClassName} />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.location.href = "/tech/jobs";
-                    }}
-                    className={headerActionButtonClassName}
-                  >
-                    Job Queue
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      window.location.href = "/customer/login";
-                    }}
-                    className={headerActionButtonClassName}
-                  >
-                    Log Out
-                  </button>
-                </div>
                 <div className="ml-auto w-full max-w-xs space-y-2 rounded-2xl bg-slate-100 p-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">Inspection progress</span>
@@ -2661,13 +2849,6 @@ if (!isAuthorized) {
               <CardContent className="space-y-6 p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <SectionHeader icon={Car} title="Customer and vehicle information" subtitle="Start the inspection by capturing the service visit details." />
-                  <button
-                    type="button"
-                    onClick={handleStartNewCustomer}
-                    className={headerActionButtonClassName}
-                  >
-                    Save Draft
-                  </button>
                 </div>
                 <StepCompletionToggle
                   checked={workflowSteps.vehicle}
@@ -2695,7 +2876,6 @@ if (!isAuthorized) {
                     ["Last Name", "lastName"],
                     ["Phone", "phone"],
                     ["Email", "email"],
-                    ["Mileage", "mileage"],
                     ["VIN", "vin"],
                     ["License Plate", "licensePlate"],
                     ["State", "state"],
@@ -2742,9 +2922,7 @@ if (!isAuthorized) {
                           inputMode={
                             key === "phone"
                               ? "tel"
-                              : key === "mileage"
-                                ? "numeric"
-                                : "text"
+                              : "text"
                           }
                           autoCapitalize={key === "vin" ? "characters" : "none"}
                           maxLength={
@@ -2759,11 +2937,9 @@ if (!isAuthorized) {
                               ? "(555) 555-5555"
                               : key === "email"
                                 ? "customer@example.com"
-                                : key === "mileage"
-                                    ? "125,000"
-                                    : key === "vin"
-                                      ? "17-character VIN"
-                                      : undefined
+                                : key === "vin"
+                                  ? "17-character VIN"
+                                  : undefined
                           }
                           className="bg-white"
                         />
@@ -2855,132 +3031,94 @@ if (!isAuthorized) {
                     <Textarea placeholder="Customer concerns, visible damage, or special observations" value={vehicle.notes} onChange={(e) => updateVehicle("notes", e.target.value)} className="bg-white" />
                   </div>
                 </div>
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleStartNewCustomer}
+                    className={headerActionButtonClassName}
+                  >
+                    Save Draft
+                  </button>
+                  <Button
+                    type="button"
+                    onClick={() => void handleSaveSection("vehicle")}
+                    disabled={sectionSavingStep === "vehicle"}
+                  >
+                    {sectionSavingStep === "vehicle" ? "Saving Section..." : "Save Vehicle Section"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {inspectionMode === "full" ? (
-          <TabsContent value="tires">
+          <TabsContent value="mileage">
             <div className="space-y-6">
-              <SectionHeader icon={ClipboardList} title="Tire inspection" subtitle="Record PSI, tread data, condition, and wear indicators for each tire." />
               <StepCompletionToggle
-                checked={workflowSteps.tires}
+                checked={workflowSteps.mileage}
                 onCheckedChange={(value) =>
-                  handleWorkflowStepCompletionChange("tires", value)
+                  handleWorkflowStepCompletionChange("mileage", value)
                 }
-                label="Mark tire inspection as complete."
+                label="Mark mileage and service interval review as complete."
               />
-              <div className="grid gap-4 xl:grid-cols-2">
-                {tires.map((tire) => (
-                  <Card key={tire} className="rounded-3xl border border-slate-200 bg-white shadow-md">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <CardTitle className="text-lg">{tire}</CardTitle>
-                      <StatusPill value={tireData[tire].status} />
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {tire === "Spare" && (
-                        <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
-                          <Checkbox
-                            checked={tireData[tire].flags.includes(spareUnavailableFlag)}
-                            onCheckedChange={() => toggleTireFlag(tire, spareUnavailableFlag)}
-                          />
-                          <span>Missing / Unavailable</span>
-                        </label>
+
+              {recordSyncMessage && (
+                <div
+                  className={`rounded-2xl border px-4 py-3 text-sm ${
+                    recordSyncState === "error"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : recordSyncState === "saved"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  {recordSyncMessage}
+                </div>
+              )}
+
+              <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+                <CardContent className="space-y-6 p-6">
+                  <SectionHeader
+                    icon={Car}
+                    title="Mileage and service interval"
+                    subtitle="Capture the current odometer reading and review what is due now versus what comes next."
+                  />
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Current Mileage</Label>
+                      <Input
+                        value={vehicle.mileage}
+                        onChange={(e) => updateVehicle("mileage", e.target.value)}
+                        onBlur={(e) => {
+                          updateVehicle("mileage", e.target.value);
+                          void handleVehicleProfileBlur();
+                        }}
+                        inputMode="numeric"
+                        placeholder="125,000"
+                        className="bg-white"
+                      />
+                      {vehicleFieldFormatWarnings.mileage ? (
+                        <p className="text-xs text-amber-800">{vehicleFieldFormatWarnings.mileage}</p>
+                      ) : (
+                        <p className="text-xs text-slate-500">
+                          Enter the odometer reading so the maintenance schedule can calculate the current service interval.
+                        </p>
                       )}
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2"><Label>PSI In</Label><Input value={tireData[tire].psiIn} onChange={(e) => updateTire(tire, "psiIn", e.target.value)} className="bg-white" /></div>
-                        <div className="space-y-2"><Label>PSI Out</Label><Input value={tireData[tire].psiOut} onChange={(e) => updateTire(tire, "psiOut", e.target.value)} className="bg-white" /></div>
-                        <div className="space-y-2"><Label>Tread Outer (32nds)</Label><Input value={tireData[tire].treadOuter} onChange={(e) => updateTire(tire, "treadOuter", e.target.value)} className="bg-white" /></div>
-                        <div className="space-y-2"><Label>Tread Inner (32nds)</Label><Input value={tireData[tire].treadInner} onChange={(e) => updateTire(tire, "treadInner", e.target.value)} className="bg-white" /></div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Status</Label>
-                        <ConditionSelect value={tireData[tire].status} onChange={(value) => updateTire(tire, "status", value)} />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Tire flags</Label>
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                          {tireFlags.map((flag) => {
-                            const checked = tireData[tire].flags.includes(flag);
-                            return (
-                              <label key={flag} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm">
-                                <Checkbox checked={checked} onCheckedChange={() => toggleTireFlag(tire, flag)} />
-                                <span>{flag}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Recommendation</Label>
-                        <Textarea placeholder="Rotation, balance, alignment, replacement, or note" value={tireData[tire].recommendation} onChange={(e) => updateTire(tire, "recommendation", e.target.value)} className="bg-white" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-          ) : null}
-
-          {inspectionMode === "full" ? (
-          <TabsContent value="brakes">
-            <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
-              <CardContent className="space-y-6 p-6">
-                <SectionHeader icon={Wrench} title="Brake inspection" subtitle="Capture measured pad and rotor values plus the overall brake recommendation." />
-                <StepCompletionToggle
-                  checked={workflowSteps.brakes}
-                  onCheckedChange={(value) =>
-                    handleWorkflowStepCompletionChange("brakes", value)
-                  }
-                  label="Mark brake inspection as complete."
-                />
-                <div className="grid gap-4 md:grid-cols-4">
-                  {([
-                    ["LF Pad (mm)", "lfPad"],
-                    ["RF Pad (mm)", "rfPad"],
-                    ["LR Pad/Shoe (mm)", "lrPad"],
-                    ["RR Pad/Shoe (mm)", "rrPad"],
-                    ["LF Rotor/Drum", "lfRotor"],
-                    ["RF Rotor/Drum", "rfRotor"],
-                    ["LR Rotor/Drum", "lrRotor"],
-                    ["RR Rotor/Drum", "rrRotor"],
-                  ] as const satisfies readonly (readonly [string, BrakeFieldKey])[]).map(([label, key]) => (
-                    <div key={key} className="space-y-2">
-                      <Label>{label}</Label>
-                      <Input value={brakes[key]} onChange={(e) => setBrakes((prev) => ({ ...prev, [key]: e.target.value }))} className="bg-white" />
                     </div>
-                  ))}
-                </div>
 
-                <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-                  <div className="space-y-2">
-                    <Label>Brake Status</Label>
-                    <ConditionSelect value={brakes.status} onChange={(value) => setBrakes((prev) => ({ ...prev, status: value }))} />
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-sm font-semibold text-slate-900">Current vehicle</div>
+                      <div className="mt-2 text-sm text-slate-700">
+                        {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Vehicle details not finished yet."}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        Once mileage is entered, the suggested maintenance cards below update automatically for the current interval.
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Brake Notes</Label>
-                    <Textarea placeholder="Example: Front pads at 3mm, rotors near discard spec" value={brakes.brakeNotes} onChange={(e) => setBrakes((prev) => ({ ...prev, brakeNotes: e.target.value }))} className="bg-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          ) : null}
-
-          <TabsContent value="maintenance">
-            <div className="space-y-6">
-              <StepCompletionToggle
-                checked={workflowSteps.maintenance}
-                onCheckedChange={(value) =>
-                  handleWorkflowStepCompletionChange("maintenance", value)
-                }
-                label="Mark maintenance and undercar inspection as complete."
-              />
+                </CardContent>
+              </Card>
 
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
@@ -3062,6 +3200,160 @@ if (!isAuthorized) {
                 </CardContent>
               </Card>
 
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSection("mileage")}
+                  disabled={sectionSavingStep === "mileage"}
+                >
+                  {sectionSavingStep === "mileage" ? "Saving Section..." : "Save Mileage Section"}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {inspectionMode === "full" ? (
+          <TabsContent value="tires">
+            <div className="space-y-6">
+              <SectionHeader icon={ClipboardList} title="Tire inspection" subtitle="Record PSI, tread data, condition, and wear indicators for each tire." />
+              <StepCompletionToggle
+                checked={workflowSteps.tires}
+                onCheckedChange={(value) =>
+                  handleWorkflowStepCompletionChange("tires", value)
+                }
+                label="Mark tire inspection as complete."
+              />
+              <div className="grid gap-4 xl:grid-cols-2">
+                {tires.map((tire) => (
+                  <Card key={tire} className="rounded-3xl border border-slate-200 bg-white shadow-md">
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <CardTitle className="text-lg">{tire}</CardTitle>
+                      <StatusPill value={tireData[tire].status} />
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {tire === "Spare" && (
+                        <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                          <Checkbox
+                            checked={tireData[tire].flags.includes(spareUnavailableFlag)}
+                            onCheckedChange={() => toggleTireFlag(tire, spareUnavailableFlag)}
+                          />
+                          <span>Missing / Unavailable</span>
+                        </label>
+                      )}
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2"><Label>PSI In</Label><Input value={tireData[tire].psiIn} onChange={(e) => updateTire(tire, "psiIn", e.target.value)} className="bg-white" /></div>
+                        <div className="space-y-2"><Label>PSI Out</Label><Input value={tireData[tire].psiOut} onChange={(e) => updateTire(tire, "psiOut", e.target.value)} className="bg-white" /></div>
+                        <div className="space-y-2"><Label>Tread Outer (32nds)</Label><Input value={tireData[tire].treadOuter} onChange={(e) => updateTire(tire, "treadOuter", e.target.value)} className="bg-white" /></div>
+                        <div className="space-y-2"><Label>Tread Inner (32nds)</Label><Input value={tireData[tire].treadInner} onChange={(e) => updateTire(tire, "treadInner", e.target.value)} className="bg-white" /></div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <ConditionSelect value={tireData[tire].status} onChange={(value) => updateTire(tire, "status", value)} />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Tire flags</Label>
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                          {tireFlags.map((flag) => {
+                            const checked = tireData[tire].flags.includes(flag);
+                            return (
+                              <label key={flag} className="flex items-center gap-2 rounded-xl border bg-white p-3 text-sm">
+                                <Checkbox checked={checked} onCheckedChange={() => toggleTireFlag(tire, flag)} />
+                                <span>{flag}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Recommendation</Label>
+                        <Textarea placeholder="Rotation, balance, alignment, replacement, or note" value={tireData[tire].recommendation} onChange={(e) => updateTire(tire, "recommendation", e.target.value)} className="bg-white" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSection("tires")}
+                  disabled={sectionSavingStep === "tires"}
+                >
+                  {sectionSavingStep === "tires" ? "Saving Section..." : "Save Tire Section"}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+          ) : null}
+
+          {inspectionMode === "full" ? (
+          <TabsContent value="brakes">
+            <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+              <CardContent className="space-y-6 p-6">
+                <SectionHeader icon={Wrench} title="Brake inspection" subtitle="Capture measured pad and rotor values plus the overall brake recommendation." />
+                <StepCompletionToggle
+                  checked={workflowSteps.brakes}
+                  onCheckedChange={(value) =>
+                    handleWorkflowStepCompletionChange("brakes", value)
+                  }
+                  label="Mark brake inspection as complete."
+                />
+                <div className="grid gap-4 md:grid-cols-4">
+                  {([
+                    ["LF Pad (mm)", "lfPad"],
+                    ["RF Pad (mm)", "rfPad"],
+                    ["LR Pad/Shoe (mm)", "lrPad"],
+                    ["RR Pad/Shoe (mm)", "rrPad"],
+                    ["LF Rotor/Drum", "lfRotor"],
+                    ["RF Rotor/Drum", "rfRotor"],
+                    ["LR Rotor/Drum", "lrRotor"],
+                    ["RR Rotor/Drum", "rrRotor"],
+                  ] as const satisfies readonly (readonly [string, BrakeFieldKey])[]).map(([label, key]) => (
+                    <div key={key} className="space-y-2">
+                      <Label>{label}</Label>
+                      <Input value={brakes[key]} onChange={(e) => setBrakes((prev) => ({ ...prev, [key]: e.target.value }))} className="bg-white" />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                  <div className="space-y-2">
+                    <Label>Brake Status</Label>
+                    <ConditionSelect value={brakes.status} onChange={(value) => setBrakes((prev) => ({ ...prev, status: value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Brake Notes</Label>
+                    <Textarea placeholder="Example: Front pads at 3mm, rotors near discard spec" value={brakes.brakeNotes} onChange={(e) => setBrakes((prev) => ({ ...prev, brakeNotes: e.target.value }))} className="bg-white" />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => void handleSaveSection("brakes")}
+                    disabled={sectionSavingStep === "brakes"}
+                  >
+                    {sectionSavingStep === "brakes" ? "Saving Section..." : "Save Brake Section"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          ) : null}
+
+          <TabsContent value="maintenance">
+            <div className="space-y-6">
+              <StepCompletionToggle
+                checked={workflowSteps.maintenance}
+                onCheckedChange={(value) =>
+                  handleWorkflowStepCompletionChange("maintenance", value)
+                }
+                label="Mark maintenance and undercar inspection as complete."
+              />
+
               <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-6 p-6">
                   <SectionHeader icon={ClipboardList} title="Maintenance inspection" subtitle="Record service recommendations and why each item needs attention." />
@@ -3091,6 +3383,16 @@ if (!isAuthorized) {
                   </div>
                 </CardContent>
               </Card>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSection("maintenance")}
+                  disabled={sectionSavingStep === "maintenance"}
+                >
+                  {sectionSavingStep === "maintenance" ? "Saving Section..." : "Save Maintenance Section"}
+                </Button>
+              </div>
             </div>
           </TabsContent>
 
@@ -3276,6 +3578,16 @@ if (!isAuthorized) {
                   </div>
                 </CardContent>
               </Card>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveSection("photos")}
+                  disabled={sectionSavingStep === "photos"}
+                >
+                  {sectionSavingStep === "photos" ? "Saving Section..." : "Save Photo Section"}
+                </Button>
+              </div>
             </div>
           </TabsContent>
           <TabsContent value="customer-report">
@@ -3454,6 +3766,15 @@ if (!isAuthorized) {
         </div>
       </CardContent>
     </Card>
+    <div className="flex justify-end">
+      <Button
+        type="button"
+        onClick={() => void handleSaveSection("customer-report")}
+        disabled={sectionSavingStep === "customer-report"}
+      >
+        {sectionSavingStep === "customer-report" ? "Saving Section..." : "Save Report Section"}
+      </Button>
+    </div>
   </div>
 </TabsContent>
           <TabsContent value="review">
@@ -3594,4 +3915,3 @@ if (!isAuthorized) {
     </div>
   );
 }
-

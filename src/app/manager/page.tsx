@@ -14,17 +14,31 @@ import {
   CalendarDays,
   CalendarClock,
   ArrowRight,
+  Phone,
+  Mail,
 } from "lucide-react";
+
+type PublicServiceRequest = {
+  id: string;
+  status: string;
+  requested_service: string;
+  service_details: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  created_at: string;
+};
 
 export default function ManagerHomePage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-
   const [openJobsCount, setOpenJobsCount] = useState(0);
   const [unassignedJobsCount, setUnassignedJobsCount] = useState(0);
   const [draftJobsCount, setDraftJobsCount] = useState(0);
   const [customersCount, setCustomersCount] = useState(0);
+  const [publicRequestsCount, setPublicRequestsCount] = useState(0);
+  const [recentPublicRequests, setRecentPublicRequests] = useState<PublicServiceRequest[]>([]);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -34,6 +48,8 @@ export default function ManagerHomePage() {
           { count: unassignedJobs, error: unassignedJobsError },
           { count: draftJobs, error: draftJobsError },
           { count: customers, error: customersError },
+          { count: publicRequests, error: publicRequestsError },
+          { data: publicRequestsData, error: publicRequestsListError },
         ] = await Promise.all([
           supabase
             .from("jobs")
@@ -54,17 +70,34 @@ export default function ManagerHomePage() {
           supabase
             .from("customers")
             .select("*", { count: "exact", head: true }),
+
+          supabase
+            .from("service_requests")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "new"),
+
+          supabase
+            .from("service_requests")
+            .select(
+              "id, status, requested_service, service_details, contact_name, contact_phone, contact_email, created_at",
+            )
+            .order("created_at", { ascending: false })
+            .limit(5),
         ]);
 
         if (openJobsError) throw openJobsError;
         if (unassignedJobsError) throw unassignedJobsError;
         if (draftJobsError) throw draftJobsError;
         if (customersError) throw customersError;
+        if (publicRequestsError) throw publicRequestsError;
+        if (publicRequestsListError) throw publicRequestsListError;
 
         setOpenJobsCount(openJobs ?? 0);
         setUnassignedJobsCount(unassignedJobs ?? 0);
         setDraftJobsCount(draftJobs ?? 0);
         setCustomersCount(customers ?? 0);
+        setPublicRequestsCount(publicRequests ?? 0);
+        setRecentPublicRequests((publicRequestsData || []) as PublicServiceRequest[]);
       } catch (error) {
         console.error("Error loading manager dashboard:", error);
         alert("Failed to load manager dashboard.");
@@ -87,20 +120,20 @@ export default function ManagerHomePage() {
   return (
     <div className="otg-manager-shell otg-portal-dark min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Manager Dashboard</h1>
-            <p className="mt-1 text-slate-600">Start in Jobs, then run schedule and team operations.</p>
-          </div>
-
-          <div className="w-full max-w-2xl space-y-4">
-            <div className="flex justify-end">
-              <PortalTopNav section="manager" />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">Manager Dashboard</h1>
+              <p className="mt-1 text-slate-600">
+                Start in Jobs, then run schedule and team operations.
+              </p>
             </div>
+
             <div className="flex justify-end">
               <BackToPortalButton />
             </div>
           </div>
+          <PortalTopNav section="manager" />
         </div>
 
         <button
@@ -141,6 +174,67 @@ export default function ManagerHomePage() {
             </CardContent>
           </Card>
         </button>
+
+        <Card className="border-2 border-sky-200 bg-white">
+          <CardContent className="space-y-5 p-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Public Service Requests</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Requests submitted from the public website contact form.
+                </p>
+              </div>
+              <div className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900">
+                {publicRequestsCount} new
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {recentPublicRequests.length ? (
+                recentPublicRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {request.requested_service}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          {request.contact_name || "No name provided"}
+                        </div>
+                      </div>
+                      <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                        {new Date(request.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-2 text-sm text-slate-700">
+                      {request.contact_phone ? (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-slate-400" />
+                          <span>{request.contact_phone}</span>
+                        </div>
+                      ) : null}
+                      {request.contact_email ? (
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-slate-400" />
+                          <span>{request.contact_email}</span>
+                        </div>
+                      ) : null}
+                      <div>{request.service_details || "No details provided."}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                  No public service requests yet.
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
           <button

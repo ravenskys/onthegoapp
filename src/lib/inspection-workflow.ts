@@ -1,5 +1,6 @@
 export const workflowStepOrder = [
   "vehicle",
+  "mileage",
   "tires",
   "brakes",
   "maintenance",
@@ -10,6 +11,7 @@ export const workflowStepOrder = [
 
 export const abbreviatedWorkflowStepOrder = [
   "vehicle",
+  "mileage",
   "maintenance",
   "photos",
   "customer-report",
@@ -18,6 +20,7 @@ export const abbreviatedWorkflowStepOrder = [
 
 export const workflowStepLabels: Record<string, string> = {
   vehicle: "Customer and vehicle information",
+  mileage: "Mileage and service interval",
   tires: "Tire inspection",
   brakes: "Brake inspection",
   maintenance: "Maintenance and undercar inspection",

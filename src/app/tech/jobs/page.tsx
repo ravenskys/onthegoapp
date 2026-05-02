@@ -9,10 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { CalendarClock, Loader2, MapPin, StickyNote, Trash2 } from "lucide-react";
-import {
-  BackToPortalButton,
-  headerActionButtonClassName,
-} from "@/components/portal/BackToPortalButton";
+import { headerActionButtonClassName } from "@/components/portal/BackToPortalButton";
 import { PortalTopNav } from "@/components/portal/PortalTopNav";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
 import { TECH_SAVED_DRAFTS_STORAGE_KEY } from "@/lib/tech-inspection";
@@ -553,17 +550,6 @@ export default function TechnicianJobsPage() {
               <div className="w-full max-w-2xl space-y-4">
                 <div className="flex justify-end">
                   <PortalTopNav section="tech" />
-                </div>
-                <div className="flex flex-wrap justify-end gap-3">
-                  <BackToPortalButton className={headerActionButtonClassName} />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={headerActionButtonClassName}
-                    onClick={() => router.push("/tech")}
-                  >
-                    Back to Tech Page
-                  </Button>
                 </div>
               </div>
             </div>
