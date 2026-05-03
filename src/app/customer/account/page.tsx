@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CarFront, MapPin, Plus, Save, Trash2, UserRound } from "lucide-react";
+import { CarFront, KeyRound, MapPin, Plus, Save, Trash2, UserRound } from "lucide-react";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import { getErrorMessage } from "@/lib/tech-inspection";
@@ -237,6 +237,8 @@ export default function CustomerAccountPage() {
   const [accountPhone, setAccountPhone] = useState("");
   const [accountPhoneExtension, setAccountPhoneExtension] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [vehicleDrafts, setVehicleDrafts] = useState<EditableVehicleDraft[]>([]);
   const [mileageFormatWarningsByIndex, setMileageFormatWarningsByIndex] = useState<
     Record<number, string | null>
@@ -248,6 +250,8 @@ export default function CustomerAccountPage() {
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [accountMessage, setAccountMessage] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
   const [closureRequestNote, setClosureRequestNote] = useState("");
   const [submittingClosureRequest, setSubmittingClosureRequest] = useState(false);
   const [signInEmail, setSignInEmail] = useState("");
@@ -614,6 +618,47 @@ export default function CustomerAccountPage() {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    setPasswordMessage("");
+
+    if (!newPassword) {
+      setPasswordMessage("Enter a new password before saving.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordMessage("The new password and confirmation do not match.");
+      return;
+    }
+
+    setSavingPassword(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPasswordMessage("Password updated successfully.");
+    } catch (error) {
+      setPasswordMessage(
+        getErrorMessage(
+          error,
+          "Failed to update password. Please try again or use Forgot Password from the sign-in screen.",
+        ),
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
   const handleRequestAccountClosure = async () => {
     const confirmed = window.confirm(
       "Delete account? Your account enters deletion hold for 2 business days and access is removed immediately. After that window, recovery may not be possible.",
@@ -861,6 +906,63 @@ export default function CustomerAccountPage() {
               {accountMessage}
             </div>
           ) : null}
+
+          <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-white p-2 text-slate-900 shadow-sm">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Change Password
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Update your portal password here any time after you sign in. If you ever lose access, you can still
+                  use Forgot Password from the login screen.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="mt-5 space-y-4">
+              <div className="space-y-2">
+                <label className="otg-label">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  className="otg-input"
+                  placeholder="Enter a new password"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="otg-label">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  className="otg-input"
+                  placeholder="Confirm your new password"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingPassword}
+                className="otg-btn otg-btn-secondary disabled:opacity-50 sm:w-auto"
+              >
+                {savingPassword ? "Updating Password..." : "Update Password"}
+              </button>
+            </form>
+
+            {passwordMessage ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                {passwordMessage}
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-5">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">

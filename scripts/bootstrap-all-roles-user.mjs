@@ -38,7 +38,7 @@ const ensureBucket = async (id) => {
 
   const { error: createError } = await supabase.storage.createBucket(id, {
     public: false,
-    fileSizeLimit: "50MiB",
+    fileSizeLimit: "50MB",
   });
 
   if (createError) {
