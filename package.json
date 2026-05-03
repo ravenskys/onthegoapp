@@ -11,10 +11,11 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "supabase:link": "npx.cmd supabase@latest link --project-ref vzshannrbrcllzzlhfju",
+    "supabase:link": "npx.cmd supabase@latest link --project-ref nwycfrbbeqmubertudxs",
     "supabase:migration-list": "dotenv -o -e .env.local -- npx.cmd supabase@latest migration list",
     "supabase:db-push": "dotenv -o -e .env.local -- npx.cmd supabase@latest db push --yes",
-    "supabase:db-push:all": "dotenv -o -e .env.local -- npx.cmd supabase@latest db push --yes --include-all"
+    "supabase:db-push:all": "dotenv -o -e .env.local -- npx.cmd supabase@latest db push --yes --include-all",
+    "supabase:bootstrap-user": "dotenv -o -e .env.local -- node scripts/bootstrap-all-roles-user.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
