@@ -19,7 +19,7 @@ This is the software checklist for moving the On The Go Maintenance dev environm
 - Download:
   - `https://nodejs.org/`
 - Recommended:
-  - Node.js 20 LTS or newer
+  - Node.js 20.x LTS
 - Verify:
   - `node -v`
   - `npm -v`

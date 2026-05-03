@@ -53,7 +53,7 @@ Role-based mobile maintenance platform built with:
 
 ## Local Development
 
-Use **Node.js 20 LTS or newer** (see `engines` in `package.json`).
+Use **Node.js 20.x LTS** (see `engines` in `package.json`).
 
 On a **new machine**: clone the repo, copy [`.env.example`](./.env.example) to `.env.local`, fill in secrets from Supabase and your vault (never commit `.env.local`), then install and run. See [CENTRALIZED_DEV_SETUP.md](./CENTRALIZED_DEV_SETUP.md) and [DEV_MACHINE_REQUIREMENTS.md](./DEV_MACHINE_REQUIREMENTS.md).
 
