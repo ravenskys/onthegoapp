@@ -192,13 +192,17 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 3rem;
   border: none;
   border-radius: 999px;
   padding: 14px 28px;
   font-size: 0.95rem;
   font-weight: 800;
   letter-spacing: 0.5px;
+  line-height: 1.2;
+  text-align: center;
   text-transform: uppercase;
+  white-space: normal;
   transform: translateY(0) scale(1);
   transition:
     transform 0.12s ease,
@@ -736,7 +740,7 @@ img {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  height: 2.5rem;
+  min-height: 2.75rem;
   padding: 0 1rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.75rem;
@@ -744,6 +748,9 @@ img {
   color: #0f172a;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   transition: background-color 0.2s ease;
 }
@@ -754,6 +761,9 @@ img {
 
 .otg-portal-trigger-dark {
   min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 22px;
   background: #111a13;
@@ -761,6 +771,9 @@ img {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
@@ -815,7 +828,6 @@ img {
 .otg-portal-pill {
   display: block;
   min-height: 2.75rem;
-  white-space: nowrap;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 22px;
   background: #111a13;
@@ -823,6 +835,9 @@ img {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
@@ -1294,6 +1309,12 @@ img {
 }
 
 @media (max-width: 768px) {
+  .otg-manager-shell,
+  .otg-portal-dark.otg-page,
+  .otg-portal-dark.min-h-screen {
+    padding: 1rem 0.75rem !important;
+  }
+
   .otg-portal-page {
     padding: 1rem 0.75rem;
   }
@@ -1366,6 +1387,10 @@ img {
     width: 100%;
   }
 
+  .otg-page-header-actions > * {
+    width: 100%;
+  }
+
   .otg-site-logo {
     flex-direction: row;
     align-items: center;
@@ -1395,6 +1420,58 @@ img {
   .otg-btn-outline-dark {
     width: 100%;
     text-align: center;
+  }
+
+  .otg-header-action-btn,
+  .otg-portal-trigger-dark {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .otg-portal-nav {
+    border-radius: 24px;
+  }
+
+  .otg-portal-nav > div {
+    gap: 0.75rem;
+  }
+
+  .otg-portal-nav nav {
+    width: 100%;
+  }
+
+  .otg-portal-nav ul {
+    padding-bottom: 0.125rem;
+  }
+
+  .otg-portal-nav .sm\:ml-auto,
+  .otg-portal-nav .sm\:justify-end {
+    margin-left: 0;
+    justify-content: stretch;
+  }
+
+  .otg-portal-nav .flex.shrink-0.flex-wrap.items-center.gap-2 {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .otg-manager-shell .mx-auto.max-w-6xl,
+  .otg-manager-shell .mx-auto.max-w-5xl,
+  .otg-manager-shell .mx-auto.max-w-4xl {
+    max-width: 100%;
+  }
+
+  .otg-manager-shell [data-slot="card"] {
+    border-radius: 1.25rem;
+  }
+
+  .otg-manager-shell table {
+    min-width: 100%;
+  }
+
+  .otg-manager-shell .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
   }
 
   .otg-content-card,
