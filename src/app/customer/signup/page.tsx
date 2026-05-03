@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { formatPhoneNumber, normalizeEmail, normalizePhoneExtension } from "@/lib/input-formatters";
 import { getEmailInputWarning } from "@/lib/input-validation-feedback";
 import { CustomerContactFields } from "@/components/customer/CustomerContactFields";
@@ -26,16 +26,29 @@ export default function CustomerSignupPage() {
     setLoading(true);
 
     try {
+      if (supabaseConfigError) {
+        throw new Error(supabaseConfigError);
+      }
+
       const normalizedEmail = normalizeEmail(email);
       const trimmedFirstName = firstName.trim();
       const trimmedLastName = lastName.trim();
       const trimmedPhone = formatPhoneNumber(phone).trim();
       const trimmedExtension = normalizePhoneExtension(phoneExtension);
 
-      const { data, error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-      });
+      let data;
+      let error;
+
+      try {
+        ({ data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+        }));
+      } catch {
+        throw new Error(
+          "Could not reach Supabase while creating the account. If this is the deployed site, verify the Vercel public Supabase env vars and redeploy."
+        );
+      }
 
       if (error) {
         if (error.message.toLowerCase().includes("already registered")) {

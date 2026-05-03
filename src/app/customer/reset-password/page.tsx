@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export default function ResetPasswordPage() {
@@ -20,16 +20,32 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    if (supabaseConfigError) {
+      alert(supabaseConfigError);
+      return;
+    }
+
     setLoading(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    });
+    let errorMessage: string | null = null;
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password,
+      });
+
+      if (error) {
+        errorMessage = error.message;
+      }
+    } catch {
+      errorMessage =
+        "Could not reach Supabase while updating the password. Check the public Supabase env vars for this environment and redeploy if needed.";
+    }
 
     setLoading(false);
 
-    if (error) {
-      alert(error.message);
+    if (errorMessage) {
+      alert(errorMessage);
       return;
     }
 

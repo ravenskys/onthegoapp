@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { normalizeEmail } from "@/lib/input-formatters";
@@ -21,17 +21,34 @@ export default function CustomerLoginPage() {
     setLoading(true);
     setLoginError("");
 
+    if (supabaseConfigError) {
+      setLoading(false);
+      setLoginError(supabaseConfigError);
+      return;
+    }
+
     const normalizedEmail = normalizeEmail(email);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password,
-    });
+    let errorMessage: string | null = null;
 
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (error) {
+        errorMessage = error.message;
+      }
+    } catch {
+      errorMessage =
+        "Could not reach Supabase while signing in. If this is the deployed site, check the Vercel NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY values and redeploy.";
+    }
+
+    if (errorMessage) {
       setLoading(false);
       setLoginError(
-        `${error.message} If you are new here, you can create an account instead.`
+        `${errorMessage} If you are new here, you can create an account instead.`
       );
       return;
     }
@@ -60,21 +77,37 @@ export default function CustomerLoginPage() {
       return;
     }
 
+    if (supabaseConfigError) {
+      alert(supabaseConfigError);
+      return;
+    }
+
     setLoading(true);
 
     const normalizedEmail = normalizeEmail(email);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      normalizedEmail,
-      {
-        redirectTo: `${window.location.origin}/customer/reset-password`,
+    let errorMessage: string | null = null;
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        {
+          redirectTo: `${window.location.origin}/customer/reset-password`,
+        }
+      );
+
+      if (error) {
+        errorMessage = error.message;
       }
-    );
+    } catch {
+      errorMessage =
+        "Could not reach Supabase to send the reset email. Check the public Supabase env vars for this environment and redeploy if needed.";
+    }
 
     setLoading(false);
 
-    if (error) {
-      alert(error.message);
+    if (errorMessage) {
+      alert(errorMessage);
       return;
     }
 
