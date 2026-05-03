@@ -179,9 +179,9 @@ export default function ManagerHomePage() {
           <CardContent className="space-y-5 p-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Public Service Requests</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Website Messages</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Requests submitted from the public website contact form.
+                  Messages submitted from the public website contact form.
                 </p>
               </div>
               <div className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900">
@@ -229,7 +229,7 @@ export default function ManagerHomePage() {
                 ))
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                  No public service requests yet.
+                  No website messages yet.
                 </div>
               )}
             </div>

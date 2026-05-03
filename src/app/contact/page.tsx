@@ -38,18 +38,18 @@ export default function ContactPage() {
     }
 
     if (!serviceNeeded) {
-      setMessage("Choose the service you need.");
+      setMessage("Choose the topic that best fits your message.");
       return;
     }
 
     if (!serviceDetails.trim()) {
-      setMessage("Add a few service details so we know how to follow up.");
+      setMessage("Add a few details so we know how to follow up.");
       return;
     }
 
     setSubmitting(true);
     setMessageTone("info");
-    setMessage("Sending your request to the manager...");
+    setMessage("Sending your message to the team...");
 
     try {
       const response = await fetch("/api/public/service-request", {
@@ -68,7 +68,7 @@ export default function ContactPage() {
 
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(result.error || "We could not send your request.");
+        throw new Error(result.error || "We could not send your message.");
       }
 
       setFullName("");
@@ -77,10 +77,10 @@ export default function ContactPage() {
       setServiceNeeded("");
       setServiceDetails("");
       setMessageTone("success");
-      setMessage("Your request was sent. The manager can now review it and follow up.");
+      setMessage("Your message was sent. Managers and admins can now review it and follow up.");
     } catch (error) {
       setMessageTone("error");
-      setMessage(error instanceof Error ? error.message : "We could not send your request.");
+      setMessage(error instanceof Error ? error.message : "We could not send your message.");
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +91,7 @@ export default function ContactPage() {
       <PublicPageHero
         title="Contact"
         accent="Us"
-        body="Schedule mobile maintenance, inspections, or fleet support and we will follow up to confirm service details."
+        body="Send us a message about maintenance, inspections, fleet support, or general questions and we will follow up."
       />
 
       <section className="otg-section">
@@ -116,10 +116,10 @@ export default function ContactPage() {
           </div>
 
           <div className="otg-contact-card">
-            <h3 className="otg-card-title">Request an Appointment</h3>
+            <h3 className="otg-card-title">Send Us a Message</h3>
             <p className="otg-body">
-              Use this request form as the public booking entry point. Your request
-              is stored for manager review and follow-up.
+              Use this form to message the team. Your note is stored for manager
+              and admin review so someone can follow up with you.
             </p>
 
             <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -157,14 +157,14 @@ export default function ContactPage() {
               </div>
 
               <div>
-                <label className="otg-label">Service Needed</label>
+                <label className="otg-label">Message Topic</label>
                 <select
                   className="otg-select mt-2"
                   value={serviceNeeded}
                   onChange={(e) => setServiceNeeded(e.target.value)}
                 >
                   <option value="" disabled>
-                    Select a service
+                    Select a topic
                   </option>
                   <option value="Oil Change">Oil Change</option>
                   <option value="Fluid Service">Fluid Service</option>
@@ -176,12 +176,12 @@ export default function ContactPage() {
               </div>
 
               <div>
-                <label className="otg-label">Vehicle / service details</label>
+                <label className="otg-label">Message Details</label>
                 <textarea
                   className="otg-textarea mt-2"
                   value={serviceDetails}
                   onChange={(e) => setServiceDetails(e.target.value)}
-                  placeholder="Tell us about your vehicle and what service you need. If you chose Other above, describe the work or concern here."
+                  placeholder="Tell us about your vehicle, your question, or the service you need. If you chose Other above, describe the work or concern here."
                 />
               </div>
 
@@ -195,7 +195,7 @@ export default function ContactPage() {
               ) : null}
 
               <button type="submit" className="otg-btn otg-btn-primary" disabled={submitting}>
-                {submitting ? "Sending Request..." : "Submit Request"}
+                {submitting ? "Sending Message..." : "Send Message"}
               </button>
             </form>
 

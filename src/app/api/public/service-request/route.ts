@@ -39,12 +39,12 @@ export async function POST(req: Request) {
     }
 
     if (!serviceNeeded || !serviceOptions.has(serviceNeeded)) {
-      return NextResponse.json({ error: "Choose a valid service." }, { status: 400 });
+      return NextResponse.json({ error: "Choose a valid message topic." }, { status: 400 });
     }
 
     if (!details) {
       return NextResponse.json(
-        { error: "Add a few details so the manager can review the request." },
+        { error: "Add a few details so the team can review your message." },
         { status: 400 },
       );
     }
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       contact_name: fullName,
       contact_phone: phoneNumber,
       contact_email: email || null,
-      notes: "Submitted from the public contact request form.",
+      notes: "Submitted from the public contact page message form for manager/admin follow-up.",
     });
 
     if (error) {

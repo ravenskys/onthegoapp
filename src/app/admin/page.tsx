@@ -96,6 +96,17 @@ type PendingClosureRow = {
   account_closure_request_note: string | null;
 };
 
+type PublicServiceMessageRow = {
+  id: string;
+  status: string;
+  requested_service: string;
+  service_details: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  created_at: string;
+};
+
 const OPERATIONS_DETAIL_PAGE_SIZE = 10;
 const OPERATIONS_DETAIL_FETCH_LIMIT = 1000;
 
@@ -260,6 +271,10 @@ export default function AdminPage() {
   const [pendingClosuresLoading, setPendingClosuresLoading] = useState(true);
   const [pendingClosuresMessage, setPendingClosuresMessage] = useState("");
   const [finalizingClosureId, setFinalizingClosureId] = useState<string | null>(null);
+  const [publicMessagesLoading, setPublicMessagesLoading] = useState(true);
+  const [publicMessagesMessage, setPublicMessagesMessage] = useState("");
+  const [publicMessagesCount, setPublicMessagesCount] = useState(0);
+  const [recentPublicMessages, setRecentPublicMessages] = useState<PublicServiceMessageRow[]>([]);
 
   const fetchDeletionAudit = useCallback(async (range: DeletedJobsRange) => {
     setDeletionAuditLoading(true);
@@ -546,6 +561,41 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchPublicMessages = useCallback(async () => {
+    setPublicMessagesLoading(true);
+    setPublicMessagesMessage("");
+    try {
+      const [
+        { count, error: countError },
+        { data, error: dataError },
+      ] = await Promise.all([
+        supabase
+          .from("service_requests")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "new"),
+        supabase
+          .from("service_requests")
+          .select(
+            "id, status, requested_service, service_details, contact_name, contact_phone, contact_email, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+
+      if (countError) throw countError;
+      if (dataError) throw dataError;
+
+      setPublicMessagesCount(count ?? 0);
+      setRecentPublicMessages((data ?? []) as PublicServiceMessageRow[]);
+    } catch (error) {
+      setPublicMessagesCount(0);
+      setRecentPublicMessages([]);
+      setPublicMessagesMessage(getErrorMessage(error, "Could not load website messages."));
+    } finally {
+      setPublicMessagesLoading(false);
+    }
+  }, []);
+
   const handleFinalizeClosure = async (row: PendingClosureRow) => {
     const customerName =
       `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() || "this customer";
@@ -590,6 +640,10 @@ export default function AdminPage() {
   useEffect(() => {
     void fetchPendingClosures();
   }, [fetchPendingClosures]);
+
+  useEffect(() => {
+    void fetchPublicMessages();
+  }, [fetchPublicMessages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1306,6 +1360,72 @@ export default function AdminPage() {
           {message && (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               {message}
+            </div>
+          )}
+        </div>
+
+        <div className="otg-app-panel">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Website Messages</h2>
+              <p className="mt-2 text-slate-600">
+                Messages from the public contact page are stored here for manager and admin follow-up.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900">
+                {publicMessagesCount} new
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchPublicMessages()}
+                className="otg-btn otg-btn-dark"
+              >
+                Refresh Messages
+              </button>
+            </div>
+          </div>
+
+          {publicMessagesLoading ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Loading website messages...
+            </div>
+          ) : publicMessagesMessage ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              {publicMessagesMessage}
+            </div>
+          ) : recentPublicMessages.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              No website messages yet.
+            </div>
+          ) : (
+            <div className="mt-6 space-y-3">
+              {recentPublicMessages.map((messageRow) => (
+                <div
+                  key={messageRow.id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {messageRow.requested_service}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        {messageRow.contact_name || "No name provided"}
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                      {new Date(messageRow.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1 text-sm text-slate-700">
+                    {messageRow.contact_phone ? <div>{messageRow.contact_phone}</div> : null}
+                    {messageRow.contact_email ? <div>{messageRow.contact_email}</div> : null}
+                    <div>{messageRow.service_details || "No details provided."}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
