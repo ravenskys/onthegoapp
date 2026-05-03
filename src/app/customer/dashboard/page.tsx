@@ -331,7 +331,56 @@ export default function CustomerDashboardPage() {
           />
         </div>
 
-        <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid gap-3 lg:hidden">
+          <a
+            href="/customer/progress"
+            className="rounded-[22px] border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Live Visit
+            </div>
+            <div className="mt-2 text-base font-semibold text-slate-900">
+              {latestInspection ? "Service in progress" : "No active visit"}
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              {latestInspection
+                ? `${workflowCompleted} of ${workflowTotal} steps · ${latestServiceDate}`
+                : "Tap to view full progress details"}
+            </div>
+          </a>
+
+          <a
+            href={vehicles.length ? "/customer/reports" : ADD_VEHICLE_ACCOUNT_HREF}
+            className="rounded-[22px] border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Reports
+            </div>
+            <div className="mt-2 text-base font-semibold text-slate-900">
+              {completedReportsCount} completed report{completedReportsCount === 1 ? "" : "s"}
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              Tap to open report history and photos.
+            </div>
+          </a>
+
+          <a
+            href="/customer/account"
+            className="rounded-[22px] border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Account Snapshot
+            </div>
+            <div className="mt-2 text-base font-semibold text-slate-900">
+              {[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "Customer"}
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              {vehicles.length} vehicle{vehicles.length === 1 ? "" : "s"} on file
+            </div>
+          </a>
+        </div>
+
+        <div className="hidden min-w-0 gap-4 sm:gap-6 lg:grid xl:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="min-w-0 space-y-4 sm:space-y-6">
             <div className="otg-card min-w-0 overflow-hidden p-0">
               <div className="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 sm:p-6">

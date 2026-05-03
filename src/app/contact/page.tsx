@@ -113,6 +113,19 @@ export default function ContactPage() {
               <p>Monday - Thursday: 4:30 PM - 7:00 PM</p>
               <p>Friday: Closed</p>
             </div>
+
+            <div className="otg-contact-card" style={{ marginTop: 24 }}>
+              <h3 className="otg-card-title">Request Service</h3>
+              <p>
+                Need to book maintenance or inspection? Start a service request and
+                we will follow up with scheduling details.
+              </p>
+              <div className="otg-button-row" style={{ marginTop: 12 }}>
+                <Link href="/customer/signup" className="otg-btn otg-btn-primary">
+                  Request Service
+                </Link>
+              </div>
+            </div>
           </div>
 
           <div className="otg-contact-card">

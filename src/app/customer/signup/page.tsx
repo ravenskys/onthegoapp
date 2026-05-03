@@ -212,6 +212,17 @@ export default function CustomerSignupPage() {
               Create one account to access inspection reports, vehicle history,
               and recommendations.
             </p>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              Already have an account please{" "}
+              <button
+                type="button"
+                onClick={() => router.push("/customer/login")}
+                className="font-semibold text-lime-700 underline underline-offset-2 hover:text-lime-800"
+              >
+                Login
+              </button>
+              .
+            </div>
 
             <form onSubmit={handleSignup} className="mt-8 space-y-5">
               <CustomerContactFields
@@ -263,14 +274,6 @@ export default function CustomerSignupPage() {
                   className="otg-btn otg-btn-primary disabled:opacity-50"
                 >
                   {loading ? "Creating Account..." : "Create Account"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => router.push("/customer/login")}
-                  className="otg-btn otg-btn-secondary"
-                >
-                  Back to Login
                 </button>
               </div>
             </form>

@@ -257,7 +257,12 @@ export function SiteHeader({ activePath }: SiteHeaderProps) {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={linkClass(itemActive)}
+                      className={cn(
+                        "block rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                        itemActive
+                          ? "text-[var(--otg-primary)] bg-white/5"
+                          : "text-white hover:text-[var(--otg-primary)]",
+                      )}
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       {item.label}

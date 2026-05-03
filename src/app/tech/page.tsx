@@ -12,7 +12,20 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Camera, Car, Check, CheckCircle2, ClipboardList, FileText, Upload, Wrench } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  Camera,
+  Car,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  MapPin,
+  Upload,
+  Wrench,
+} from "lucide-react";
 import {
   formatMileage,
   formatPhoneNumber,
@@ -226,6 +239,12 @@ const techWorkflowTabLabels: Record<string, string> = {
   review: "Review",
 };
 
+const mobilePrimaryButtonClassName =
+  "min-h-12 w-full whitespace-normal break-words px-4 py-3 text-center sm:w-auto";
+
+const mobileCardActionButtonClassName =
+  "h-auto min-h-14 w-full justify-start whitespace-normal break-words rounded-2xl px-4 py-4 text-left";
+
 type InspectionStatus = "ok" | "sug" | "req" | "" | null | undefined;
 
 type StatusPillProps = {
@@ -345,6 +364,8 @@ type TechnicianJob = {
   vehicle_id: string | null;
   business_job_number: string | null;
   service_type: string | null;
+  service_description: string | null;
+  service_location_name: string | null;
   service_address: string | null;
   service_city: string | null;
   service_state: string | null;
@@ -352,6 +373,11 @@ type TechnicianJob = {
   status: string | null;
   notes: string | null;
   assigned_tech_user_id: string | null;
+  intake_state: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  service_checklist_started_at: string | null;
+  service_checklist_completed_at: string | null;
   created_at: string;
   requested_date: string | null;
   customer: {
@@ -367,6 +393,15 @@ type TechnicianJob = {
     license_plate: string | null;
     vin: string | null;
   } | null;
+};
+
+type JobServiceRow = {
+  id: string;
+  job_id: string;
+  service_name: string;
+  service_description: string | null;
+  sort_order: number;
+  completed_at: string | null;
 };
 
 type SavedTechDraft = {
@@ -599,10 +634,20 @@ function StepCompletionToggle({
   );
 }
 
-export default function OnTheGoTechnicianAppPrototype() {
+type TechnicianWorkspacePageProps = {
+  initialJobId?: string | null;
+  initialDraftId?: string | null;
+  queueHref?: string;
+};
+
+export function TechnicianWorkspacePage({
+  initialJobId = null,
+  initialDraftId = null,
+  queueHref = "/tech/jobs",
+}: TechnicianWorkspacePageProps) {
   const initializedSelectionRef = useRef<string | null>(null);
-  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(initialDraftId);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId);
   const [vehicle, setVehicle] = useState<VehicleState>(createEmptyVehicleState());
 
   const [tireData, setTireData] = useState<TireDataState>(createEmptyTireDataState);
@@ -706,6 +751,7 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [savedCustomerId, setSavedCustomerId] = useState<string | null>(null);
   const [savedVehicleId, setSavedVehicleId] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("vehicle");
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -716,12 +762,21 @@ export default function OnTheGoTechnicianAppPrototype() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [jobUpdateSaving, setJobUpdateSaving] = useState(false);
   const [activeJobStatus, setActiveJobStatus] = useState("new_request");
+  const [activeJobIntakeState, setActiveJobIntakeState] = useState<string | null>(null);
   const [activeJobNotes, setActiveJobNotes] = useState("");
   const [activeJobServiceType, setActiveJobServiceType] = useState<string | null>(null);
+  const [activeJobServiceDescription, setActiveJobServiceDescription] = useState("");
   const [activeJobServiceAddress, setActiveJobServiceAddress] = useState("");
+  const [activeJobScheduledStart, setActiveJobScheduledStart] = useState<string | null>(null);
+  const [activeJobScheduledEnd, setActiveJobScheduledEnd] = useState<string | null>(null);
+  const [activeJobServiceChecklistStartedAt, setActiveJobServiceChecklistStartedAt] = useState<string | null>(null);
+  const [activeJobServiceChecklistCompletedAt, setActiveJobServiceChecklistCompletedAt] = useState<string | null>(null);
+  const [jobServices, setJobServices] = useState<JobServiceRow[]>([]);
   const [jobCustomerUpdates, setJobCustomerUpdates] = useState<JobCustomerUpdateRow[]>([]);
   const [jobUpdatesLoading, setJobUpdatesLoading] = useState(false);
   const [sendingCustomerUpdate, setSendingCustomerUpdate] = useState(false);
+  const [jobServiceSavingId, setJobServiceSavingId] = useState<string | null>(null);
+  const [jobFlowActionPending, setJobFlowActionPending] = useState<string | null>(null);
   const [sectionSavingStep, setSectionSavingStep] = useState<string | null>(null);
   const [customerUpdateType, setCustomerUpdateType] = useState<JobCustomerUpdateType>("status");
   const [customerUpdateTitle, setCustomerUpdateTitle] = useState("");
@@ -884,6 +939,53 @@ export default function OnTheGoTechnicianAppPrototype() {
     [activeJobServiceAddress]
   );
 
+  const activeJobAppointmentLabel = useMemo(() => {
+    if (!activeJobScheduledStart) return "";
+
+    try {
+      const start = new Date(activeJobScheduledStart).toLocaleString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      if (!activeJobScheduledEnd) {
+        return start;
+      }
+
+      const end = new Date(activeJobScheduledEnd).toLocaleString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+
+      return `${start} - ${end}`;
+    } catch {
+      return activeJobScheduledStart;
+    }
+  }, [activeJobScheduledEnd, activeJobScheduledStart]);
+
+  const activeJobStatusLabel = useMemo(
+    () => (activeJobStatus || "new_request").replaceAll("_", " "),
+    [activeJobStatus]
+  );
+
+  const activeJobIntakeStateLabel = useMemo(
+    () => (activeJobIntakeState || "claimed").replaceAll("_", " "),
+    [activeJobIntakeState]
+  );
+
+  const completedPlannedWorkCount = useMemo(
+    () => jobServices.filter((service) => Boolean(service.completed_at)).length,
+    [jobServices]
+  );
+
+  const allPlannedWorkDone = useMemo(
+    () => jobServices.length > 0 && completedPlannedWorkCount === jobServices.length,
+    [completedPlannedWorkCount, jobServices.length]
+  );
+
   const activeJobGoogleMapsUrl = useMemo(() => {
     const q = activeJobAddressLabel.trim();
     if (!q) return "";
@@ -959,6 +1061,116 @@ export default function OnTheGoTechnicianAppPrototype() {
     return null;
   }, [maintenance, undercar, activeMaintenanceItems, activeUndercarItems]);
 
+  const setActiveJobStageState = useCallback(
+    async ({
+      intakeState,
+      status,
+      extraPatch,
+      successMessage,
+    }: {
+      intakeState?: string | null;
+      status?: string | null;
+      extraPatch?: Record<string, unknown>;
+      successMessage?: string;
+    }) => {
+      if (!activeJobId) {
+        throw new Error("Load a job before updating its workflow.");
+      }
+
+      if (intakeState) {
+        const { error: rpcError } = await supabase.rpc("update_job_intake_state", {
+          p_job_id: activeJobId,
+          p_intake_state: intakeState,
+          p_status: status ?? null,
+        });
+
+        if (rpcError) {
+          const { error: directError } = await supabase
+            .from("jobs")
+            .update({
+              intake_state: intakeState,
+              ...(status ? { status } : {}),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", activeJobId);
+
+          if (directError) {
+            throw directError;
+          }
+        }
+
+        setActiveJobIntakeState(intakeState);
+      }
+
+      if (status) {
+        setActiveJobStatus(status);
+      }
+
+      if (extraPatch && Object.keys(extraPatch).length > 0) {
+        const { error: patchError } = await supabase
+          .from("jobs")
+          .update({
+            ...extraPatch,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", activeJobId);
+
+        if (patchError) {
+          throw patchError;
+        }
+
+        if ("service_checklist_started_at" in extraPatch) {
+          setActiveJobServiceChecklistStartedAt(
+            (extraPatch.service_checklist_started_at as string | null) ?? null
+          );
+        }
+
+        if ("service_checklist_completed_at" in extraPatch) {
+          setActiveJobServiceChecklistCompletedAt(
+            (extraPatch.service_checklist_completed_at as string | null) ?? null
+          );
+        }
+      }
+
+      if (successMessage) {
+        setRecordSyncState("saved");
+        setRecordSyncMessage(successMessage);
+      }
+    },
+    [activeJobId]
+  );
+
+  const saveJobTimelineUpdate = useCallback(
+    async ({
+      updateType,
+      title,
+      message,
+      visibility = "customer",
+    }: {
+      updateType: JobCustomerUpdateType;
+      title: string;
+      message: string;
+      visibility?: "customer" | "internal";
+    }) => {
+      if (!activeJobId) {
+        throw new Error("Load a job before sending an update.");
+      }
+
+      await createJobCustomerUpdate({
+        job_id: activeJobId,
+        update_type: updateType,
+        status_snapshot: activeJobStatus || null,
+        title,
+        message,
+        visibility,
+      });
+
+      const updates = await fetchJobCustomerUpdates(activeJobId);
+      setJobCustomerUpdates(updates);
+    },
+    [activeJobId, activeJobStatus]
+  );
+
   const toggleWorkflowStep = (step: string, value: boolean) => {
     setWorkflowSteps((prev) => ({
       ...prev,
@@ -1025,7 +1237,7 @@ export default function OnTheGoTechnicianAppPrototype() {
 
   const handleLoadJob = useCallback(async (job: TechnicianJob) => {
     try {
-      const [customerResult, vehicleResult, inspectionResult] = await Promise.all([
+      const [customerResult, vehicleResult, inspectionResult, jobServicesResult] = await Promise.all([
         job.customer_id
           ? supabase
               .from("customers")
@@ -1049,11 +1261,17 @@ export default function OnTheGoTechnicianAppPrototype() {
               .order("created_at", { ascending: false })
               .limit(1)
           : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from("job_services")
+          .select("id, job_id, service_name, service_description, sort_order, completed_at")
+          .eq("job_id", job.id)
+          .order("sort_order", { ascending: true }),
       ]);
 
       if (customerResult.error) throw customerResult.error;
       if (vehicleResult.error) throw vehicleResult.error;
       if (inspectionResult.error) throw inspectionResult.error;
+      if (jobServicesResult.error) throw jobServicesResult.error;
 
       const customerData = customerResult.data;
       const vehicleData = vehicleResult.data;
@@ -1110,13 +1328,21 @@ export default function OnTheGoTechnicianAppPrototype() {
       setSavedVehicleId(vehicleData?.id ?? null);
       setActiveJobId(job.id);
       setActiveJobStatus(job.status || "new_request");
+      setActiveJobIntakeState(job.intake_state || "claimed");
       setActiveJobNotes(job.notes || "");
       setActiveJobServiceType(job.service_type || null);
+      setActiveJobServiceDescription(job.service_description || "");
       setActiveJobServiceAddress(
-        [job.service_address, job.service_city, job.service_state, job.service_zip]
+        [job.service_location_name, job.service_address, job.service_city, job.service_state, job.service_zip]
           .filter(Boolean)
           .join(", ")
       );
+      setActiveJobScheduledStart(job.scheduled_start || null);
+      setActiveJobScheduledEnd(job.scheduled_end || null);
+      setActiveJobServiceChecklistStartedAt(job.service_checklist_started_at || null);
+      setActiveJobServiceChecklistCompletedAt(job.service_checklist_completed_at || null);
+      setJobServices((jobServicesResult.data || []) as JobServiceRow[]);
+      setActiveTab("vehicle");
 
       const vehicleCatalogModes = getVehicleCatalogModes({
         year: vehicleData?.year,
@@ -1149,6 +1375,8 @@ export default function OnTheGoTechnicianAppPrototype() {
         vehicle_id,
         business_job_number,
         service_type,
+        service_description,
+        service_location_name,
         service_address,
         service_city,
         service_state,
@@ -1156,6 +1384,11 @@ export default function OnTheGoTechnicianAppPrototype() {
         status,
         notes,
         assigned_tech_user_id,
+        intake_state,
+        scheduled_start,
+        scheduled_end,
+        service_checklist_started_at,
+        service_checklist_completed_at,
         created_at,
         requested_date,
         customer:customers(first_name, last_name, email, phone),
@@ -1241,10 +1474,18 @@ export default function OnTheGoTechnicianAppPrototype() {
     setSavedCustomerId(null);
     setSavedVehicleId(null);
     setActiveJobId(null);
+    setActiveTab("vehicle");
     setActiveJobStatus("new_request");
+    setActiveJobIntakeState(null);
     setActiveJobNotes("");
     setActiveJobServiceType(null);
+    setActiveJobServiceDescription("");
     setActiveJobServiceAddress("");
+    setActiveJobScheduledStart(null);
+    setActiveJobScheduledEnd(null);
+    setActiveJobServiceChecklistStartedAt(null);
+    setActiveJobServiceChecklistCompletedAt(null);
+    setJobServices([]);
     setJobCustomerUpdates([]);
     setCustomerUpdateType("status");
     setCustomerUpdateTitle("");
@@ -1352,6 +1593,7 @@ export default function OnTheGoTechnicianAppPrototype() {
         .from("jobs")
         .update({
           status: activeJobStatus,
+          intake_state: activeJobIntakeState,
           notes: activeJobNotes.trim() || null,
           assigned_tech_user_id: currentUserId,
           updated_at: new Date().toISOString(),
@@ -1444,9 +1686,7 @@ export default function OnTheGoTechnicianAppPrototype() {
       setSelectedJobId(null);
 
       if (typeof window !== "undefined") {
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.delete("jobId");
-        window.history.replaceState({}, "", nextUrl.pathname + nextUrl.search);
+        window.location.href = queueHref;
       }
 
       setRecordSyncState("saved");
@@ -1458,6 +1698,156 @@ export default function OnTheGoTechnicianAppPrototype() {
       setJobUpdateSaving(false);
     }
   };
+
+  const togglePlannedWorkItem = async (service: JobServiceRow, next: boolean) => {
+    if (!currentUserId) {
+      alert("You must be signed in to update planned work.");
+      return;
+    }
+
+    setJobServiceSavingId(service.id);
+
+    try {
+      const completedAt = next ? new Date().toISOString() : null;
+      const { error } = await supabase
+        .from("job_services")
+        .update({
+          completed_at: completedAt,
+          completed_by_user_id: next ? currentUserId : null,
+        })
+        .eq("id", service.id);
+
+      if (error) throw error;
+
+      setJobServices((prev) =>
+        prev.map((row) =>
+          row.id === service.id
+            ? {
+                ...row,
+                completed_at: completedAt,
+              }
+            : row
+        )
+      );
+    } catch (error) {
+      alert(getErrorMessage(error, "Failed to update planned work."));
+    } finally {
+      setJobServiceSavingId(null);
+    }
+  };
+
+  const runGuidedFlowAction = useCallback(
+    async (
+      actionKey: string,
+      work: () => Promise<void>
+    ) => {
+      setJobFlowActionPending(actionKey);
+      try {
+        await work();
+      } catch (error) {
+        console.error(`Guided job action failed (${actionKey}):`, error);
+        alert(getErrorMessage(error, "Failed to update the job flow."));
+      } finally {
+        setJobFlowActionPending(null);
+      }
+    },
+    []
+  );
+
+  const handleMarkArrived = useCallback(() => {
+    void runGuidedFlowAction("arrival", async () => {
+      await setActiveJobStageState({
+        intakeState: "on_site",
+        status: "in_progress",
+        successMessage: "Arrival recorded. The customer can now see that the technician is on site.",
+      });
+      await saveJobTimelineUpdate({
+        updateType: "arrival",
+        title: "Technician is on site",
+        message:
+          "Your technician has arrived on site and is beginning the service visit.",
+      });
+    });
+  }, [runGuidedFlowAction, saveJobTimelineUpdate, setActiveJobStageState]);
+
+  const handleBeginInspectionFlow = useCallback(() => {
+    void runGuidedFlowAction("inspection", async () => {
+      const startedAt = activeJobServiceChecklistStartedAt || new Date().toISOString();
+      await setActiveJobStageState({
+        intakeState: "in_service",
+        status: "in_progress",
+        extraPatch: {
+          service_checklist_started_at: startedAt,
+        },
+        successMessage: "Service is now in progress.",
+      });
+      setActiveTab("vehicle");
+    });
+  }, [activeJobServiceChecklistStartedAt, runGuidedFlowAction, setActiveJobStageState]);
+
+  const handleMarkWaitingOnParts = useCallback(() => {
+    void runGuidedFlowAction("waiting-parts", async () => {
+      await setActiveJobStageState({
+        intakeState: "waiting_parts",
+        status: "in_progress",
+        successMessage: "Job moved to waiting on parts.",
+      });
+      await saveJobTimelineUpdate({
+        updateType: "parts_delay",
+        title: "Waiting on parts",
+        message:
+          "We are waiting on parts for your vehicle and will resume work as soon as they arrive.",
+      });
+    });
+  }, [runGuidedFlowAction, saveJobTimelineUpdate, setActiveJobStageState]);
+
+  const handleRequestAddedWorkApproval = useCallback(() => {
+    void runGuidedFlowAction("approval", async () => {
+      await setActiveJobStageState({
+        intakeState: "awaiting_customer_approval",
+        status: "in_progress",
+        successMessage: "Added work approval request sent. The job is paused until the customer responds.",
+      });
+      await saveJobTimelineUpdate({
+        updateType: "customer_approval",
+        title: "Additional work needs approval",
+        message:
+          "We found additional work that needs your approval before service can continue. Please review the recommendation in your customer portal.",
+      });
+      setActiveTab("customer-report");
+    });
+  }, [runGuidedFlowAction, saveJobTimelineUpdate, setActiveJobStageState]);
+
+  const handleResumeApprovedWork = useCallback(() => {
+    void runGuidedFlowAction("resume", async () => {
+      await setActiveJobStageState({
+        intakeState: "in_service",
+        status: "in_progress",
+        successMessage: "Job resumed after customer approval.",
+      });
+      setActiveTab("maintenance");
+    });
+  }, [runGuidedFlowAction, setActiveJobStageState]);
+
+  const handleCompletePlannedWorkSection = useCallback(() => {
+    void runGuidedFlowAction("planned-work", async () => {
+      if (jobServices.length > 0 && !allPlannedWorkDone) {
+        const ok = window.confirm(
+          "Some planned work items are still open. Mark this section complete anyway?"
+        );
+        if (!ok) return;
+      }
+
+      const completedAt = new Date().toISOString();
+      await setActiveJobStageState({
+        extraPatch: {
+          service_checklist_completed_at: completedAt,
+        },
+        successMessage: "Planned work checklist completed.",
+      });
+      setActiveTab("maintenance");
+    });
+  }, [allPlannedWorkDone, jobServices.length, runGuidedFlowAction, setActiveJobStageState]);
 
   const ensureCustomerProfile = async (vehicleSnapshot = vehicle) => {
     const validationError = getCustomerProfileValidationError(vehicleSnapshot);
@@ -2450,6 +2840,29 @@ const handleGeneratePdf = async () => {
   }
 };
 
+const handleCompleteGuidedJob = () => {
+  void runGuidedFlowAction("complete-job", async () => {
+    await handleSaveInspection();
+    await setActiveJobStageState({
+      intakeState: "completed",
+      status: "completed",
+      extraPatch: {
+        notes: activeJobNotes.trim() || null,
+        assigned_tech_user_id: currentUserId,
+        service_checklist_completed_at:
+          activeJobServiceChecklistCompletedAt || new Date().toISOString(),
+      },
+      successMessage: "Job marked complete.",
+    });
+    await saveJobTimelineUpdate({
+      updateType: "service_complete",
+      title: "Service complete",
+      message:
+        "Your service is complete. Review the inspection summary and follow-up notes in your customer portal.",
+    });
+  });
+};
+
 useEffect(() => {
   const checkAccess = async () => {
     const { user, roles: roleNames } = await getUserRoles();
@@ -2514,20 +2927,26 @@ useEffect(() => {
   checkAccess();
 }, []);
 
-useEffect(() => {
-  if (typeof window === "undefined") return;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const params = new URLSearchParams(window.location.search);
-  setSelectedDraftId(params.get("draftId"));
-  setSelectedJobId(params.get("jobId"));
-}, []);
+    if (initialDraftId || initialJobId) {
+      setSelectedDraftId(initialDraftId);
+      setSelectedJobId(initialJobId);
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    setSelectedDraftId(params.get("draftId"));
+    setSelectedJobId(params.get("jobId"));
+  }, [initialDraftId, initialJobId]);
 
 useEffect(() => {
   if (typeof window === "undefined") return;
 
   const draftId = selectedDraftId;
   const jobId = selectedJobId;
-  const selectionKey = draftId ? `draft:${draftId}` : jobId ? `job:${jobId}` : "local-draft";
+  const selectionKey = draftId ? `draft:${draftId}` : jobId ? `job:${jobId}` : "landing";
 
   if (initializedSelectionRef.current === selectionKey) {
     return;
@@ -2543,8 +2962,15 @@ useEffect(() => {
         applyDraftState(selectedDraft.draft);
         setActiveJobId(null);
         setActiveJobStatus("new_request");
+        setActiveJobIntakeState(null);
         setActiveJobNotes("");
+        setActiveJobServiceDescription("");
         setActiveJobServiceAddress("");
+        setActiveJobScheduledStart(null);
+        setActiveJobScheduledEnd(null);
+        setActiveJobServiceChecklistStartedAt(null);
+        setActiveJobServiceChecklistCompletedAt(null);
+        setJobServices([]);
         setDraftLoaded(true);
         return;
       }
@@ -2569,23 +2995,9 @@ useEffect(() => {
     return;
   }
 
-  const savedDraft = window.localStorage.getItem(TECH_DRAFT_STORAGE_KEY);
-  if (!savedDraft) {
-    initializedSelectionRef.current = selectionKey;
-    setDraftLoaded(true);
-    return;
-  }
-
-  try {
-    initializedSelectionRef.current = selectionKey;
-    const draft = JSON.parse(savedDraft);
-    applyDraftState(draft);
-  } catch (error) {
-    console.error("Failed to load technician draft:", error);
-  } finally {
-    setDraftLoaded(true);
-  }
-}, [applyDraftState, currentUserId, getSavedDraftsFromStorage, loadJobById, selectedDraftId, selectedJobId]);
+  initializedSelectionRef.current = selectionKey;
+  window.location.href = queueHref;
+}, [applyDraftState, currentUserId, getSavedDraftsFromStorage, loadJobById, queueHref, selectedDraftId, selectedJobId]);
 
 useEffect(() => {
   if (!draftLoaded) return;
@@ -2599,6 +3011,71 @@ const recommendedItems = getInspectionRecommendations({
   tireData,
   tires,
 });
+
+const nextGuidedAction = (() => {
+  if (!activeJobId) return null;
+  if (activeJobStatus === "completed") {
+    return {
+      label: "Job completed",
+      helper: "This service visit has already been closed out.",
+      onClick: null as null | (() => void),
+    };
+  }
+
+  if (!activeJobIntakeState || activeJobIntakeState === "claimed" || activeJobIntakeState === "queued") {
+    return {
+      label: "Start arrival",
+      helper: "Mark the mechanic on site and notify the customer.",
+      onClick: handleMarkArrived,
+    };
+  }
+
+  if (activeJobIntakeState === "waiting_parts") {
+    return {
+      label: "Resume after parts arrive",
+      helper: "Return the job to in-service once the needed parts are available.",
+      onClick: handleResumeApprovedWork,
+    };
+  }
+
+  if (activeJobIntakeState === "awaiting_customer_approval") {
+    return {
+      label: "Resume approved work",
+      helper: "Use this after the customer approves the added work.",
+      onClick: handleResumeApprovedWork,
+    };
+  }
+
+  if (!workflowSteps.vehicle || !workflowSteps.mileage) {
+    return {
+      label: "Begin inspection",
+      helper: "Finish the check-in details before moving into findings.",
+      onClick: handleBeginInspectionFlow,
+    };
+  }
+
+  if (jobServices.length > 0 && !activeJobServiceChecklistCompletedAt) {
+    return {
+      label: "Continue planned work",
+      helper: "Check off the planned services and complete the work checklist section.",
+      onClick: () => setActiveTab("maintenance"),
+    };
+  }
+
+  if (!workflowSteps.review) {
+    return {
+      label: "Finish service",
+      helper: "Wrap the inspection, photos, and customer report.",
+      onClick: () => setActiveTab("review"),
+    };
+  }
+
+  return {
+    label: "Complete service",
+    helper: "Send the final update and close the job.",
+    onClick: handleCompleteGuidedJob,
+  };
+})();
 
 if (authLoading) {
   return (
@@ -2620,14 +3097,16 @@ if (!isAuthorized) {
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
-            <CardContent className="flex flex-col gap-6 p-6 md:flex-row md:items-start md:justify-between">
-              <div>
+            <CardContent className="flex flex-col gap-6 p-4 sm:p-6 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
                   <BrandLogo priority />
-                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                    Technician Inspection App
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    {activeJobId ? "Mobile Mechanic Guided Job Flow" : "Technician Inspection App"}
                   </h1>
                   <p className="mt-1 text-sm text-slate-700">
-                    Capture inspection results, upload photos, and prepare a customer-ready service report.
+                    {activeJobId
+                      ? "Stay in one mobile workspace from arrival through inspection, approvals, and customer closeout."
+                      : "Capture inspection results, upload photos, and prepare a customer-ready service report."}
                   </p>
                 </div>
               <div className="w-full max-w-2xl space-y-4">
@@ -2635,15 +3114,15 @@ if (!isAuthorized) {
                   <PortalTopNav section="tech" />
                 </div>
                 <div className="ml-auto w-full max-w-xs space-y-2 rounded-2xl bg-slate-100 p-4">
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-slate-700">Inspection progress</span>
                     <span className="font-semibold">{completion}%</span>
                   </div>
                   <Progress value={completion} className="h-2" />
-                  <div className="flex gap-2 pt-1">
-                    <Badge variant="secondary" className="rounded-full">OK: {summaryCounts.ok}</Badge>
-                    <Badge variant="secondary" className="rounded-full">Suggested: {summaryCounts.sug}</Badge>
-                    <Badge variant="secondary" className="rounded-full">Required: {summaryCounts.req}</Badge>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">OK: {summaryCounts.ok}</Badge>
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">Suggested: {summaryCounts.sug}</Badge>
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">Required: {summaryCounts.req}</Badge>
                   </div>
                   <div className="pt-2 text-sm text-slate-600">
                     Workflow steps complete: <span className="font-semibold text-slate-900">{completedWorkflowCount} / {activeWorkflowStepOrder.length}</span>
@@ -2655,6 +3134,190 @@ if (!isAuthorized) {
         </div>
 
         {activeJobId && (
+          <>
+          <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+            <CardContent className="space-y-5 p-4 sm:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">Job {activeJobStatusLabel}</Badge>
+                    <Badge variant="outline" className="rounded-full whitespace-normal text-center">{activeJobIntakeStateLabel}</Badge>
+                    <Badge variant="outline" className="rounded-full whitespace-normal text-center">
+                      {inspectionMode === "full" ? "Full inspection" : "Abbreviated inspection"}
+                    </Badge>
+                  </div>
+                  <div>
+                    <h2 className="break-words text-xl font-bold text-slate-900 sm:text-2xl">
+                      Guided workspace for {vehicle.firstName || "customer"} {vehicle.lastName || ""}
+                    </h2>
+                    <p className="mt-1 break-words text-sm text-slate-600">
+                      {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Vehicle"} {" - "} Job #{activeJobId.slice(0, 8)}
+                    </p>
+                    {activeJobServiceDescription ? (
+                      <p className="mt-2 break-words text-sm text-slate-600">{activeJobServiceDescription}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="w-full max-w-sm rounded-3xl border border-lime-300/70 bg-lime-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Next action</div>
+                  <div className="mt-2 text-lg font-semibold text-slate-900">
+                    {nextGuidedAction?.label || "Load a job"}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {nextGuidedAction?.helper || "Choose a job from the queue to start."}
+                  </p>
+                  {nextGuidedAction?.onClick ? (
+                    <Button
+                      type="button"
+                      className="mt-4 min-h-12 w-full whitespace-normal break-words rounded-2xl bg-slate-900 px-4 py-3 text-white hover:bg-slate-800"
+                      disabled={jobFlowActionPending !== null}
+                      onClick={nextGuidedAction.onClick}
+                    >
+                      {jobFlowActionPending ? "Working..." : nextGuidedAction.label}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900">
+                    <CalendarClock className="h-4 w-4 text-lime-600" />
+                    Appointment
+                  </div>
+                  <div className="mt-2 break-words text-slate-600">
+                    {activeJobAppointmentLabel || "No appointment window on file."}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900">
+                    <MapPin className="h-4 w-4 text-lime-600" />
+                    Service location
+                  </div>
+                  <div className="mt-2 break-words text-slate-600">
+                    {activeJobAddressLabel || "No service address on this job."}
+                  </div>
+                  {activeJobAddressLabel ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        className={mobilePrimaryButtonClassName}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(activeJobGoogleMapsUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        Open map
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="font-semibold text-slate-900">Inspection progress</div>
+                  <div className="mt-2 flex items-center justify-between text-slate-600">
+                    <span>{completedWorkflowCount} of {activeWorkflowStepOrder.length} steps complete</span>
+                    <span className="font-semibold text-slate-900">{completion}%</span>
+                  </div>
+                  <Progress value={completion} className="mt-3 h-2" />
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="font-semibold text-slate-900">Planned work</div>
+                  <div className="mt-2 text-slate-600">
+                    {jobServices.length > 0
+                      ? `${completedPlannedWorkCount} of ${jobServices.length} line items completed`
+                      : "No planned line items on this job."}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">OK: {summaryCounts.ok}</Badge>
+                    <Badge variant="secondary" className="rounded-full whitespace-normal text-center">Req: {summaryCounts.req}</Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleMarkArrived} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="block font-semibold">1. Arrive on site</span>
+                    <span className="mt-1 block text-sm text-slate-600">Mark the mechanic on site and send the arrival update.</span>
+                  </span>
+                </Button>
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleBeginInspectionFlow} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="block font-semibold">2. Begin check-in</span>
+                    <span className="mt-1 block text-sm text-slate-600">Move the job into service and jump into the inspection steps below.</span>
+                  </span>
+                </Button>
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleRequestAddedWorkApproval} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="block font-semibold">3. Pause for approval</span>
+                    <span className="mt-1 block text-sm text-slate-600">Send the added-work approval request and pause the job in-flow.</span>
+                  </span>
+                </Button>
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleResumeApprovedWork} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="block font-semibold">4. Resume work</span>
+                    <span className="mt-1 block text-sm text-slate-600">Continue service after approval or once the job is ready again.</span>
+                  </span>
+                </Button>
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleMarkWaitingOnParts} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="block font-semibold">5. Waiting on parts</span>
+                    <span className="mt-1 block text-sm text-slate-600">Block the job clearly and notify the customer about the delay.</span>
+                  </span>
+                </Button>
+                <Button type="button" variant="outline" disabled={jobFlowActionPending !== null || activeJobStatus === "completed"} onClick={handleCompleteGuidedJob} className={mobileCardActionButtonClassName}>
+                  <span>
+                    <span className="flex items-center gap-2 font-semibold">
+                      <ArrowRight className="h-4 w-4 text-lime-600" />
+                      6. Customer closeout
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">Save the inspection, send the final update, and mark the job completed.</span>
+                  </span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
+            <CardContent className="space-y-5 p-6">
+              <SectionHeader icon={ClipboardCheck} title="Planned Work Checklist" subtitle="Track promised service items before final closeout." />
+              {jobServices.length > 0 ? (
+                <div className="space-y-3">
+                  {jobServices.map((service) => (
+                    <div key={service.id} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <Checkbox
+                        id={`job-service-${service.id}`}
+                        checked={Boolean(service.completed_at)}
+                        disabled={jobServiceSavingId === service.id}
+                        onCheckedChange={(checked) => void togglePlannedWorkItem(service, checked === true)}
+                      />
+                      <label htmlFor={`job-service-${service.id}`} className="min-w-0 flex-1 cursor-pointer">
+                        <div className="font-semibold text-slate-900">{service.service_name}</div>
+                        {service.service_description ? (
+                          <div className="mt-1 break-words text-sm text-slate-600">{service.service_description}</div>
+                        ) : null}
+                      </label>
+                      <Badge variant={service.completed_at ? "secondary" : "outline"} className="rounded-full whitespace-normal text-center">
+                        {service.completed_at ? "Done" : "Open"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  No planned job service line items were found. The inspection workflow below is still available.
+                </div>
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Button className={mobilePrimaryButtonClassName} type="button" onClick={handleCompletePlannedWorkSection} disabled={jobFlowActionPending !== null}>
+                  {activeJobServiceChecklistCompletedAt ? "Planned work completed" : "Complete planned work section"}
+                </Button>
+                <Button className={mobilePrimaryButtonClassName} type="button" variant="outline" onClick={() => setActiveTab("maintenance")}>
+                  Continue to findings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
             <CardContent className="space-y-4 p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-end">
@@ -2679,7 +3342,7 @@ if (!isAuthorized) {
                     <span className="font-semibold text-slate-900">
                       {inspectionMode === "full" ? "Full Inspection" : "Abbreviated Inspection"}
                     </span>
-                    <span className="ml-2">
+                    <span className="ml-2 break-words">
                       {inspectionMode === "full"
                         ? "This job includes the full tire, brake, maintenance, photo, and report workflow."
                         : "This job uses a quicker maintenance-style inspection for services like oil changes, tune-ups, and repair work."}
@@ -2693,8 +3356,9 @@ if (!isAuthorized) {
                     {activeJobAddressLabel || "No service address on this job."}
                   </div>
                   {activeJobAddressLabel ? (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <Button
+                        className={mobilePrimaryButtonClassName}
                         type="button"
                         variant="outline"
                         onClick={() => window.open(activeJobGoogleMapsUrl, "_blank", "noopener,noreferrer")}
@@ -2702,6 +3366,7 @@ if (!isAuthorized) {
                         Open in Google Maps
                       </Button>
                       <Button
+                        className={mobilePrimaryButtonClassName}
                         type="button"
                         variant="outline"
                         onClick={() => window.open(activeJobAppleMapsUrl, "_blank", "noopener,noreferrer")}
@@ -2722,9 +3387,10 @@ if (!isAuthorized) {
                   />
                 </div>
 
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   {activeJobStatus !== "completed" && (
                     <Button
+                      className={mobilePrimaryButtonClassName}
                       type="button"
                       variant="destructive"
                       onClick={handleDeleteActiveJob}
@@ -2735,6 +3401,7 @@ if (!isAuthorized) {
                   )}
 
                   <Button
+                    className={mobilePrimaryButtonClassName}
                     type="button"
                     onClick={handleSaveActiveJob}
                     disabled={jobUpdateSaving}
@@ -2746,13 +3413,14 @@ if (!isAuthorized) {
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <Label className="text-sm font-semibold">Customer Update Composer</Label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                     {techCustomerUpdateTemplates.map((template) => (
                       <Button
                         key={template.id}
                         type="button"
                         variant={customerUpdateType === template.id ? "default" : "outline"}
                         size="sm"
+                        className="min-h-11 w-full whitespace-normal break-words px-3 py-2 text-center sm:w-auto"
                         onClick={() => handleUseCustomerUpdateTemplate(template.id)}
                       >
                         {template.id.replaceAll("_", " ")}
@@ -2792,7 +3460,7 @@ if (!isAuthorized) {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button type="button" onClick={() => void handleSendCustomerUpdate()} disabled={sendingCustomerUpdate}>
+                  <Button className={mobilePrimaryButtonClassName} type="button" onClick={() => void handleSendCustomerUpdate()} disabled={sendingCustomerUpdate}>
                     {sendingCustomerUpdate ? "Sending Update..." : "Save Update"}
                   </Button>
                 </div>
@@ -2806,12 +3474,12 @@ if (!isAuthorized) {
                     <div className="space-y-2">
                       {jobCustomerUpdates.slice(0, 6).map((update) => (
                         <div key={update.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-semibold text-slate-900">{update.title}</p>
-                            <Badge variant="outline">{update.visibility}</Badge>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="break-words font-semibold text-slate-900">{update.title}</p>
+                            <Badge variant="outline" className="whitespace-normal text-center">{update.visibility}</Badge>
                           </div>
-                          <p className="mt-1 text-slate-700">{update.message}</p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1 break-words text-slate-700">{update.message}</p>
+                          <p className="mt-1 break-words text-xs text-slate-500">
                             {new Date(update.created_at).toLocaleString()} • {(update.update_type || "general").replaceAll("_", " ")}
                           </p>
                         </div>
@@ -2822,9 +3490,10 @@ if (!isAuthorized) {
               </div>
             </CardContent>
           </Card>
+          </>
         )}
 
-        <Tabs defaultValue="vehicle" className="mt-6 space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6 space-y-6">
           <TabsList className="flex h-auto w-full flex-nowrap items-stretch justify-start gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-200 p-1.5 shadow-sm sm:gap-2 sm:p-2 lg:gap-3">
             {activeWorkflowStepOrder.map((step) => (
               <TabsTrigger
@@ -3890,9 +4559,9 @@ if (!isAuthorized) {
                       3. Generate the PDF report for the customer record when the inspection is ready.
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-3 pt-2">
+                  <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:flex-wrap">
                     <Button
-                      className="rounded-2xl bg-slate-900 text-white hover:bg-slate-800"
+                      className="min-h-12 w-full whitespace-normal break-words rounded-2xl bg-slate-900 px-4 py-3 text-white hover:bg-slate-800 sm:w-auto"
                       onClick={handleSaveInspection}
                     >
                       Save Inspection
@@ -3900,7 +4569,7 @@ if (!isAuthorized) {
 
                     <Button
                       type="button"
-                      className="rounded-2xl border border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
+                      className="min-h-12 w-full whitespace-normal break-words rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 hover:bg-slate-100 sm:w-auto"
                       onClick={handleGeneratePdf}
                     >
                       Generate PDF Report
@@ -3914,4 +4583,8 @@ if (!isAuthorized) {
       </div>
     </div>
   );
+}
+
+export default function OnTheGoTechnicianAppPrototype() {
+  return <TechnicianWorkspacePage />;
 }

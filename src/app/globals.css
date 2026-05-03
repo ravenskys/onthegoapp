@@ -843,6 +843,15 @@ img {
   background: #bef264;
 }
 
+@media (max-width: 767px) {
+  .otg-portal-pill {
+    min-height: 2.25rem;
+    border-radius: 16px;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
+
 .otg-jobs-filter-card {
   background: transparent;
 }

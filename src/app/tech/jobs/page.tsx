@@ -64,7 +64,7 @@ type SavedTechDraft = {
   savedAt: string;
 };
 
-type QueueView = "unclaimed" | "claimed" | "needsUpdate" | "blocked" | "drafts";
+type QueueView = "all" | "unclaimed" | "claimed" | "needsUpdate" | "blocked" | "drafts";
 
 const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
   if (Array.isArray(value)) {
@@ -125,6 +125,9 @@ const startServiceButtonClass = (job: TechnicianJob) => {
   return "";
 };
 
+const mobileActionButtonClassName =
+  "min-h-12 w-full whitespace-normal break-words px-4 py-3 text-center sm:w-auto";
+
 export default function TechnicianJobsPage() {
   const router = useRouter();
   const portalRolesRef = useRef<string[]>([]);
@@ -136,7 +139,7 @@ export default function TechnicianJobsPage() {
   >({});
   const [savedDrafts, setSavedDrafts] = useState<SavedTechDraft[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [view, setView] = useState<QueueView>("unclaimed");
+  const [view, setView] = useState<QueueView>("all");
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const [claimingJobId, setClaimingJobId] = useState<string | null>(null);
   const [intakeUpdatePending, setIntakeUpdatePending] = useState<{ jobId: string; intakeState: string } | null>(
@@ -166,7 +169,7 @@ export default function TechnicianJobsPage() {
     };
 
     const runJobsQuery = async (selectClause: string) => {
-      let query = applyRoleScope(
+      const query = applyRoleScope(
         supabase
           .from("jobs")
           .select(selectClause)
@@ -519,15 +522,15 @@ export default function TechnicianJobsPage() {
         alert("Claim this job first.");
         return;
       }
-      router.push(`/tech/jobs/${job.id}/workflow`);
+      router.push(`/tech/jobs/${job.id}`);
     },
     [currentUserId, router],
   );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-8 shadow-md">
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-md sm:p-8">
           <p className="text-slate-700">Loading technician queue...</p>
         </div>
       </div>
@@ -535,15 +538,15 @@ export default function TechnicianJobsPage() {
   }
 
   return (
-    <div className="otg-portal-dark min-h-screen bg-slate-50 p-6">
+    <div className="otg-portal-dark min-h-screen bg-slate-50 p-4 sm:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
-          <CardContent className="space-y-5 p-6">
+          <CardContent className="space-y-5 p-4 sm:p-6">
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-slate-900">Technician Job Queue</h1>
+                <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Technician Job Queue</h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  Open a job or draft to refill the technician inspection page.
+                  Claim a job, then continue inside the single guided mechanic workspace.
                 </p>
               </div>
 
@@ -564,20 +567,23 @@ export default function TechnicianJobsPage() {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant={view === "unclaimed" ? "default" : "outline"} onClick={() => setView("unclaimed")}>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "all" ? "default" : "outline"} onClick={() => setView("all")}>
+                  All
+                </Button>
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "unclaimed" ? "default" : "outline"} onClick={() => setView("unclaimed")}>
                   Unclaimed
                 </Button>
-                <Button type="button" variant={view === "claimed" ? "default" : "outline"} onClick={() => setView("claimed")}>
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "claimed" ? "default" : "outline"} onClick={() => setView("claimed")}>
                   My Claimed
                 </Button>
-                <Button type="button" variant={view === "needsUpdate" ? "default" : "outline"} onClick={() => setView("needsUpdate")}>
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "needsUpdate" ? "default" : "outline"} onClick={() => setView("needsUpdate")}>
                   Needs Customer Update
                 </Button>
-                <Button type="button" variant={view === "blocked" ? "default" : "outline"} onClick={() => setView("blocked")}>
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "blocked" ? "default" : "outline"} onClick={() => setView("blocked")}>
                   Held (parts / approval)
                 </Button>
-                <Button type="button" variant={view === "drafts" ? "default" : "outline"} onClick={() => setView("drafts")}>
+                <Button className={mobileActionButtonClassName} type="button" variant={view === "drafts" ? "default" : "outline"} onClick={() => setView("drafts")}>
                   Drafts
                 </Button>
               </div>
@@ -596,7 +602,7 @@ export default function TechnicianJobsPage() {
                     <div className="text-xs text-slate-500">
                       Saved {new Date(draft.savedAt).toLocaleString()}
                     </div>
-                    <Button type="button" variant="outline" onClick={() => router.push(`/tech?draftId=${draft.id}`)}>
+                    <Button className={mobileActionButtonClassName} type="button" variant="outline" onClick={() => router.push(`/tech?draftId=${draft.id}`)}>
                       Open Draft
                     </Button>
                   </CardContent>
@@ -615,8 +621,8 @@ export default function TechnicianJobsPage() {
             {filteredJobs.map((job) => (
               <Card key={job.id} className="rounded-3xl border border-slate-200 bg-white shadow-md">
                 <CardContent className="space-y-4 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <div className="font-semibold text-slate-900">
                         Job #{job.business_job_number || job.id.slice(0, 8)}
                       </div>
@@ -626,7 +632,7 @@ export default function TechnicianJobsPage() {
                       <div className="text-sm text-slate-600">
                         {[job.vehicle?.year, job.vehicle?.make, job.vehicle?.model].filter(Boolean).join(" ") || "Vehicle"}
                       </div>
-                      <div className="text-sm text-slate-500">
+                      <div className="text-sm text-slate-500 break-words">
                         {job.service_description || job.service_type || "No requested work listed"}
                       </div>
                       {formatAppointment(job.scheduled_start, job.scheduled_end) ||
@@ -636,7 +642,7 @@ export default function TechnicianJobsPage() {
                           {formatAppointment(job.scheduled_start, job.scheduled_end) ? (
                             <div className="flex gap-2 text-slate-600">
                               <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-lime-600" />
-                              <div>
+                              <div className="min-w-0 break-words">
                                 <span className="font-medium text-slate-700">Appointment: </span>
                                 {formatAppointment(job.scheduled_start, job.scheduled_end)}
                               </div>
@@ -645,7 +651,7 @@ export default function TechnicianJobsPage() {
                           {formatJobLocation(job) ? (
                             <div className="flex gap-2 text-slate-600">
                               <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-lime-600" />
-                              <div>
+                              <div className="min-w-0 break-words">
                                 <span className="font-medium text-slate-700">Location: </span>
                                 {formatJobLocation(job)}
                               </div>
@@ -654,7 +660,7 @@ export default function TechnicianJobsPage() {
                           {job.notes ? (
                             <div className="flex gap-2 text-slate-600">
                               <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
-                              <div>
+                              <div className="min-w-0 break-words">
                                 <span className="font-medium text-slate-700">Notes for technician: </span>
                                 <span className="whitespace-pre-wrap">{job.notes}</span>
                               </div>
@@ -664,26 +670,27 @@ export default function TechnicianJobsPage() {
                       ) : null}
                     </div>
 
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge variant="secondary" className="rounded-full">
+                    <div className="flex flex-row flex-wrap items-start gap-2 sm:flex-col sm:items-end">
+                      <Badge variant="secondary" className="rounded-full whitespace-normal text-center">
                         {(job.status || "new_request").replaceAll("_", " ")}
                       </Badge>
                       {!job.assigned_tech_user_id && (
-                        <Badge variant="outline" className="rounded-full">
+                        <Badge variant="outline" className="rounded-full whitespace-normal text-center">
                           Unassigned
                         </Badge>
                       )}
                       {job.intake_state ? (
-                        <Badge variant="outline" className="rounded-full">
+                        <Badge variant="outline" className="rounded-full whitespace-normal text-center">
                           {job.intake_state.replaceAll("_", " ")}
                         </Badge>
                       ) : null}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {!job.assigned_tech_user_id ? (
                       <Button
+                        className={mobileActionButtonClassName}
                         type="button"
                         disabled={claimingJobId === job.id}
                         onClick={() => void handleClaimJob(job.id)}
@@ -696,17 +703,18 @@ export default function TechnicianJobsPage() {
                         <Button
                           type="button"
                           variant="outline"
-                          className={cn(headerActionButtonClassName, startServiceButtonClass(job))}
+                          className={cn(headerActionButtonClassName, mobileActionButtonClassName, startServiceButtonClass(job))}
                           disabled={!!intakeUpdatePending && intakeUpdatePending.jobId === job.id}
                           onClick={() => handleOpenServiceWorkflow(job)}
                         >
                           {job.service_checklist_completed_at
-                            ? "Service checklist done"
+                            ? "Open completed flow"
                             : job.service_checklist_started_at
-                              ? "Continue service"
-                              : "Start Service"}
+                              ? "Continue guided flow"
+                              : "Start guided flow"}
                         </Button>
                         <Button
+                          className={mobileActionButtonClassName}
                           type="button"
                           variant="outline"
                           disabled={!!intakeUpdatePending && intakeUpdatePending.jobId === job.id}
@@ -723,18 +731,20 @@ export default function TechnicianJobsPage() {
                           )}
                         </Button>
                         <Button
+                          className={mobileActionButtonClassName}
                           type="button"
                           variant="outline"
-                          onClick={() => router.push(`/tech?jobId=${job.id}&composeUpdate=1`)}
+                          onClick={() => router.push(`/tech/jobs/${job.id}?composeUpdate=1`)}
                         >
                           Send Update
                         </Button>
                       </>
                     ) : null}
-                    <Button type="button" variant="outline" onClick={() => router.push(`/tech?jobId=${job.id}`)}>
-                      Open on Tech Page
+                    <Button className={mobileActionButtonClassName} type="button" variant="outline" onClick={() => router.push(`/tech/jobs/${job.id}`)}>
+                      Open guided flow
                     </Button>
                     <Button
+                      className={mobileActionButtonClassName}
                       type="button"
                       variant="destructive"
                       disabled={deletingJobId === job.id || job.status === "completed"}

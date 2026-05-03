@@ -21,14 +21,14 @@ export const portalNavGroups: PortalNavGroup[] = [
     destination: "customer",
     label: "Customer",
     items: [
-      { href: "/customer/dashboard", label: "Dashboard" },
+      { href: "/customer/dashboard", label: "Overview" },
       {
         href: "/customer/book",
         label: "Get Service",
-        matchPrefixes: ["/customer/book"],
+        matchPrefixes: ["/customer/book", "/customer/schedule"],
       },
       { href: "/customer/progress", label: "Service Progress" },
-      { href: "/customer/reports", label: "Customer Report History" },
+      { href: "/customer/reports", label: "Reports" },
       { href: "/customer/account", label: "Account" },
       {
         href: "/contact",
@@ -41,8 +41,8 @@ export const portalNavGroups: PortalNavGroup[] = [
     destination: "tech",
     label: "Technician",
     items: [
-      { href: "/tech", label: "Inspection" },
       { href: "/tech/jobs", label: "Jobs" },
+      { href: "/tech", label: "Inspection" },
     ],
   },
   {
