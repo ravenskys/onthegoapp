@@ -41,8 +41,8 @@ export const portalNavGroups: PortalNavGroup[] = [
     destination: "tech",
     label: "Technician",
     items: [
-      { href: "/tech/jobs", label: "Jobs" },
-      { href: "/tech", label: "Inspection" },
+      { href: "/tech", label: "Home" },
+      { href: "/tech/jobs", label: "Jobs", matchPrefixes: ["/tech/jobs/"] },
     ],
   },
   {

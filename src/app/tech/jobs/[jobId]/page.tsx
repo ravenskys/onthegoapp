@@ -1,4 +1,4 @@
-import { TechnicianWorkspacePage } from "@/app/tech/page";
+import TechnicianJobFlowPage from "./TechnicianJobFlowPage";
 
 export default async function TechnicianJobWorkspacePage({
   params,
@@ -7,5 +7,5 @@ export default async function TechnicianJobWorkspacePage({
 }) {
   const { jobId } = await params;
 
-  return <TechnicianWorkspacePage initialJobId={jobId} queueHref="/tech/jobs" />;
+  return <TechnicianJobFlowPage jobId={jobId} />;
 }

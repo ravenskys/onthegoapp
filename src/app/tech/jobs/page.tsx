@@ -672,7 +672,7 @@ export default function TechnicianJobsPage() {
                     <div className="text-xs text-slate-500">
                       Saved {new Date(draft.savedAt).toLocaleString()}
                     </div>
-                    <Button className={mobileActionButtonClassName} type="button" variant="outline" onClick={() => router.push(`/tech?draftId=${draft.id}`)}>
+                    <Button className={mobileActionButtonClassName} type="button" variant="outline" onClick={() => router.push(`/tech/inspection?draftId=${draft.id}`)}>
                       Open Draft
                     </Button>
                   </CardContent>
