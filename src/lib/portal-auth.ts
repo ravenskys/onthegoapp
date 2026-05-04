@@ -111,7 +111,7 @@ export const getUserRoles = async (): Promise<UserRolesResult> => {
 export const getPrimaryPortalRoute = (roles: PortalRole[]) => {
   if (hasPortalAccess(roles, "admin")) return "/admin";
   if (hasPortalAccess(roles, "manager")) return "/manager";
-  if (hasPortalAccess(roles, "tech")) return "/tech";
+  if (hasPortalAccess(roles, "tech")) return "/tech/jobs";
   if (hasPortalAccess(roles, "customer")) return "/customer/dashboard";
   return "/customer/login";
 };
@@ -142,7 +142,7 @@ export const getPostLoginRouteForDestination = (
 /** Home URL for each portal area (used by nav / switcher). */
 export const PORTAL_DESTINATION_HOME: Record<PortalDestination, string> = {
   customer: "/customer/dashboard",
-  tech: "/tech",
+  tech: "/tech/jobs",
   manager: "/manager",
   admin: "/admin",
 };

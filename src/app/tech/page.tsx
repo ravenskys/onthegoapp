@@ -4619,5 +4619,44 @@ if (!isAuthorized) {
 }
 
 export default function OnTheGoTechnicianAppPrototype() {
+  const [showWorkspace, setShowWorkspace] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const hasDirectWorkspaceTarget = Boolean(params.get("draftId") || params.get("jobId"));
+
+    if (hasDirectWorkspaceTarget) {
+      const timeoutId = window.setTimeout(() => {
+        setShowWorkspace(true);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    const redirectId = window.setTimeout(() => {
+      window.location.replace("/tech/jobs");
+    }, 0);
+
+    return () => {
+      window.clearTimeout(redirectId);
+    };
+  }, []);
+
+  if (!showWorkspace) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-8">
+        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-8 shadow-md">
+          <p className="text-slate-700">Opening technician queue...</p>
+        </div>
+      </div>
+    );
+  }
+
   return <TechnicianWorkspacePage />;
 }
