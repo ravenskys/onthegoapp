@@ -45,8 +45,9 @@ export function PortalRouteGuard({
     }
 
     let cancelled = false;
+    let retryTimeout: number | null = null;
 
-    const run = async () => {
+    const run = async (attempt = 0) => {
       const { user, roles } = await getUserRoles();
 
       if (cancelled) {
@@ -54,6 +55,13 @@ export function PortalRouteGuard({
       }
 
       if (!user) {
+        if (attempt < 8) {
+          retryTimeout = window.setTimeout(() => {
+            void run(attempt + 1);
+          }, 250);
+          return;
+        }
+
         const next = encodeURIComponent(pathname || `/${destination}`);
         window.location.href = `/customer/login?next=${next}`;
         return;
@@ -71,6 +79,9 @@ export function PortalRouteGuard({
 
     return () => {
       cancelled = true;
+      if (retryTimeout) {
+        window.clearTimeout(retryTimeout);
+      }
     };
   }, [destination, pathname, skipGuard]);
 
