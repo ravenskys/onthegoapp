@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -47,6 +47,7 @@ export function PortalTopNav({
   const [loggingOut, setLoggingOut] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isCustomerSection = section === "customer";
+  const lastRouteKeyRef = useRef(`${section}:${pathname}`);
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true);
@@ -74,18 +75,18 @@ export function PortalTopNav({
   const sectionItems = availableGroups.find((group) => group.destination === section)?.items ?? [];
 
   useEffect(() => {
-    if (!mobileMenuOpen) {
-      return;
+    const routeKey = `${section}:${pathname}`;
+    if (lastRouteKeyRef.current !== routeKey) {
+      lastRouteKeyRef.current = routeKey;
+      const timeoutId = window.setTimeout(() => {
+        setMobileMenuOpen(false);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
     }
-
-    const timeoutId = window.setTimeout(() => {
-      setMobileMenuOpen(false);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [mobileMenuOpen, pathname, section]);
+  }, [pathname, section]);
 
   useEffect(() => {
     if (!mobileMenuOpen) {
