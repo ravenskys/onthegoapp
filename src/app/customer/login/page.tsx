@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { normalizeEmail } from "@/lib/input-formatters";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { getPostLoginRoute, getUserRoles } from "@/lib/portal-auth";
+import {
+  getPostLoginRouteForDestination,
+  getUserRoles,
+} from "@/lib/portal-auth";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,7 +72,9 @@ export default function CustomerLoginPage() {
       return;
     }
 
-    router.push(getPostLoginRoute(roles));
+    router.push(
+      getPostLoginRouteForDestination(roles, searchParams.get("next")),
+    );
   };
 
   const handleForgotPassword = async () => {

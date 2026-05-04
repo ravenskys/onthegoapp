@@ -54,7 +54,8 @@ export function PortalRouteGuard({
       }
 
       if (!user) {
-        window.location.href = "/customer/login";
+        const next = encodeURIComponent(pathname || `/${destination}`);
+        window.location.href = `/customer/login?next=${next}`;
         return;
       }
 
@@ -71,7 +72,7 @@ export function PortalRouteGuard({
     return () => {
       cancelled = true;
     };
-  }, [destination, skipGuard]);
+  }, [destination, pathname, skipGuard]);
 
   if (skipGuard) {
     return <>{children}</>;

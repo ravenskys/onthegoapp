@@ -8,6 +8,10 @@ type UserRolesResult = {
   roles: PortalRole[];
 };
 
+function isValidPortalRedirect(path: string | null | undefined): path is string {
+  return Boolean(path && path.startsWith("/") && !path.startsWith("//"));
+}
+
 /**
  * Supabase `auth.getUser()` uses the Web Locks API in the browser. Many components
  * calling `getUserRoles()` at once can trigger "Lock broken by another request
@@ -17,11 +21,26 @@ let inflightUserRoles: Promise<UserRolesResult> | null = null;
 
 async function loadUserRoles(): Promise<UserRolesResult> {
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (userError || !user) {
+  let user = session?.user ?? null;
+
+  if (!user && !sessionError) {
+    const {
+      data: { user: fetchedUser },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !fetchedUser) {
+      return { user: null, roles: [] as PortalRole[] };
+    }
+
+    user = fetchedUser;
+  }
+
+  if (!user) {
     return { user: null, roles: [] as PortalRole[] };
   }
 
@@ -93,6 +112,22 @@ export const getPrimaryPortalRoute = (roles: PortalRole[]) => {
  */
 export const getPostLoginRoute = (roles: PortalRole[]) =>
   getPrimaryPortalRoute(roles);
+
+export const getPostLoginRouteForDestination = (
+  roles: PortalRole[],
+  requestedPath: string | null | undefined,
+) => {
+  if (!isValidPortalRedirect(requestedPath)) {
+    return getPostLoginRoute(roles);
+  }
+
+  const destination = getPortalDestinationFromPathname(requestedPath);
+  if (destination && hasPortalAccess(roles, destination)) {
+    return requestedPath;
+  }
+
+  return getPostLoginRoute(roles);
+};
 
 /** Home URL for each portal area (used by nav / switcher). */
 export const PORTAL_DESTINATION_HOME: Record<PortalDestination, string> = {
