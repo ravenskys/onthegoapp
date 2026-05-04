@@ -132,6 +132,7 @@ export default function TechnicianJobsPage() {
   const router = useRouter();
   const portalRolesRef = useRef<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessIssue, setAccessIssue] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [jobs, setJobs] = useState<TechnicianJob[]>([]);
   const [customerUpdateMetaByJobId, setCustomerUpdateMetaByJobId] = useState<
@@ -329,13 +330,26 @@ export default function TechnicianJobsPage() {
   }, []);
 
   useEffect(() => {
-    const checkAccessAndLoad = async () => {
+    let cancelled = false;
+    let retryTimeout: number | null = null;
+
+    const checkAccessAndLoad = async (attempt = 0) => {
       const { user, roles } = await getUserRoles();
 
+      if (cancelled) {
+        return;
+      }
+
       if (!user) {
-        const next =
-          typeof window === "undefined" ? "/tech/jobs" : `${window.location.pathname}${window.location.search}`;
-        window.location.href = `/customer/login?next=${encodeURIComponent(next)}`;
+        if (attempt < 6) {
+          retryTimeout = window.setTimeout(() => {
+            void checkAccessAndLoad(attempt + 1);
+          }, 250);
+          return;
+        }
+
+        setAccessIssue("We could not confirm your technician session on this device. Refresh and try the Tech portal again.");
+        setLoading(false);
         return;
       }
 
@@ -345,6 +359,7 @@ export default function TechnicianJobsPage() {
       }
 
       try {
+        setAccessIssue("");
         setCurrentUserId(user.id);
         portalRolesRef.current = roles;
         await loadJobs(user.id, roles);
@@ -357,6 +372,13 @@ export default function TechnicianJobsPage() {
     };
 
     void checkAccessAndLoad();
+
+    return () => {
+      cancelled = true;
+      if (retryTimeout) {
+        window.clearTimeout(retryTimeout);
+      }
+    };
   }, [loadJobs, loadSavedDrafts]);
 
   const filteredJobs = useMemo(() => {
@@ -534,6 +556,17 @@ export default function TechnicianJobsPage() {
       <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
         <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-md sm:p-8">
           <p className="text-slate-700">Loading technician queue...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessIssue) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <div className="mx-auto max-w-3xl rounded-3xl bg-white p-6 shadow-md sm:p-8">
+          <p className="text-base font-semibold text-slate-900">Technician queue unavailable</p>
+          <p className="mt-2 text-sm text-slate-700">{accessIssue}</p>
         </div>
       </div>
     );

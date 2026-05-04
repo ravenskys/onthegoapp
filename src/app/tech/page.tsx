@@ -754,6 +754,7 @@ export function TechnicianWorkspacePage({
   const [activeTab, setActiveTab] = useState("vehicle");
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [authIssue, setAuthIssue] = useState("");
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [useCustomMake, setUseCustomMake] = useState(false);
   const [useCustomModel, setUseCustomModel] = useState(false);
@@ -2864,17 +2865,31 @@ const handleCompleteGuidedJob = () => {
 };
 
 useEffect(() => {
-  const checkAccess = async () => {
+  let cancelled = false;
+  let retryTimeout: number | null = null;
+
+  const checkAccess = async (attempt = 0) => {
     const { user, roles: roleNames } = await getUserRoles();
 
+    if (cancelled) {
+      return;
+    }
+
     if (!user) {
-      const next =
-        typeof window === "undefined" ? "/tech" : `${window.location.pathname}${window.location.search}`;
-      window.location.href = `/customer/login?next=${encodeURIComponent(next)}`;
+      if (attempt < 6) {
+        retryTimeout = window.setTimeout(() => {
+          void checkAccess(attempt + 1);
+        }, 250);
+        return;
+      }
+
+      setAuthIssue("We could not confirm your technician session on this device. Refresh and try the Tech portal again.");
+      setAuthLoading(false);
       return;
     }
 
     if (hasPortalAccess(roleNames, "tech")) {
+      setAuthIssue("");
       setCurrentUserId(user.id);
 
       try {
@@ -2927,6 +2942,13 @@ useEffect(() => {
   };
 
   void checkAccess();
+
+  return () => {
+    cancelled = true;
+    if (retryTimeout) {
+      window.clearTimeout(retryTimeout);
+    }
+  };
 }, []);
 
   useEffect(() => {
@@ -3090,7 +3112,16 @@ if (authLoading) {
 }
 
 if (!isAuthorized) {
-  return null;
+  return (
+    <div className="min-h-screen bg-slate-100 p-8">
+      <div className="mx-auto max-w-3xl rounded-3xl bg-white p-8 shadow-md">
+        <p className="text-base font-semibold text-slate-900">Technician portal unavailable</p>
+        <p className="mt-2 text-sm text-slate-700">
+          {authIssue || "We could not open the technician workspace on this device right now."}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 
