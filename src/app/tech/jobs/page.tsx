@@ -133,6 +133,8 @@ export default function TechnicianJobsPage() {
   const portalRolesRef = useRef<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [accessIssue, setAccessIssue] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionTone, setActionTone] = useState<"info" | "success" | "error">("info");
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [jobs, setJobs] = useState<TechnicianJob[]>([]);
   const [customerUpdateMetaByJobId, setCustomerUpdateMetaByJobId] = useState<
@@ -439,7 +441,8 @@ export default function TechnicianJobsPage() {
 
   const handleDeleteJob = useCallback(async (job: TechnicianJob) => {
     if (job.status === "completed") {
-      alert("Completed jobs cannot be deleted by technicians.");
+      setActionTone("error");
+      setActionMessage("Completed jobs cannot be deleted by technicians.");
       return;
     }
 
@@ -454,13 +457,18 @@ export default function TechnicianJobsPage() {
     }
 
     setDeletingJobId(job.id);
+    setActionTone("info");
+    setActionMessage(`Deleting job #${jobLabel}...`);
 
     try {
       await deleteJobWithRelatedRecords(job.id);
       setJobs((prev) => prev.filter((currentJob) => currentJob.id !== job.id));
+      setActionTone("success");
+      setActionMessage(`Deleted job #${jobLabel}.`);
     } catch (error) {
       console.error("Failed to delete technician job:", error);
-      alert(error instanceof Error ? error.message : "Failed to delete job.");
+      setActionTone("error");
+      setActionMessage(error instanceof Error ? error.message : "Failed to delete job.");
     } finally {
       setDeletingJobId(null);
     }
@@ -468,6 +476,8 @@ export default function TechnicianJobsPage() {
 
   const handleClaimJob = useCallback(async (jobId: string) => {
     setClaimingJobId(jobId);
+    setActionTone("info");
+    setActionMessage("Claiming job...");
     const roles = portalRolesRef.current;
     try {
       const { error } = await supabase.rpc("claim_job_for_current_tech", { p_job_id: jobId });
@@ -490,8 +500,11 @@ export default function TechnicianJobsPage() {
         ),
       );
       await loadJobs(currentUserId, roles.length ? roles : ["technician"]);
+      setActionTone("success");
+      setActionMessage("Job claimed. You can now open the service workflow.");
     } catch (error) {
-      alert(getSupabaseErrorMessage(error));
+      setActionTone("error");
+      setActionMessage(getSupabaseErrorMessage(error));
     } finally {
       setClaimingJobId(null);
     }
@@ -500,6 +513,8 @@ export default function TechnicianJobsPage() {
   const handleSetIntakeState = useCallback(
     async (jobId: string, intakeState: string, nextStatus?: string | null) => {
       setIntakeUpdatePending({ jobId, intakeState });
+      setActionTone("info");
+      setActionMessage(`Updating job status to ${intakeState.replaceAll("_", " ")}...`);
       const roles = portalRolesRef.current;
       try {
         const { error: rpcError } = await supabase.rpc("update_job_intake_state", {
@@ -531,8 +546,11 @@ export default function TechnicianJobsPage() {
           ),
         );
         await loadJobs(currentUserId, roles.length ? roles : ["technician"]);
+        setActionTone("success");
+        setActionMessage(`Updated job status to ${intakeState.replaceAll("_", " ")}.`);
       } catch (error) {
-        alert(getSupabaseErrorMessage(error));
+        setActionTone("error");
+        setActionMessage(getSupabaseErrorMessage(error));
       } finally {
         setIntakeUpdatePending(null);
       }
@@ -543,9 +561,12 @@ export default function TechnicianJobsPage() {
   const handleOpenServiceWorkflow = useCallback(
     (job: TechnicianJob) => {
       if (job.assigned_tech_user_id !== currentUserId) {
-        alert("Claim this job first.");
+        setActionTone("error");
+        setActionMessage("Claim this job first.");
         return;
       }
+      setActionTone("info");
+      setActionMessage("Opening service workflow...");
       router.push(`/tech/jobs/${job.id}`);
     },
     [currentUserId, router],
@@ -623,6 +644,20 @@ export default function TechnicianJobsPage() {
                 </Button>
               </div>
             </div>
+            {actionMessage ? (
+              <div
+                className={cn(
+                  "rounded-2xl border px-4 py-3 text-sm",
+                  actionTone === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : actionTone === "error"
+                      ? "border-red-200 bg-red-50 text-red-800"
+                      : "border-slate-200 bg-slate-50 text-slate-700",
+                )}
+              >
+                {actionMessage}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

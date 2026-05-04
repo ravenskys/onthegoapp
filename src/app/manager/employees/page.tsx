@@ -132,6 +132,8 @@ export default function ManagerEmployeesPage() {
   const [payRates, setPayRates] = useState<PayRateRow[]>([]);
   const [payRatesLoadError, setPayRatesLoadError] = useState<string | null>(null);
   const [payRatesTableMissing, setPayRatesTableMissing] = useState(false);
+  const [payRateMessage, setPayRateMessage] = useState("");
+  const [payRateMessageTone, setPayRateMessageTone] = useState<"info" | "success" | "error">("info");
   const [saving, setSaving] = useState(false);
 
   const [newTechId, setNewTechId] = useState("");
@@ -350,27 +352,33 @@ export default function ManagerEmployeesPage() {
 
   const handleAddRate = async () => {
     if (payRatesTableMissing) {
-      alert(PAY_RATES_SETUP_INSTRUCTIONS);
+      setPayRateMessageTone("error");
+      setPayRateMessage(PAY_RATES_SETUP_INSTRUCTIONS);
       return;
     }
 
     const techId = newTechId || technicians[0]?.id;
     if (!techId) {
-      alert("Select a technician.");
+      setPayRateMessageTone("error");
+      setPayRateMessage("Select a technician.");
       return;
     }
 
     const pay = Number(String(newHourlyPay).trim());
     if (!Number.isFinite(pay) || pay < 0) {
-      alert("Enter a valid hourly pay amount.");
+      setPayRateMessageTone("error");
+      setPayRateMessage("Enter a valid hourly pay amount.");
       return;
     }
     if (!newEffectiveDate.trim()) {
-      alert("Choose an effective date.");
+      setPayRateMessageTone("error");
+      setPayRateMessage("Choose an effective date.");
       return;
     }
 
     setSaving(true);
+    setPayRateMessageTone("info");
+    setPayRateMessage("Saving pay rate...");
     try {
       const { error } = await supabase.from("technician_pay_rates").insert({
         technician_user_id: techId,
@@ -382,14 +390,18 @@ export default function ManagerEmployeesPage() {
       setNewHourlyPay("");
       setNewNotes("");
       await loadPayRates();
+      setPayRateMessageTone("success");
+      setPayRateMessage("Pay rate saved.");
     } catch (error: unknown) {
       if (isPayRatesTableMissingError(error)) {
         setPayRatesTableMissing(true);
         setPayRatesLoadError(PAY_RATES_SETUP_INSTRUCTIONS);
-        alert(PAY_RATES_SETUP_INSTRUCTIONS);
+        setPayRateMessageTone("error");
+        setPayRateMessage(PAY_RATES_SETUP_INSTRUCTIONS);
       } else {
         console.warn("Save pay rate failed:", formatLoadError(error));
-        alert(getErrorMessage(error, "Could not save pay rate."));
+        setPayRateMessageTone("error");
+        setPayRateMessage(getErrorMessage(error, "Could not save pay rate."));
       }
     } finally {
       setSaving(false);
@@ -400,18 +412,24 @@ export default function ManagerEmployeesPage() {
     if (payRatesTableMissing) return;
     if (!window.confirm("Remove this pay rate row?")) return;
     setSaving(true);
+    setPayRateMessageTone("info");
+    setPayRateMessage("Deleting pay rate...");
     try {
       const { error } = await supabase.from("technician_pay_rates").delete().eq("id", id);
       if (error) throw error;
       await loadPayRates();
+      setPayRateMessageTone("success");
+      setPayRateMessage("Pay rate deleted.");
     } catch (error) {
       if (isPayRatesTableMissingError(error)) {
         setPayRatesTableMissing(true);
         setPayRatesLoadError(PAY_RATES_SETUP_INSTRUCTIONS);
-        alert(PAY_RATES_SETUP_INSTRUCTIONS);
+        setPayRateMessageTone("error");
+        setPayRateMessage(PAY_RATES_SETUP_INSTRUCTIONS);
       } else {
         console.warn("Delete pay rate failed:", formatLoadError(error));
-        alert(getErrorMessage(error, "Could not delete."));
+        setPayRateMessageTone("error");
+        setPayRateMessage(getErrorMessage(error, "Could not delete."));
       }
     } finally {
       setSaving(false);
@@ -742,6 +760,20 @@ export default function ManagerEmployeesPage() {
                 disabled={payRatesTableMissing}
               />
             </div>
+            {payRateMessage ? (
+              <div
+                className={cn(
+                  "rounded-lg border px-4 py-3 text-sm md:col-span-2 lg:col-span-4",
+                  payRateMessageTone === "success"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                    : payRateMessageTone === "error"
+                      ? "border-red-300 bg-red-50 text-red-950"
+                      : "border-slate-200 bg-slate-50 text-slate-700",
+                )}
+              >
+                {payRateMessage}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
