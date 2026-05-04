@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { PublicPageHero } from "@/components/site/PublicPageHero";
 import { normalizeEmail } from "@/lib/input-formatters";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -13,7 +13,6 @@ import {
 
 export default function CustomerLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,9 +71,12 @@ export default function CustomerLoginPage() {
       return;
     }
 
-    router.push(
-      getPostLoginRouteForDestination(roles, searchParams.get("next")),
-    );
+    const next =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("next");
+
+    router.push(getPostLoginRouteForDestination(roles, next));
   };
 
   const handleForgotPassword = async () => {
