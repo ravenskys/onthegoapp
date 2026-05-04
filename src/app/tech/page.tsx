@@ -2868,7 +2868,9 @@ useEffect(() => {
     const { user, roles: roleNames } = await getUserRoles();
 
     if (!user) {
-      window.location.href = "/customer/login";
+      const next =
+        typeof window === "undefined" ? "/tech" : `${window.location.pathname}${window.location.search}`;
+      window.location.href = `/customer/login?next=${encodeURIComponent(next)}`;
       return;
     }
 
@@ -2924,7 +2926,7 @@ useEffect(() => {
     window.location.href = getPostLoginRoute(roleNames);
   };
 
-  checkAccess();
+  void checkAccess();
 }, []);
 
   useEffect(() => {

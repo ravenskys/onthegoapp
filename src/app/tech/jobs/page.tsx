@@ -333,7 +333,9 @@ export default function TechnicianJobsPage() {
       const { user, roles } = await getUserRoles();
 
       if (!user) {
-        window.location.href = "/customer/login";
+        const next =
+          typeof window === "undefined" ? "/tech/jobs" : `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/customer/login?next=${encodeURIComponent(next)}`;
         return;
       }
 

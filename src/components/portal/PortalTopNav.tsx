@@ -51,9 +51,18 @@ export function PortalTopNav({
   const handleLogout = useCallback(async () => {
     setLoggingOut(true);
     try {
-      await supabase.auth.signOut();
-    } finally {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) {
+        console.error("Failed to sign out locally:", error);
+        alert("Could not sign out cleanly. Please try again.");
+        setLoggingOut(false);
+        return;
+      }
       window.location.href = "/customer/login";
+    } catch (error) {
+      console.error("Unexpected sign-out failure:", error);
+      alert("Could not sign out cleanly. Please try again.");
+      setLoggingOut(false);
     }
   }, []);
 
@@ -65,8 +74,18 @@ export function PortalTopNav({
   const sectionItems = availableGroups.find((group) => group.destination === section)?.items ?? [];
 
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname, section]);
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMobileMenuOpen(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [mobileMenuOpen, pathname, section]);
 
   useEffect(() => {
     if (!mobileMenuOpen) {

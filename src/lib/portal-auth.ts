@@ -19,6 +19,8 @@ function isValidPortalRedirect(path: string | null | undefined): path is string 
  */
 let inflightUserRoles: Promise<UserRolesResult> | null = null;
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function loadUserRoles(): Promise<UserRolesResult> {
   const {
     data: { session },
@@ -38,6 +40,14 @@ async function loadUserRoles(): Promise<UserRolesResult> {
     }
 
     user = fetchedUser;
+  }
+
+  if (!user) {
+    await wait(180);
+    const {
+      data: { session: retrySession },
+    } = await supabase.auth.getSession();
+    user = retrySession?.user ?? null;
   }
 
   if (!user) {
