@@ -92,6 +92,9 @@ const maintenanceItems = [
   "Wiper Blades",
   "Head Lights",
   "Accessory Lights",
+  "Left Turn Signal",
+  "Right Turn Signal",
+  "Brake Lights",
   "Filters",
   "Oil Level",
   "Battery Terminal Protection",
@@ -128,6 +131,9 @@ const abbreviatedMaintenanceItems = [
   "Wiper Blades",
   "Head Lights",
   "Accessory Lights",
+  "Left Turn Signal",
+  "Right Turn Signal",
+  "Brake Lights",
   "Filters",
   "Oil Level",
   "Leaks",
@@ -572,7 +578,7 @@ function QuickConditionButtons({
           <button
             key={option.value}
             type="button"
-            onClick={() => onChange(option.value)}
+            onClick={() => onChange(selected ? "" : option.value)}
             className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
               selected
                 ? option.selectedClassName

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Clock, Loader2, MapPin, Wrench } from "lucide-react";
 import { CustomerPortalShell } from "@/components/customer/CustomerPortalShell";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,9 @@ import {
   buildVehicleLabel,
   buildVehicleDetailLabel,
   fetchCustomerPortalData,
+  getCustomerRecommendedServices,
   type CustomerPortalAddress,
+  type CustomerPortalVehicle,
   type CustomerPortalData,
 } from "@/lib/customer-portal";
 import { getPostLoginRoute, getUserRoles, hasPortalAccess } from "@/lib/portal-auth";
@@ -55,6 +57,30 @@ type CatalogService = {
   service_name: string;
   service_description: string | null;
   default_duration_minutes: number | null;
+};
+
+type RecommendedServiceItem = {
+  category: string;
+  service: string;
+  note?: string;
+};
+
+type EditableAppointment = {
+  id: string;
+  vehicle_id: string | null;
+  service_type: string | null;
+  service_description: string | null;
+  notes: string | null;
+  scheduled_start: string;
+  scheduled_end: string | null;
+  assigned_tech_user_id: string | null;
+  service_duration_minutes: number | null;
+  travel_time_minutes: number | null;
+  service_location_name: string | null;
+  service_address: string | null;
+  service_city: string | null;
+  service_state: string | null;
+  service_zip: string | null;
 };
 
 const ADD_NEW_VEHICLE_OPTION = "__add_new_vehicle__";
@@ -112,6 +138,82 @@ const ADDRESS_LOCATION_OPTIONS = [
   { value: "office-building", label: "Office Building" },
   { value: "other", label: "Other" },
 ];
+
+const resolveLocationTypeForSchedule = (label: string | null | undefined) => {
+  const trimmedLabel = String(label || "").trim();
+  const matchingOption = ADDRESS_LOCATION_OPTIONS.find(
+    (option) => option.value !== "other" && option.label.toLowerCase() === trimmedLabel.toLowerCase(),
+  );
+
+  return {
+    locationType: matchingOption?.value || (trimmedLabel ? "other" : "house"),
+    customLocationLabel: matchingOption ? "" : trimmedLabel,
+  };
+};
+
+const resolveCatalogServiceId = (
+  availableServices: CatalogService[],
+  serviceType: string | null | undefined,
+  serviceDescription: string | null | undefined,
+) => {
+  const normalizedType = String(serviceType || "").trim().toLowerCase();
+  const normalizedDescription = String(serviceDescription || "").trim().toLowerCase();
+
+  const exactTypeMatch = availableServices.find(
+    (service) =>
+      (service.service_code || "").trim().toLowerCase() === normalizedType ||
+      service.service_name.trim().toLowerCase() === normalizedType,
+  );
+  if (exactTypeMatch) {
+    return exactTypeMatch.id;
+  }
+
+  const descriptionMatch = availableServices.find((service) => {
+    const serviceName = service.service_name.trim().toLowerCase();
+    const serviceCode = (service.service_code || "").trim().toLowerCase();
+    return normalizedDescription === serviceName || normalizedDescription === serviceCode;
+  });
+
+  return descriptionMatch?.id || availableServices[0]?.id || "";
+};
+
+const normalizeServiceText = (value: string | null | undefined) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+
+const findCatalogServiceForSuggestion = (
+  availableServices: CatalogService[],
+  suggestion: RecommendedServiceItem,
+) => {
+  const suggestionLabel = normalizeServiceText(suggestion.service);
+  return (
+    availableServices.find((service) => {
+      const serviceName = normalizeServiceText(service.service_name);
+      const serviceCode = normalizeServiceText(service.service_code);
+      return (
+        serviceName.includes(suggestionLabel) ||
+        suggestionLabel.includes(serviceName) ||
+        (serviceCode && suggestionLabel.includes(serviceCode))
+      );
+    }) || null
+  );
+};
+
+const buildCombinedServiceType = (selectedServices: CatalogService[]) =>
+  selectedServices
+    .map((service) => service.service_code || service.service_name)
+    .filter(Boolean)
+    .join(", ");
+
+const buildCombinedServiceDescription = (selectedServices: CatalogService[]) =>
+  selectedServices
+    .map((service) =>
+      [service.service_name, service.service_description].filter(Boolean).join(" - "),
+    )
+    .filter(Boolean)
+    .join("; ");
 
 const getAddressLocationDetails = (label: string | null | undefined) => {
   const trimmedLabel = String(label || "").trim();
@@ -281,6 +383,7 @@ const hasVehicleDraftContent = ({
   );
 
 function CustomerSchedulePageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const appliedQueryRef = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -293,7 +396,7 @@ function CustomerSchedulePageContent() {
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [showInlineVehicleForm, setShowInlineVehicleForm] = useState(false);
-  const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("manual");
   const [locationType, setLocationType] = useState("house");
   const [customLocationLabel, setCustomLocationLabel] = useState("");
@@ -319,6 +422,8 @@ function CustomerSchedulePageContent() {
   const [newVehicleUseCustomMake, setNewVehicleUseCustomMake] = useState(false);
   const [newVehicleUseCustomModel, setNewVehicleUseCustomModel] = useState(false);
   const [newVehicleUseCustomEngineSize, setNewVehicleUseCustomEngineSize] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState<EditableAppointment | null>(null);
+  const [loadingAppointment, setLoadingAppointment] = useState(false);
 
   const services = useMemo(() => {
     const base =
@@ -341,6 +446,11 @@ function CustomerSchedulePageContent() {
 
   useEffect(() => {
     if (loading || appliedQueryRef.current) return;
+
+    if (searchParams.get("appointment")) {
+      appliedQueryRef.current = true;
+      return;
+    }
 
     const vehicleParam = searchParams.get("vehicle");
     const flow = searchParams.get("flow");
@@ -381,7 +491,7 @@ function CustomerSchedulePageContent() {
             service.service_code === REPAIR_OTHER_SERVICE_CODE,
         ) || null;
       if (otherSvc) {
-        setSelectedServiceId(otherSvc.id);
+        setSelectedServiceIds([otherSvc.id]);
         setSelectedSlotKey("");
       }
     } else if (flow === "book") {
@@ -389,7 +499,7 @@ function CustomerSchedulePageContent() {
         (service) => !isCustomerUnscheduledServiceRequest(service.id, service),
       );
       if (firstBookable) {
-        setSelectedServiceId(firstBookable.id);
+        setSelectedServiceIds([firstBookable.id]);
         setSelectedSlotKey("");
       }
     }
@@ -408,15 +518,18 @@ function CustomerSchedulePageContent() {
     return () => window.clearTimeout(timer);
   }, [loading, searchParams]);
 
-  const selectedService =
-    services.find((service) => service.id === selectedServiceId) ?? null;
-  const isUnscheduledServiceRequest = isCustomerUnscheduledServiceRequest(
-    selectedServiceId,
-    selectedService ?? undefined,
+  const selectedServices =
+    services.filter((service) => selectedServiceIds.includes(service.id));
+  const isUnscheduledServiceRequest = selectedServices.some((service) =>
+    isCustomerUnscheduledServiceRequest(service.id, service),
   );
+  const selectedService = selectedServices[0] ?? null;
   const selectedServiceDuration = isUnscheduledServiceRequest
     ? 0
-    : Math.max(0, selectedService?.default_duration_minutes ?? 60);
+    : selectedServices.reduce(
+        (sum, service) => sum + Math.max(0, service.default_duration_minutes ?? 60),
+        0,
+      );
   const selectedSlotTravelMinutes = slots.find(
     (slot) => getSlotKey(slot) === selectedSlotKey,
   )?.travel_time_minutes;
@@ -499,6 +612,87 @@ function CustomerSchedulePageContent() {
   };
 
   useEffect(() => {
+    const appointmentId = searchParams.get("appointment");
+    const customerId = portalData?.customer?.id;
+    if (!appointmentId || loading || !customerId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAppointment = async () => {
+      setLoadingAppointment(true);
+      try {
+        const { data: jobData, error } = await supabase
+          .from("jobs")
+          .select(
+            "id, vehicle_id, service_type, service_description, notes, scheduled_start, scheduled_end, assigned_tech_user_id, service_duration_minutes, travel_time_minutes, service_location_name, service_address, service_city, service_state, service_zip",
+          )
+          .eq("id", appointmentId)
+          .eq("customer_id", customerId)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!jobData?.scheduled_start) {
+          throw new Error("Appointment not found.");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const appointment = jobData as EditableAppointment;
+        const resolvedLocation = resolveLocationTypeForSchedule(appointment.service_location_name);
+        const resolvedServiceId = resolveCatalogServiceId(
+          services,
+          appointment.service_type,
+          appointment.service_description,
+        );
+
+        setEditingAppointment(appointment);
+        setSelectedVehicleId(appointment.vehicle_id || "");
+        setSelectedServiceIds(resolvedServiceId ? [resolvedServiceId] : []);
+        setSelectedAddressId("manual");
+        setLocationType(resolvedLocation.locationType);
+        setCustomLocationLabel(resolvedLocation.customLocationLabel);
+        setServiceAddress(appointment.service_address || "");
+        setServiceCity(appointment.service_city || "");
+        setServiceState(resolveUsStateForForm(appointment.service_state));
+        setServiceZip(appointment.service_zip || "");
+        setNotes(appointment.notes || "");
+        setSelectedDateKey(toDateKey(new Date(appointment.scheduled_start)));
+        if (appointment.assigned_tech_user_id && appointment.scheduled_end) {
+          setSelectedSlotKey(
+            getSlotKey({
+              technician_user_id: appointment.assigned_tech_user_id,
+              starts_at: appointment.scheduled_start,
+              ends_at: appointment.scheduled_end,
+              travel_time_minutes: appointment.travel_time_minutes,
+            }),
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(getErrorMessage(error, "We could not load that appointment."));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingAppointment(false);
+        }
+      }
+    };
+
+    void loadAppointment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, portalData?.customer?.id, searchParams, services]);
+
+  useEffect(() => {
     const loadPage = async () => {
       try {
         const { user, roles } = await getUserRoles();
@@ -535,7 +729,7 @@ function CustomerSchedulePageContent() {
             : FALLBACK_CATALOG_SERVICES;
 
         setCatalogServices(nextCatalog);
-        setSelectedServiceId(nextCatalog[0]?.id || "");
+        setSelectedServiceIds(nextCatalog[0]?.id ? [nextCatalog[0].id] : []);
 
         const nextAddresses = (nextPortalData.addresses || []) as CustomerPortalAddress[];
         const defaultAddress = nextAddresses.find((address) => address.is_default) || nextAddresses[0];
@@ -584,21 +778,71 @@ function CustomerSchedulePageContent() {
     });
   }, []);
 
+  const effectiveSlots = useMemo(() => {
+    if (
+      !editingAppointment?.assigned_tech_user_id ||
+      !editingAppointment.scheduled_start ||
+      !editingAppointment.scheduled_end
+    ) {
+      return slots;
+    }
+
+    const currentSlot: AvailableSlot = {
+      technician_user_id: editingAppointment.assigned_tech_user_id,
+      starts_at: editingAppointment.scheduled_start,
+      ends_at: editingAppointment.scheduled_end,
+      travel_time_minutes: editingAppointment.travel_time_minutes,
+    };
+    const currentSlotKey = getSlotKey(currentSlot);
+
+    if (slots.some((slot) => getSlotKey(slot) === currentSlotKey)) {
+      return slots;
+    }
+
+    return [currentSlot, ...slots];
+  }, [editingAppointment, slots]);
+
   const slotsByDate = useMemo(() => {
     const grouped = new Map<string, AvailableSlot[]>();
 
-    slots.forEach((slot) => {
+    effectiveSlots.forEach((slot) => {
       const dateKey = toDateKey(new Date(slot.starts_at));
       grouped.set(dateKey, [...(grouped.get(dateKey) || []), slot]);
     });
 
     return grouped;
-  }, [slots]);
+  }, [effectiveSlots]);
 
   const selectedDateSlots = slotsByDate.get(selectedDateKey) || [];
-  const selectedSlot = slots.find((slot) => getSlotKey(slot) === selectedSlotKey) || null;
+  const selectedSlot = effectiveSlots.find((slot) => getSlotKey(slot) === selectedSlotKey) || null;
   const vehicles = (portalData?.vehicles ?? []).filter(
     (vehicle) => Boolean(vehicle.id),
+  );
+  const selectedVehicle =
+    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null;
+  const mileageSuggestions = useMemo<RecommendedServiceItem[]>(
+    () => getCustomerRecommendedServices(selectedVehicle as CustomerPortalVehicle | null) as RecommendedServiceItem[],
+    [selectedVehicle],
+  );
+  const matchedSuggestedServices = useMemo(
+    () =>
+      mileageSuggestions
+        .map((suggestion) => ({
+          suggestion,
+          service: findCatalogServiceForSuggestion(services, suggestion),
+        }))
+        .filter(
+          (entry): entry is { suggestion: RecommendedServiceItem; service: CatalogService } =>
+            Boolean(entry.service),
+        ),
+    [mileageSuggestions, services],
+  );
+  const selectedSuggestedServiceIds = useMemo(
+    () =>
+      matchedSuggestedServices
+        .filter((entry) => selectedServiceIds.includes(entry.service.id))
+        .map((entry) => entry.service.id),
+    [matchedSuggestedServices, selectedServiceIds],
   );
   const addresses = (portalData?.addresses ?? []).filter(
     (address): address is CustomerPortalAddress => Boolean(address.id),
@@ -638,6 +882,17 @@ function CustomerSchedulePageContent() {
     attemptedSubmit && isUnscheduledServiceRequest && !notes.trim();
   const selectedSlotRequiredError =
     attemptedSubmit && !isUnscheduledServiceRequest && !selectedSlot;
+
+  const toggleServiceSelection = (serviceId: string) => {
+    setSelectedServiceIds((current) => {
+      const next = current.includes(serviceId)
+        ? current.filter((id) => id !== serviceId)
+        : [...current, serviceId];
+      return next;
+    });
+    setSelectedSlotKey("");
+  };
+  const selectedServiceRequiredError = attemptedSubmit && selectedServices.length === 0;
 
   useEffect(() => {
     setNewVehicleUseCustomMake(newVehicleCatalogModes.useCustomMake);
@@ -866,8 +1121,8 @@ function CustomerSchedulePageContent() {
       return;
     }
 
-    if (!selectedServiceId || !selectedService) {
-      setMessage("Choose the type of service you need.");
+    if (selectedServices.length === 0) {
+      setMessage("Choose at least one service you need.");
       return;
     }
 
@@ -901,48 +1156,95 @@ function CustomerSchedulePageContent() {
     try {
       await saveAddressIfNew();
 
-      const { error } = isUnscheduledServiceRequest
-        ? await supabase.rpc("create_customer_unscheduled_job_request", {
-            p_vehicle_id: selectedVehicleId,
-            p_service_type: selectedService?.service_code || selectedService?.service_name || "repair_other",
-            p_service_description: notes || selectedService?.service_description || null,
-            p_notes: notes || null,
-            p_service_location_name: locationName || null,
-            p_service_address: serviceAddress || null,
-            p_service_city: serviceCity || null,
-            p_service_state: serviceState || null,
-            p_service_zip: serviceZip || null,
-          })
-        : await supabase.rpc("create_customer_scheduled_job", {
-            p_vehicle_id: selectedVehicleId,
-            p_technician_user_id: selectedSlot!.technician_user_id,
-            p_scheduled_start: selectedSlot!.starts_at,
-            p_scheduled_end: selectedSlot!.ends_at,
-            p_service_type: selectedService?.service_code || selectedService?.service_name || "general_service",
-            p_service_description: selectedService?.service_description || selectedService?.service_name || null,
-            p_notes: notes || null,
-            p_service_duration_minutes: selectedServiceDuration,
-            p_travel_time_minutes: estimatedTravelMinutes,
-            p_service_location_name: locationName || null,
-            p_service_address: serviceAddress || null,
-            p_service_city: serviceCity || null,
-            p_service_state: serviceState || null,
-            p_service_zip: serviceZip || null,
-          });
+      if (editingAppointment && !isUnscheduledServiceRequest) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
 
-      if (error) throw error;
+        if (!accessToken) {
+          throw new Error("Your session expired. Please log in again.");
+        }
+
+        const response = await fetch(`/api/customer/appointments/${editingAppointment.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            vehicleId: selectedVehicleId,
+            technicianUserId: selectedSlot!.technician_user_id,
+            scheduledStart: selectedSlot!.starts_at,
+            scheduledEnd: selectedSlot!.ends_at,
+            serviceType: buildCombinedServiceType(selectedServices) || "general_service",
+            serviceDescription: buildCombinedServiceDescription(selectedServices) || null,
+            notes: notes || null,
+            serviceDurationMinutes: selectedServiceDuration,
+            travelTimeMinutes: estimatedTravelMinutes,
+            serviceLocationName: locationName || null,
+            serviceAddress: serviceAddress || null,
+            serviceCity: serviceCity || null,
+            serviceState: serviceState || null,
+            serviceZip: serviceZip || null,
+          }),
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "That appointment could not be updated.");
+        }
+      } else {
+        const { error } = isUnscheduledServiceRequest
+          ? await supabase.rpc("create_customer_unscheduled_job_request", {
+              p_vehicle_id: selectedVehicleId,
+              p_service_type: buildCombinedServiceType(selectedServices) || "repair_other",
+              p_service_description:
+                notes || buildCombinedServiceDescription(selectedServices) || null,
+              p_notes: notes || null,
+              p_service_location_name: locationName || null,
+              p_service_address: serviceAddress || null,
+              p_service_city: serviceCity || null,
+              p_service_state: serviceState || null,
+              p_service_zip: serviceZip || null,
+            })
+          : await supabase.rpc("create_customer_scheduled_job", {
+              p_vehicle_id: selectedVehicleId,
+              p_technician_user_id: selectedSlot!.technician_user_id,
+              p_scheduled_start: selectedSlot!.starts_at,
+              p_scheduled_end: selectedSlot!.ends_at,
+              p_service_type: buildCombinedServiceType(selectedServices) || "general_service",
+              p_service_description: buildCombinedServiceDescription(selectedServices) || null,
+              p_notes: notes || null,
+              p_service_duration_minutes: selectedServiceDuration,
+              p_travel_time_minutes: estimatedTravelMinutes,
+              p_service_location_name: locationName || null,
+              p_service_address: serviceAddress || null,
+              p_service_city: serviceCity || null,
+              p_service_state: serviceState || null,
+              p_service_zip: serviceZip || null,
+            });
+
+        if (error) throw error;
+      }
 
       setMessage(
         isUnscheduledServiceRequest
           ? "Your service request was sent. The team can review the details and contact you to schedule it."
-          : "Your service request was scheduled. The team can now see it on the manager calendar.",
+          : editingAppointment
+            ? "Appointment updated. Returning you to the dashboard..."
+            : "Appointment scheduled. Returning you to the dashboard...",
       );
       setAttemptedSubmit(false);
       setSelectedSlotKey("");
       setNotes("");
       if (!isUnscheduledServiceRequest) {
-        await loadAvailableSlots();
+        window.setTimeout(() => {
+          router.push("/customer/dashboard");
+        }, 1200);
+        return;
       }
+      await loadAvailableSlots();
     } catch (error) {
       console.error("Failed to schedule customer service:", {
         error,
@@ -972,15 +1274,6 @@ function CustomerSchedulePageContent() {
       subtitle="Choose service details and an available time."
       onLogout={handleLogout}
     >
-      {searchParams.get("guided") === "1" ? (
-        <div className="rounded-2xl border border-lime-400/35 bg-lime-400/10 px-4 py-3 text-sm text-slate-800 shadow-sm">
-          <span className="font-semibold text-slate-900">Guided setup: </span>
-          Vehicle and service type match what you chose in Get service. Finish the service location
-          {searchParams.get("flow") === "request"
-            ? " and describe what you need, then send the request."
-            : ", then choose an available time below."}
-        </div>
-      ) : null}
       <form onSubmit={handleSchedule} className="flex flex-col gap-6">
         <Card className="order-2 border-0 bg-white shadow-sm">
           <CardContent className="space-y-5 p-4 sm:p-6">
@@ -1124,13 +1417,23 @@ function CustomerSchedulePageContent() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-700">
                 <Wrench className="h-4 w-4" />
-                Service Details
+                {editingAppointment ? "Edit Appointment" : "Service Details"}
               </div>
-              <h2 className="mt-3 text-2xl font-black text-slate-950">Start your request</h2>
+              <h2 className="mt-3 text-2xl font-black text-slate-950">
+                {editingAppointment ? "Update your appointment" : "Start your request"}
+              </h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                Choose the service type and service location for {customer?.first_name || "your account"} first. Once those details are ready, the scheduler will appear below when online booking applies.
+                {editingAppointment
+                  ? "Adjust the service details or choose a different available appointment window, then save the update."
+                  : `Choose the service type and service location for ${customer?.first_name || "your account"} first. Once those details are ready, the scheduler will appear below when online booking applies.`}
               </p>
             </div>
+
+            {loadingAppointment ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+                Loading appointment details...
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -1261,35 +1564,103 @@ function CustomerSchedulePageContent() {
               <label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Service Needed
               </label>
-              <Select
-                value={selectedServiceId}
-                onValueChange={(id) => {
-                  setSelectedServiceId(id);
-                  setSelectedSlotKey("");
-                }}
+              <div
+                className={`grid gap-3 ${
+                  selectedServiceRequiredError
+                    ? "rounded-2xl border border-red-500 bg-red-50 p-3"
+                    : ""
+                }`}
               >
-                <SelectTrigger className="otg-schedule-select-trigger h-11 bg-white text-slate-950">
-                  <SelectValue placeholder="Choose service" />
-                </SelectTrigger>
-                <SelectContent className="otg-schedule-select-content">
-                  {services.map((service) => (
-                    <SelectItem
-                      key={service.id}
-                      value={service.id}
-                      className="otg-schedule-select-item"
-                    >
-                      {service.service_name} ({formatServiceDurationLabel(service)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {mileageSuggestions.length ? (
+                  <div className="rounded-2xl border border-lime-200 bg-lime-50 p-3">
+                    <div className="text-xs font-bold uppercase tracking-[0.14em] text-lime-800">
+                      Suggested by mileage
+                    </div>
+                    <div className="mt-2 grid gap-2">
+                      {matchedSuggestedServices.length ? (
+                        matchedSuggestedServices.map(({ suggestion, service }) => {
+                          const isSelected = selectedSuggestedServiceIds.includes(service.id);
+                          return (
+                            <button
+                              key={`${service.id}-${suggestion.service}`}
+                              type="button"
+                              onClick={() => toggleServiceSelection(service.id)}
+                              className={`rounded-2xl border p-3 text-left transition ${
+                                isSelected
+                                  ? "border-lime-500 bg-white shadow-[0_0_0_2px_rgba(132,204,22,0.18)]"
+                                  : "border-lime-200 bg-white hover:border-lime-400"
+                              }`}
+                            >
+                              <div className="text-sm font-semibold text-slate-900">
+                                {service.service_name}
+                              </div>
+                              {suggestion.note ? (
+                                <div className="mt-1 text-sm text-slate-600">{suggestion.note}</div>
+                              ) : null}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        mileageSuggestions.map((suggestion) => (
+                          <div
+                            key={`${suggestion.category}-${suggestion.service}`}
+                            className="rounded-2xl border border-lime-200 bg-white p-3"
+                          >
+                            <div className="text-sm font-semibold text-slate-900">{suggestion.service}</div>
+                            {suggestion.note ? (
+                              <div className="mt-1 text-sm text-slate-600">{suggestion.note}</div>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-2">
+                  {services.map((service) => {
+                    const isSelected = selectedServiceIds.includes(service.id);
+                    return (
+                      <button
+                        key={service.id}
+                        type="button"
+                        onClick={() => toggleServiceSelection(service.id)}
+                        className={`rounded-2xl border p-3 text-left transition ${
+                          isSelected
+                            ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                            : "border-slate-200 bg-white text-slate-900 hover:border-lime-300 hover:bg-lime-50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">{service.service_name}</div>
+                            <div className={`mt-1 text-sm ${isSelected ? "text-slate-200" : "text-slate-600"}`}>
+                              {service.service_description || "This service reserves technician time for your visit."}
+                            </div>
+                          </div>
+                          <div className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${isSelected ? "bg-lime-400 text-black" : "bg-slate-100 text-slate-700"}`}>
+                            {formatServiceDurationLabel(service)}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {selectedServiceRequiredError ? (
+                <p className="text-sm font-semibold !text-red-600">
+                  Please choose at least one service.
+                </p>
+              ) : null}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                {selectedService?.service_description ||
-                  "This service will reserve the selected amount of technician time."}
+                {selectedServices.length
+                  ? buildCombinedServiceDescription(selectedServices) ||
+                    "These services will reserve the selected amount of technician time."
+                  : "Choose one or more services for this appointment."}
                 <div className="mt-2 font-black text-slate-950">
                   {isUnscheduledServiceRequest
                     ? "Scheduling stays open until the team reviews your request and follows up with you."
-                    : `Service: ${selectedServiceDuration} min. Travel buffer is estimated from the technician's previous job after you choose a slot.`}
+                    : `Selected services: ${selectedServices.length}. Total service time: ${selectedServiceDuration} min. Travel buffer is estimated from the technician's previous job after you choose a slot.`}
                 </div>
               </div>
             </div>
@@ -1518,12 +1889,12 @@ function CustomerSchedulePageContent() {
           <Button
             type="submit"
             className="h-12 w-full rounded-2xl bg-lime-400 font-black text-black hover:bg-lime-300"
-            disabled={scheduling || loadingSlots || vehicles.length === 0}
+            disabled={scheduling || loadingSlots || loadingAppointment || vehicles.length === 0}
           >
             {scheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {scheduling
-              ? (isUnscheduledServiceRequest ? "Sending Request..." : "Scheduling...")
-              : (isUnscheduledServiceRequest ? "Send Request" : "Schedule Service")}
+              ? (isUnscheduledServiceRequest ? "Sending Request..." : editingAppointment ? "Updating..." : "Scheduling...")
+              : (isUnscheduledServiceRequest ? "Send Request" : editingAppointment ? "Update Appointment" : "Schedule Service")}
           </Button>
         </div>
       </form>

@@ -1,5 +1,5 @@
-import { TechnicianWorkspacePage } from "@/app/tech/page";
+import { redirect } from "next/navigation";
 
 export default function TechnicianInspectionWorkspaceEntryPage() {
-  return <TechnicianWorkspacePage queueHref="/tech/jobs" />;
+  redirect("/tech");
 }

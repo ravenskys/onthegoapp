@@ -19,7 +19,34 @@ if (supabaseConfigError && typeof window !== "undefined") {
   console.error(supabaseConfigError);
 }
 
+const supabaseStorageKey = isSupabaseConfigured
+  ? (() => {
+      try {
+        const url = new URL(supabaseUrl);
+        return `otg-supabase-auth:${url.host}`;
+      } catch {
+        return "otg-supabase-auth";
+      }
+    })()
+  : "otg-supabase-auth";
+
 export const supabase = createClient(
   isSupabaseConfigured ? supabaseUrl : "https://placeholder.supabase.co",
-  isSupabaseConfigured ? supabaseAnonKey : "placeholder-anon-key"
+  isSupabaseConfigured ? supabaseAnonKey : "placeholder-anon-key",
+  {
+    auth: {
+      storageKey: supabaseStorageKey,
+    },
+  }
 );
+
+if (typeof window !== "undefined" && isSupabaseConfigured) {
+  void supabase.auth.getSession().catch(async (error) => {
+    console.warn("Supabase session bootstrap failed; clearing local auth state.", error);
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // Ignore cleanup failures; the important part is preventing noisy stale session retries.
+    }
+  });
+}

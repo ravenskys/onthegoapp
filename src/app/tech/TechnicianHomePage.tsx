@@ -371,13 +371,10 @@ export default function TechnicianHomePage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-1">
                     <Button className="min-h-12" onClick={() => router.push(`/tech/jobs/${activeJob.id}`)}>
                       Resume guided flow
                       <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" className="min-h-12" onClick={() => router.push(`/tech/jobs/${activeJob.id}/inspection`)}>
-                      Open legacy inspection workspace
                     </Button>
                   </div>
                 </div>
@@ -443,8 +440,8 @@ export default function TechnicianHomePage() {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <div>
-                      The new stage flow is the main technician path now. The older full inspection workspace is
-                      still available from each job while we finish wiring photo and report details into the staged flow.
+                      The staged technician flow is now the main inspection path. Older technician worksheet entry
+                      points are being retired so jobs stay in one mobile flow.
                     </div>
                   </div>
                 </div>

@@ -81,6 +81,12 @@ type EmployeeAuditEntry = {
   created_at: string;
 };
 
+type AuditFieldChange = {
+  label: string;
+  before: string;
+  after: string;
+};
+
 type Technician = {
   id: string;
   firstName: string;
@@ -116,6 +122,49 @@ function getEmployeeLabel(employee: Pick<EmployeeAccount, "firstName" | "lastNam
 function getTechnicianLabel(tech: Technician) {
   const name = [tech.firstName, tech.lastName].filter(Boolean).join(" ").trim();
   return name || tech.email || "Technician";
+}
+
+function formatAuditValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(", ") : "None";
+  }
+  if (value == null) {
+    return "None";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  const text = String(value).trim();
+  return text || "None";
+}
+
+function getEmployeeAuditChanges(entry: EmployeeAuditEntry): AuditFieldChange[] {
+  const fieldMap: Array<{ key: string; label: string }> = [
+    { key: "employmentStatus", label: "Employment status" },
+    { key: "roles", label: "Roles" },
+    { key: "email", label: "Email" },
+    { key: "firstName", label: "First name" },
+    { key: "lastName", label: "Last name" },
+  ];
+
+  return fieldMap.flatMap(({ key, label }) => {
+    const beforeValue = entry.old_values?.[key];
+    const afterValue = entry.new_values?.[key];
+    const beforeNormalized = JSON.stringify(beforeValue ?? null);
+    const afterNormalized = JSON.stringify(afterValue ?? null);
+
+    if (beforeNormalized === afterNormalized) {
+      return [];
+    }
+
+    return [
+      {
+        label,
+        before: formatAuditValue(beforeValue),
+        after: formatAuditValue(afterValue),
+      },
+    ];
+  });
 }
 
 export default function ManagerEmployeesPage() {
@@ -626,38 +675,53 @@ export default function ManagerEmployeesPage() {
                   No tracked employee account changes yet.
                 </div>
               ) : (
-                auditEntries.map((entry) => (
-                  <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="font-semibold text-slate-900">
-                          {entry.target_email || "Unknown employee"}
+                auditEntries.map((entry) => {
+                  const changes = getEmployeeAuditChanges(entry);
+
+                  return (
+                    <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="font-semibold text-slate-900">
+                            {entry.target_email || "Unknown employee"}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            Changed by {entry.actor_email || "Unknown admin"}{" "}
+                            {entry.actor_roles?.length ? `(${entry.actor_roles.join(", ")})` : ""}
+                          </div>
                         </div>
-                        <div className="mt-1 text-sm text-slate-600">
-                          Changed by {entry.actor_email || "Unknown admin"}{" "}
-                          {entry.actor_roles?.length ? `(${entry.actor_roles.join(", ")})` : ""}
+                        <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                          {new Date(entry.created_at).toLocaleString()}
                         </div>
                       </div>
-                      <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                        {new Date(entry.created_at).toLocaleString()}
-                      </div>
+
+                      {changes.length ? (
+                        <div className="mt-3 space-y-2">
+                          {changes.map((change) => (
+                            <div
+                              key={`${entry.id}-${change.label}`}
+                              className="rounded-xl border border-slate-200 bg-white p-3 text-sm"
+                            >
+                              <div className="font-semibold text-slate-900">{change.label}</div>
+                              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                                  <span className="font-medium text-slate-900">Before:</span> {change.before}
+                                </div>
+                                <div className="rounded-lg bg-lime-50 px-3 py-2 text-slate-700">
+                                  <span className="font-medium text-slate-900">After:</span> {change.after}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                          No tracked field changes were detected for this entry.
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                        <div className="font-semibold text-slate-900">Before</div>
-                        <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-xs">
-                          {JSON.stringify(entry.old_values, null, 2)}
-                        </pre>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                        <div className="font-semibold text-slate-900">After</div>
-                        <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-xs">
-                          {JSON.stringify(entry.new_values, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>

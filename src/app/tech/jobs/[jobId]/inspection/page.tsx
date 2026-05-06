@@ -1,4 +1,4 @@
-import { TechnicianWorkspacePage } from "@/app/tech/page";
+import { redirect } from "next/navigation";
 
 export default async function TechnicianLegacyInspectionWorkspacePage({
   params,
@@ -6,6 +6,5 @@ export default async function TechnicianLegacyInspectionWorkspacePage({
   params: Promise<{ jobId: string }>;
 }) {
   const { jobId } = await params;
-
-  return <TechnicianWorkspacePage initialJobId={jobId} queueHref="/tech/jobs" />;
+  redirect(`/tech/jobs/${jobId}?stage=inspection`);
 }

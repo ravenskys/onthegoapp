@@ -32,6 +32,25 @@ import { CustomerPortalPageHeader } from "@/components/customer/CustomerPortalPa
 import { getErrorDebugFields, getErrorMessage } from "@/lib/tech-inspection";
 
 const EMPTY_VEHICLES: CustomerPortalVehicle[] = [];
+const APPOINTMENT_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type CustomerUpcomingAppointment = {
+  id: string;
+  vehicle_id: string | null;
+  status: string | null;
+  intake_state: string | null;
+  service_type: string | null;
+  service_description: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  assigned_tech_user_id: string | null;
+  service_location_name: string | null;
+  service_address: string | null;
+  service_city: string | null;
+  service_state: string | null;
+  service_zip: string | null;
+  vehicle: CustomerPortalVehicle | null;
+};
 
 /** Account page — Vehicles section (add / edit vehicles). */
 const ADD_VEHICLE_ACCOUNT_HREF = "/customer/account#customer-account-vehicles";
@@ -112,6 +131,10 @@ export default function CustomerDashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [portalData, setPortalData] = useState<CustomerPortalData | null>(null);
   const [showSignupSuccessMessage, setShowSignupSuccessMessage] = useState(false);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<CustomerUpcomingAppointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [appointmentActionId, setAppointmentActionId] = useState<string | null>(null);
+  const [appointmentMessage, setAppointmentMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const signupSuccessKey = "customerSignupAutoLoginSuccess";
@@ -154,6 +177,61 @@ export default function CustomerDashboardPage() {
 
         const nextPortalData = await fetchCustomerPortalData(user.id);
         setPortalData(nextPortalData);
+
+        if (nextPortalData.customer?.id) {
+          setAppointmentsLoading(true);
+          const { data: appointmentRows, error: appointmentError } = await supabase
+            .from("jobs")
+            .select(`
+              id,
+              vehicle_id,
+              status,
+              intake_state,
+              service_type,
+              service_description,
+              scheduled_start,
+              scheduled_end,
+              assigned_tech_user_id,
+              service_location_name,
+              service_address,
+              service_city,
+              service_state,
+              service_zip,
+              vehicle:vehicles (
+                id,
+                year,
+                make,
+                model,
+                engine_size,
+                mileage,
+                vin,
+                license_plate
+              )
+            `)
+            .eq("customer_id", nextPortalData.customer.id)
+            .not("scheduled_start", "is", null)
+            .gte("scheduled_start", new Date().toISOString())
+            .neq("status", "completed")
+            .neq("status", "cancelled")
+            .order("scheduled_start", { ascending: true });
+
+          if (appointmentError) {
+            throw appointmentError;
+          }
+
+          setUpcomingAppointments(
+            ((appointmentRows ?? []) as Array<
+              Omit<CustomerUpcomingAppointment, "vehicle"> & {
+                vehicle: CustomerPortalVehicle | CustomerPortalVehicle[] | null;
+              }
+            >).map((row) => ({
+              ...row,
+              vehicle: getSingleRelation(row.vehicle),
+            })),
+          );
+        } else {
+          setUpcomingAppointments([]);
+        }
       } catch (error) {
         const message = getErrorMessage(error, "Could not load your dashboard.");
         setLoadError(message);
@@ -163,6 +241,7 @@ export default function CustomerDashboardPage() {
           getErrorDebugFields(error),
         );
       } finally {
+        setAppointmentsLoading(false);
         setLoading(false);
       }
     };
@@ -223,6 +302,75 @@ export default function CustomerDashboardPage() {
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
+  const canEditAppointment = (scheduledStart: string | null) =>
+    Boolean(
+      scheduledStart &&
+        new Date(scheduledStart).getTime() - Date.now() > APPOINTMENT_EDIT_WINDOW_MS,
+    );
+  const formatAppointmentWindow = (scheduledStart: string | null, scheduledEnd: string | null) => {
+    if (!scheduledStart) {
+      return "Time pending";
+    }
+
+    const start = new Date(scheduledStart);
+    const startLabel = start.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    if (!scheduledEnd) {
+      return startLabel;
+    }
+
+    const end = new Date(scheduledEnd);
+    const endLabel = end.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    return `${startLabel} - ${endLabel}`;
+  };
+  const handleCancelAppointment = async (appointmentId: string) => {
+    const confirmed = window.confirm("Cancel this appointment?");
+    if (!confirmed) {
+      return;
+    }
+
+    setAppointmentMessage(null);
+    setAppointmentActionId(appointmentId);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        throw new Error("Your session expired. Please log in again.");
+      }
+
+      const response = await fetch(`/api/customer/appointments/${appointmentId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not cancel the appointment.");
+      }
+
+      setUpcomingAppointments((current) => current.filter((item) => item.id !== appointmentId));
+      setAppointmentMessage("Appointment cancelled.");
+    } catch (error) {
+      setAppointmentMessage(getErrorMessage(error, "Could not cancel the appointment."));
+    } finally {
+      setAppointmentActionId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -329,6 +477,108 @@ export default function CustomerDashboardPage() {
             subtitle="Phone, addresses, and profile"
             href="/customer/account"
           />
+        </div>
+
+        <div className="otg-card p-4 sm:p-6">
+          <DashboardMainSectionHeader
+            icon={CalendarDays}
+            kicker="Appointments"
+            title="Upcoming appointments"
+            description="Review your next scheduled visits, edit them more than 1 day ahead, or cancel if your plans change."
+          />
+
+          {appointmentMessage ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              {appointmentMessage}
+            </div>
+          ) : null}
+
+          <div className="mt-6 space-y-4">
+            {appointmentsLoading ? (
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                Loading upcoming appointments...
+              </div>
+            ) : upcomingAppointments.length ? (
+              upcomingAppointments.map((appointment) => {
+                const appointmentCanEdit = canEditAppointment(appointment.scheduled_start);
+                const locationLine = [
+                  appointment.service_location_name,
+                  appointment.service_address,
+                  appointment.service_city,
+                  appointment.service_state,
+                  appointment.service_zip,
+                ]
+                  .filter(Boolean)
+                  .join(", ");
+
+                return (
+                  <div
+                    key={appointment.id}
+                    className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 sm:p-5"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {formatAppointmentWindow(
+                            appointment.scheduled_start,
+                            appointment.scheduled_end,
+                          )}
+                        </div>
+                        <div className="mt-2 text-lg font-semibold text-slate-900">
+                          {appointment.service_description?.trim() ||
+                            appointment.service_type?.replaceAll("_", " ") ||
+                            "Scheduled service"}
+                        </div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          {buildVehicleLabel(appointment.vehicle)}
+                        </div>
+                        {locationLine ? (
+                          <div className="mt-1 text-sm text-slate-600">{locationLine}</div>
+                        ) : null}
+                        <div className="mt-3 text-sm text-slate-700">
+                          {appointmentCanEdit
+                            ? "You can edit this appointment online."
+                            : "This appointment is within 1 day. Please call or email the shop to change it."}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                        <button
+                          type="button"
+                          disabled={!appointmentCanEdit}
+                          onClick={() => {
+                            if (!appointmentCanEdit) {
+                              return;
+                            }
+                            window.location.href = `/customer/schedule?appointment=${encodeURIComponent(appointment.id)}`;
+                          }}
+                          className={`inline-flex min-h-11 items-center justify-center rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+                            appointmentCanEdit
+                              ? "border border-slate-200 bg-white text-slate-800 hover:border-lime-300 hover:bg-lime-50"
+                              : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                          }`}
+                        >
+                          Edit appointment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleCancelAppointment(appointment.id)}
+                          disabled={appointmentActionId === appointment.id}
+                          className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {appointmentActionId === appointment.id ? "Cancelling..." : "Cancel appointment"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                No upcoming appointments are scheduled right now.
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-3 lg:hidden">

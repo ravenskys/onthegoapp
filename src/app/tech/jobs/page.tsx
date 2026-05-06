@@ -672,9 +672,9 @@ export default function TechnicianJobsPage() {
                     <div className="text-xs text-slate-500">
                       Saved {new Date(draft.savedAt).toLocaleString()}
                     </div>
-                    <Button className={mobileActionButtonClassName} type="button" variant="outline" onClick={() => router.push(`/tech/inspection?draftId=${draft.id}`)}>
-                      Open Draft
-                    </Button>
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Legacy inspection drafts are being retired. Reopen the related job in the staged technician flow instead.
+                    </div>
                   </CardContent>
                 </Card>
               ))}

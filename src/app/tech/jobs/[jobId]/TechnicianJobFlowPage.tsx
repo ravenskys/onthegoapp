@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,6 +8,7 @@ import {
   ArrowRight,
   CalendarClock,
   Car,
+  Camera,
   Check,
   ClipboardCheck,
   CreditCard,
@@ -19,6 +19,7 @@ import {
   Plus,
   Receipt,
   ShieldCheck,
+  Upload,
   Wrench,
   X,
 } from "lucide-react";
@@ -117,6 +118,55 @@ type PaymentRow = {
   paid_at: string | null;
 };
 
+type StagedPhoto = {
+  shotKey: string;
+  label: string;
+  note: string;
+  preview: string;
+  fileName: string;
+  fileUrl: string | null;
+  photoRowId: string | null;
+};
+
+type RequiredItemPhoto = {
+  id: string;
+  label: string;
+  note: string;
+  preview: string;
+  fileName: string;
+  fileUrl: string | null;
+  photoRowId: string | null;
+};
+
+type ConditionValue = "" | "ok" | "sug" | "req";
+
+type TireInspectionEntry = {
+  psiIn: string;
+  psiOut: string;
+  treadOuter: string;
+  treadInner: string;
+  status: ConditionValue;
+  recommendation: string;
+};
+
+type BrakeInspectionState = {
+  lfPad: string;
+  rfPad: string;
+  lrPad: string;
+  rrPad: string;
+  lfRotor: string;
+  rfRotor: string;
+  lrRotor: string;
+  rrRotor: string;
+  brakeNotes: string;
+  status: ConditionValue;
+};
+
+type ChecklistItemState = {
+  status: ConditionValue;
+  why: string;
+};
+
 type StageKey =
   | "dispatch"
   | "arrival"
@@ -128,19 +178,43 @@ type StageKey =
   | "payment"
   | "closeout";
 
+type FlowSectionKey =
+  | "dispatch-location"
+  | "dispatch-customer"
+  | "arrival-status"
+  | "complaint-summary"
+  | "complaint-services"
+  | "preinspection-mileage"
+  | "preinspection-vin"
+  | "preinspection-photos"
+  | "inspection-type-summary"
+  | "quote-services"
+  | "quote-discount"
+  | "quote-signature"
+  | "work-services"
+  | "payment-details"
+  | "closeout-summary"
+  | "closeout-receipt";
+
 type TechFlowDraft = {
   currentStage: StageKey;
+  inspectionId: string | null;
   complaintSummary: string;
   complaintDetails: string;
   addedServiceReason: string;
   mileage: string;
   vinConfirmed: boolean;
-  cornerPhotoCount: number;
-  interiorPhotoCount: number;
-  vinPhotoCount: number;
+  preInspectionPhotos: Partial<Record<string, Partial<StagedPhoto>>>;
   inspectionType: "" | "mini" | "full";
   inspectionSummary: string;
+  tireData: Record<string, TireInspectionEntry>;
+  brakes: BrakeInspectionState;
+  maintenance: Record<string, ChecklistItemState>;
+  undercar: Record<string, ChecklistItemState>;
   quoteNotes: string;
+  quoteDiscountAmount: string;
+  quoteDiscountReason: string;
+  quoteDiscountOtherReason: string;
   quoteApprovalStatus: "draft" | "pending" | "approved" | "declined" | "signed";
   customerSignatureName: string;
   postWorkSummary: string;
@@ -210,19 +284,120 @@ const STAGES: Array<{
   },
 ];
 
+const getFlowDraftKey = (jobId: string) => `otg-tech-flow-draft:${jobId}`;
+
+const PRE_INSPECTION_PHOTO_SLOTS = [
+  { key: "front-left-corner", label: "Front Left Corner", category: "corner" },
+  { key: "front-right-corner", label: "Front Right Corner", category: "corner" },
+  { key: "rear-right-corner", label: "Rear Right Corner", category: "corner" },
+  { key: "rear-left-corner", label: "Rear Left Corner", category: "corner" },
+  { key: "interior-driver", label: "Interior 1", category: "interior" },
+  { key: "interior-passenger", label: "Interior 2", category: "interior" },
+  { key: "vin-tag", label: "VIN Photo", category: "vin" },
+] as const;
+
+const PRE_INSPECTION_INTERIOR_SLOT_KEYS = ["interior-driver", "interior-passenger"] as const;
+
+const TIRE_POSITIONS = [
+  "Left Front",
+  "Right Front",
+  "Right Rear",
+  "Left Rear",
+  "Spare",
+] as const;
+
+const MINI_MAINTENANCE_ITEMS = [
+  "Wiper Blades",
+  "Head Lights",
+  "Accessory Lights",
+  "Left Turn Signal",
+  "Right Turn Signal",
+  "Brake Lights",
+  "Filters",
+  "Oil Level",
+  "Leaks",
+  "Washer Fluid",
+  "Brake Fluid Flush",
+  "Coolant Level / Flush",
+  "Battery Test",
+  "A/C",
+  "Belts",
+] as const;
+
+const FULL_MAINTENANCE_ITEMS = [
+  "Wiper Blades",
+  "Head Lights",
+  "Accessory Lights",
+  "Left Turn Signal",
+  "Right Turn Signal",
+  "Brake Lights",
+  "Filters",
+  "Oil Level",
+  "Battery Terminal Protection",
+  "Belt Tensioner",
+  "Ignition Wires",
+  "Leaks",
+  "Lift Supports",
+  "Washer Fluid",
+  "Brake Fluid Flush",
+  "Coolant Hoses",
+  "Cabin Filter",
+  "Power Steering Fluid Level",
+  "Transmission Service",
+  "Coolant Level / Flush",
+  "Battery Test",
+  "Fuel System Service",
+  "Master Cylinder Fluid Level",
+  "A/C",
+  "Belts",
+] as const;
+
+const MINI_UNDERCAR_ITEMS = [
+  "Struts / Shocks",
+  "CV Boots",
+  "Tie Rod Ends",
+  "Exhaust System",
+] as const;
+
+const FULL_UNDERCAR_ITEMS = [
+  "U-Joint",
+  "Struts / Shocks",
+  "Strut Mounts",
+  "Rack & Pinion Assembly",
+  "CV Boots",
+  "Tie Rod Ends",
+  "Exhaust System",
+  "Muffler",
+] as const;
+
+const QUOTE_DISCOUNT_REASONS = [
+  { value: "customer-retention", label: "Customer retention" },
+  { value: "bundle-pricing", label: "Bundle pricing" },
+  { value: "labor-adjustment", label: "Labor adjustment" },
+  { value: "diagnostic-credit", label: "Diagnostic credit" },
+  { value: "manager-approval", label: "Manager approval" },
+  { value: "other", label: "Other" },
+] as const;
+
 const DEFAULT_DRAFT: TechFlowDraft = {
   currentStage: "dispatch",
+  inspectionId: null,
   complaintSummary: "",
   complaintDetails: "",
   addedServiceReason: "",
   mileage: "",
   vinConfirmed: false,
-  cornerPhotoCount: 0,
-  interiorPhotoCount: 0,
-  vinPhotoCount: 0,
+  preInspectionPhotos: {},
   inspectionType: "",
   inspectionSummary: "",
+  tireData: createEmptyTireData(),
+  brakes: createEmptyBrakeState(),
+  maintenance: createChecklistState(FULL_MAINTENANCE_ITEMS),
+  undercar: createChecklistState(FULL_UNDERCAR_ITEMS),
   quoteNotes: "",
+  quoteDiscountAmount: "",
+  quoteDiscountReason: "",
+  quoteDiscountOtherReason: "",
   quoteApprovalStatus: "draft",
   customerSignatureName: "",
   postWorkSummary: "",
@@ -230,13 +405,180 @@ const DEFAULT_DRAFT: TechFlowDraft = {
   receiptStored: false,
 };
 
-const getFlowDraftKey = (jobId: string) => `otg-tech-flow-draft:${jobId}`;
+const createEmptyPreInspectionPhotos = (): Record<string, StagedPhoto> =>
+  Object.fromEntries(
+    PRE_INSPECTION_PHOTO_SLOTS.map((slot) => [
+      slot.key,
+      {
+        shotKey: slot.key,
+        label: slot.label,
+        note: "",
+        preview: "",
+        fileName: "",
+        fileUrl: null,
+        photoRowId: null,
+      },
+    ]),
+  );
+
+function createEmptyTireData(): Record<string, TireInspectionEntry> {
+  return Object.fromEntries(
+    TIRE_POSITIONS.map((position) => [
+      position,
+      {
+        psiIn: "",
+        psiOut: "",
+        treadOuter: "",
+        treadInner: "",
+        status: "",
+        recommendation: "",
+      },
+    ]),
+  );
+}
+
+function createEmptyBrakeState(): BrakeInspectionState {
+  return {
+    lfPad: "",
+    rfPad: "",
+    lrPad: "",
+    rrPad: "",
+    lfRotor: "",
+    rfRotor: "",
+    lrRotor: "",
+    rrRotor: "",
+    brakeNotes: "",
+    status: "",
+  };
+}
+
+function createChecklistState(items: readonly string[]): Record<string, ChecklistItemState> {
+  return Object.fromEntries(items.map((item) => [item, { status: "", why: "" }]));
+}
+
+const mergeTireData = (
+  incoming: Partial<Record<string, Partial<TireInspectionEntry>>> | null | undefined,
+) => {
+  const base = createEmptyTireData();
+  if (!incoming) return base;
+
+  for (const position of TIRE_POSITIONS) {
+    const next = incoming[position];
+    if (!next) continue;
+    base[position] = {
+      ...base[position],
+      ...next,
+      psiIn: String(next.psiIn ?? base[position].psiIn),
+      psiOut: String(next.psiOut ?? base[position].psiOut),
+      treadOuter: String(next.treadOuter ?? base[position].treadOuter),
+      treadInner: String(next.treadInner ?? base[position].treadInner),
+      status: (next.status as ConditionValue | undefined) ?? base[position].status,
+      recommendation: String(next.recommendation ?? base[position].recommendation),
+    };
+  }
+
+  return base;
+};
+
+const mergeBrakeState = (incoming: Partial<BrakeInspectionState> | null | undefined): BrakeInspectionState => ({
+  ...createEmptyBrakeState(),
+  ...incoming,
+  lfPad: String(incoming?.lfPad ?? ""),
+  rfPad: String(incoming?.rfPad ?? ""),
+  lrPad: String(incoming?.lrPad ?? ""),
+  rrPad: String(incoming?.rrPad ?? ""),
+  lfRotor: String(incoming?.lfRotor ?? ""),
+  rfRotor: String(incoming?.rfRotor ?? ""),
+  lrRotor: String(incoming?.lrRotor ?? ""),
+  rrRotor: String(incoming?.rrRotor ?? ""),
+  brakeNotes: String(incoming?.brakeNotes ?? ""),
+  status: (incoming?.status as ConditionValue | undefined) ?? "",
+});
+
+const mergeChecklistState = (
+  items: readonly string[],
+  incoming: Partial<Record<string, Partial<ChecklistItemState>>> | null | undefined,
+) => {
+  const base = createChecklistState(items);
+  if (!incoming) return base;
+
+  for (const item of items) {
+    const next = incoming[item];
+    if (!next) continue;
+    base[item] = {
+      status: (next.status as ConditionValue | undefined) ?? "",
+      why: String(next.why ?? ""),
+    };
+  }
+
+  return base;
+};
+
+const normalizeDraft = (raw: Partial<TechFlowDraft> | null | undefined): TechFlowDraft => ({
+  ...DEFAULT_DRAFT,
+  ...(raw ?? {}),
+  preInspectionPhotos: raw?.preInspectionPhotos ?? {},
+  tireData: mergeTireData(raw?.tireData),
+  brakes: mergeBrakeState(raw?.brakes),
+  maintenance: mergeChecklistState(FULL_MAINTENANCE_ITEMS, raw?.maintenance),
+  undercar: mergeChecklistState(FULL_UNDERCAR_ITEMS, raw?.undercar),
+});
 
 const getSingleRelation = <T,>(value: T | T[] | null | undefined): T | null => {
   if (Array.isArray(value)) {
     return value[0] ?? null;
   }
   return value ?? null;
+};
+
+const normalizePhotoSlotToken = (value: string | null | undefined) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const resolvePreInspectionSlotKey = (
+  shotLabel: string | null | undefined,
+  fileUrl: string | null | undefined,
+  currentPhotos: Record<string, StagedPhoto>,
+) => {
+  const labelToken = normalizePhotoSlotToken(shotLabel);
+  const fileToken = normalizePhotoSlotToken(fileUrl);
+
+  const exactSlot = PRE_INSPECTION_PHOTO_SLOTS.find(
+    (slot) => normalizePhotoSlotToken(slot.label) === labelToken,
+  );
+  if (exactSlot) {
+    return exactSlot.key;
+  }
+
+  if (
+    labelToken === "interior" ||
+    labelToken.startsWith("interior-") ||
+    fileToken.includes("interior")
+  ) {
+    return (
+      PRE_INSPECTION_INTERIOR_SLOT_KEYS.find((key) => !currentPhotos[key]?.preview) ??
+      PRE_INSPECTION_INTERIOR_SLOT_KEYS[0]
+    );
+  }
+
+  if (
+    labelToken === "vin" ||
+    labelToken === "vin-photo" ||
+    labelToken === "vin-tag" ||
+    fileToken.includes("vin")
+  ) {
+    return "vin-tag";
+  }
+
+  if (fileToken.includes("front-left-corner")) return "front-left-corner";
+  if (fileToken.includes("front-right-corner")) return "front-right-corner";
+  if (fileToken.includes("rear-right-corner")) return "rear-right-corner";
+  if (fileToken.includes("rear-left-corner")) return "rear-left-corner";
+
+  return null;
 };
 
 const getErrorMessage = (error: unknown) => {
@@ -327,7 +669,13 @@ const parseNumberInput = (value: string) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
+export default function TechnicianJobFlowPage({
+  jobId,
+  initialStage,
+}: {
+  jobId: string;
+  initialStage?: StageKey;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -339,9 +687,16 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
   const [estimate, setEstimate] = useState<EstimateRow | null>(null);
   const [payment, setPayment] = useState<PaymentRow | null>(null);
   const [draft, setDraft] = useState<TechFlowDraft>(DEFAULT_DRAFT);
+  const [preInspectionPhotos, setPreInspectionPhotos] = useState<Record<string, StagedPhoto>>(
+    createEmptyPreInspectionPhotos,
+  );
+  const [requiredItemPhotos, setRequiredItemPhotos] = useState<RequiredItemPhoto[]>([]);
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [showIncompleteDialog, setShowIncompleteDialog] = useState(false);
+  const [showValidationHighlights, setShowValidationHighlights] = useState(false);
+  const [showAllStagesMobile, setShowAllStagesMobile] = useState(false);
   const [selectedCatalogServiceId, setSelectedCatalogServiceId] = useState("");
   const [customServiceName, setCustomServiceName] = useState("");
   const [customServiceDescription, setCustomServiceDescription] = useState("");
@@ -357,8 +712,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     setMessage(text);
   }, []);
 
-  const persistDraft = useCallback((nextDraft: TechFlowDraft) => {
-    setDraft(nextDraft);
+  const writeDraftToStorage = useCallback((nextDraft: TechFlowDraft) => {
     if (typeof window === "undefined") {
       return;
     }
@@ -369,9 +723,83 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     }
   }, [jobId]);
 
+  const hydratePreInspectionPhotos = useCallback((photos: Partial<Record<string, Partial<StagedPhoto>>> | null | undefined) => {
+    const base = createEmptyPreInspectionPhotos();
+    if (!photos) {
+      return base;
+    }
+
+    for (const slot of PRE_INSPECTION_PHOTO_SLOTS) {
+      const existing = photos[slot.key];
+      if (!existing) continue;
+      base[slot.key] = {
+        ...base[slot.key],
+        ...existing,
+        shotKey: slot.key,
+        label: slot.label,
+        note: String(existing.note ?? ""),
+        preview: String(existing.preview ?? ""),
+        fileName: String(existing.fileName ?? ""),
+        fileUrl: existing.fileUrl ? String(existing.fileUrl) : null,
+        photoRowId: existing.photoRowId ? String(existing.photoRowId) : null,
+      };
+    }
+
+    return base;
+  }, []);
+
+  const persistDraft = useCallback((nextDraft: TechFlowDraft) => {
+    setDraft(nextDraft);
+    writeDraftToStorage(nextDraft);
+  }, [writeDraftToStorage]);
+
   const updateDraft = useCallback((patch: Partial<TechFlowDraft>) => {
-    persistDraft({ ...draft, ...patch });
-  }, [draft, persistDraft]);
+    setDraft((prev) => {
+      const nextDraft = { ...prev, ...patch };
+      writeDraftToStorage(nextDraft);
+      return nextDraft;
+    });
+  }, [writeDraftToStorage]);
+
+  const syncPreInspectionPhotos = useCallback(
+    (nextPhotos: Record<string, StagedPhoto>, draftOverride?: TechFlowDraft) => {
+      setPreInspectionPhotos(nextPhotos);
+      const nextPhotoDraft = Object.fromEntries(
+        Object.entries(nextPhotos).map(([key, photo]) => [
+          key,
+          {
+            shotKey: photo.shotKey,
+            label: photo.label,
+            note: photo.note,
+            preview: photo.preview,
+            fileName: photo.fileName,
+            fileUrl: photo.fileUrl,
+            photoRowId: photo.photoRowId,
+          },
+        ]),
+      );
+
+      if (draftOverride) {
+        const nextDraft = {
+          ...draftOverride,
+          preInspectionPhotos: nextPhotoDraft,
+        };
+        setDraft(nextDraft);
+        writeDraftToStorage(nextDraft);
+        return;
+      }
+
+      setDraft((prev) => {
+        const nextDraft = {
+          ...prev,
+          preInspectionPhotos: nextPhotoDraft,
+        };
+        writeDraftToStorage(nextDraft);
+        return nextDraft;
+      });
+    },
+    [writeDraftToStorage],
+  );
 
   const loadDraft = useCallback(() => {
     if (typeof window === "undefined") {
@@ -383,11 +811,12 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       if (!raw) {
         return DEFAULT_DRAFT;
       }
-      return { ...DEFAULT_DRAFT, ...(JSON.parse(raw) as Partial<TechFlowDraft>) };
+      const normalized = normalizeDraft(JSON.parse(raw) as Partial<TechFlowDraft>);
+      return initialStage ? { ...normalized, currentStage: initialStage } : normalized;
     } catch {
-      return DEFAULT_DRAFT;
+      return initialStage ? { ...DEFAULT_DRAFT, currentStage: initialStage } : DEFAULT_DRAFT;
     }
-  }, [jobId]);
+  }, [initialStage, jobId]);
 
   const loadJobData = useCallback(async (silent = false) => {
     if (silent) {
@@ -408,7 +837,9 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       }
 
       setCurrentUserId(user.id);
-      setDraft(loadDraft());
+      const draftFromStorage = loadDraft();
+      setDraft(draftFromStorage);
+      setPreInspectionPhotos(hydratePreInspectionPhotos(draftFromStorage.preInspectionPhotos));
 
       const { data: jobData, error: jobError } = await supabase
         .from("jobs")
@@ -521,13 +952,168 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       );
       setPaymentReference(paymentResponse.data?.reference_number ?? "");
       setPaymentNotes(paymentResponse.data?.notes ?? "");
+
+      let resolvedDraft = draftFromStorage;
+
+      if (draftFromStorage.inspectionId || normalizedJob.vehicle_id || normalizedJob.customer_id) {
+        let inspectionQuery = supabase
+          .from("inspections")
+          .select("id, notes, tire_data, brakes, maintenance, undercar, inspection_summary")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (draftFromStorage.inspectionId) {
+          inspectionQuery = inspectionQuery.eq("id", draftFromStorage.inspectionId);
+        } else if (normalizedJob.vehicle_id) {
+          inspectionQuery = inspectionQuery.eq("vehicle_id", normalizedJob.vehicle_id);
+        } else if (normalizedJob.customer_id) {
+          inspectionQuery = inspectionQuery.eq("customer_id", normalizedJob.customer_id);
+        }
+
+        const { data: inspectionRows, error: inspectionError } = await inspectionQuery;
+        if (inspectionError) {
+          throw inspectionError;
+        }
+
+        const inspectionRow = inspectionRows?.[0];
+        if (inspectionRow) {
+          const inspectionSummary =
+            inspectionRow.inspection_summary && typeof inspectionRow.inspection_summary === "object"
+              ? (inspectionRow.inspection_summary as Record<string, unknown>)
+              : {};
+
+          resolvedDraft = normalizeDraft({
+            ...draftFromStorage,
+            inspectionId: inspectionRow.id ?? draftFromStorage.inspectionId,
+            inspectionType:
+              inspectionSummary.inspection_type === "mini" || inspectionSummary.inspection_type === "full"
+                ? (inspectionSummary.inspection_type as "mini" | "full")
+                : draftFromStorage.inspectionType,
+            inspectionSummary:
+              typeof inspectionRow.notes === "string" && inspectionRow.notes.trim()
+                ? inspectionRow.notes
+                : draftFromStorage.inspectionSummary,
+            quoteDiscountAmount:
+              typeof inspectionSummary.quote_discount_amount === "number"
+                ? String(inspectionSummary.quote_discount_amount)
+                : typeof inspectionSummary.quote_discount_amount === "string"
+                  ? inspectionSummary.quote_discount_amount
+                  : draftFromStorage.quoteDiscountAmount,
+            quoteDiscountReason:
+              typeof inspectionSummary.quote_discount_reason === "string"
+                ? inspectionSummary.quote_discount_reason
+                : draftFromStorage.quoteDiscountReason,
+            quoteDiscountOtherReason:
+              typeof inspectionSummary.quote_discount_other_reason === "string"
+                ? inspectionSummary.quote_discount_other_reason
+                : draftFromStorage.quoteDiscountOtherReason,
+            tireData: mergeTireData(
+              inspectionRow.tire_data && typeof inspectionRow.tire_data === "object"
+                ? (inspectionRow.tire_data as Partial<Record<string, Partial<TireInspectionEntry>>>)
+                : draftFromStorage.tireData,
+            ),
+            brakes: mergeBrakeState(
+              inspectionRow.brakes && typeof inspectionRow.brakes === "object"
+                ? (inspectionRow.brakes as Partial<BrakeInspectionState>)
+                : draftFromStorage.brakes,
+            ),
+            maintenance: mergeChecklistState(
+              FULL_MAINTENANCE_ITEMS,
+              inspectionRow.maintenance && typeof inspectionRow.maintenance === "object"
+                ? (inspectionRow.maintenance as Partial<Record<string, Partial<ChecklistItemState>>>)
+                : draftFromStorage.maintenance,
+            ),
+            undercar: mergeChecklistState(
+              FULL_UNDERCAR_ITEMS,
+              inspectionRow.undercar && typeof inspectionRow.undercar === "object"
+                ? (inspectionRow.undercar as Partial<Record<string, Partial<ChecklistItemState>>>)
+                : draftFromStorage.undercar,
+            ),
+          });
+          setDraft(resolvedDraft);
+          writeDraftToStorage(resolvedDraft);
+        }
+      }
+
+      if (resolvedDraft.inspectionId) {
+        const { data: photoRows, error: photoError } = await supabase
+          .from("inspection_photos")
+          .select("id, photo_stage, shot_label, file_name, file_url, note")
+          .eq("inspection_id", resolvedDraft.inspectionId);
+
+        if (photoError) {
+          throw photoError;
+        }
+
+        const nextPhotos = hydratePreInspectionPhotos(resolvedDraft.preInspectionPhotos);
+        const nextRequiredItemPhotos: RequiredItemPhoto[] = [];
+
+        await Promise.all(
+          (photoRows ?? []).map(async (row) => {
+            if (row.photo_stage === "inspection_required") {
+              if (!row.file_url) {
+                return;
+              }
+
+              const { data: signedUrlData } = await supabase.storage
+                .from("inspection-photos")
+                .createSignedUrl(row.file_url, 60 * 60);
+
+              nextRequiredItemPhotos.push({
+                id: row.id,
+                label: row.shot_label ?? "Required finding photo",
+                note: row.note ?? "",
+                preview: signedUrlData?.signedUrl ?? "",
+                fileName: row.file_name ?? "",
+                fileUrl: row.file_url ?? null,
+                photoRowId: row.id,
+              });
+              return;
+            }
+
+            if (row.photo_stage !== "pre_service") {
+              return;
+            }
+
+            const matchingSlotKey = resolvePreInspectionSlotKey(
+              row.shot_label,
+              row.file_url,
+              nextPhotos,
+            );
+            if (!matchingSlotKey || !row.file_url) {
+              return;
+            }
+
+            const matchingSlot = PRE_INSPECTION_PHOTO_SLOTS.find((slot) => slot.key === matchingSlotKey);
+            if (!matchingSlot) {
+              return;
+            }
+
+            const { data: signedUrlData } = await supabase.storage
+              .from("inspection-photos")
+              .createSignedUrl(row.file_url, 60 * 60);
+
+            nextPhotos[matchingSlot.key] = {
+              ...nextPhotos[matchingSlot.key],
+              preview: signedUrlData?.signedUrl ?? nextPhotos[matchingSlot.key].preview,
+              fileName: row.file_name ?? nextPhotos[matchingSlot.key].fileName,
+              fileUrl: row.file_url ?? null,
+              note: row.note ?? nextPhotos[matchingSlot.key].note,
+              photoRowId: row.id,
+            };
+          }),
+        );
+
+        syncPreInspectionPhotos(nextPhotos, resolvedDraft);
+        setRequiredItemPhotos(nextRequiredItemPhotos);
+      }
     } catch (error) {
       setAccessIssue(getErrorMessage(error));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [jobId, loadDraft]);
+  }, [hydratePreInspectionPhotos, jobId, loadDraft, syncPreInspectionPhotos, writeDraftToStorage]);
 
   useEffect(() => {
     void loadJobData();
@@ -538,10 +1124,93 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     [services],
   );
 
+  const quoteDiscountAmountValue = useMemo(() => {
+    const parsed = Number.parseFloat(draft.quoteDiscountAmount);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [draft.quoteDiscountAmount]);
+
+  const quoteNetTotal = useMemo(
+    () => Math.max(serviceTotal - quoteDiscountAmountValue, 0),
+    [quoteDiscountAmountValue, serviceTotal],
+  );
+
   const completedServiceCount = useMemo(
     () => services.filter((service) => Boolean(service.completed_at)).length,
     [services],
   );
+
+  const preInspectionPhotoCounts = useMemo(() => {
+    const counts = { corner: 0, interior: 0, vin: 0 };
+    for (const slot of PRE_INSPECTION_PHOTO_SLOTS) {
+      if (preInspectionPhotos[slot.key]?.preview) {
+        counts[slot.category] += 1;
+      }
+    }
+    return counts;
+  }, [preInspectionPhotos]);
+
+  const activeMaintenanceItems = useMemo(
+    () => (draft.inspectionType === "full" ? FULL_MAINTENANCE_ITEMS : MINI_MAINTENANCE_ITEMS),
+    [draft.inspectionType],
+  );
+
+  const activeUndercarItems = useMemo(
+    () => (draft.inspectionType === "full" ? FULL_UNDERCAR_ITEMS : MINI_UNDERCAR_ITEMS),
+    [draft.inspectionType],
+  );
+
+  const requiredInspectionItems = useMemo(() => {
+    const requiredItems: string[] = [];
+
+    for (const position of TIRE_POSITIONS) {
+      if (draft.tireData[position]?.status === "req") {
+        requiredItems.push(`${position} tire`);
+      }
+    }
+
+    if (draft.brakes.status === "req") {
+      requiredItems.push("Brake system");
+    }
+
+    for (const item of activeMaintenanceItems) {
+      if (draft.maintenance[item]?.status === "req") {
+        requiredItems.push(item);
+      }
+    }
+
+    for (const item of activeUndercarItems) {
+      if (draft.undercar[item]?.status === "req") {
+        requiredItems.push(item);
+      }
+    }
+
+    return requiredItems;
+  }, [activeMaintenanceItems, activeUndercarItems, draft.brakes.status, draft.maintenance, draft.tireData, draft.undercar]);
+
+  const ensureInspectionId = useCallback(async () => {
+    if (draft.inspectionId) {
+      return draft.inspectionId;
+    }
+
+    const { data, error } = await supabase
+      .from("inspections")
+      .insert({
+        customer_id: job?.customer_id ?? null,
+        vehicle_id: job?.vehicle_id ?? null,
+        tech_name: getCustomerName(job),
+        notes: `Stage-based technician flow draft for job ${jobId}`,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data?.id) {
+      throw error || new Error("Could not start an inspection record for photo storage.");
+    }
+
+    const nextDraft = { ...draft, inspectionId: data.id };
+    persistDraft(nextDraft);
+    return data.id;
+  }, [draft, job, jobId, persistDraft]);
 
   const stageIssues = useMemo<Record<StageKey, string[]>>(() => {
     const issues: Record<StageKey, string[]> = {
@@ -577,13 +1246,13 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     if (!draft.mileage.trim()) {
       issues.preinspection.push("Enter current mileage.");
     }
-    if (draft.cornerPhotoCount < 4) {
+    if (preInspectionPhotoCounts.corner < 4) {
       issues.preinspection.push("Add all 4 corner photos before continuing.");
     }
-    if (draft.interiorPhotoCount < 2) {
+    if (preInspectionPhotoCounts.interior < 2) {
       issues.preinspection.push("Add at least 2 interior photos before continuing.");
     }
-    if (draft.vinPhotoCount < 1) {
+    if (preInspectionPhotoCounts.vin < 1) {
       issues.preinspection.push("Add a VIN photo before continuing.");
     }
     if (!draft.vinConfirmed && !job?.vehicle?.vin) {
@@ -599,6 +1268,19 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
 
     if (services.length === 0) {
       issues.quote.push("No service lines are available for quoting.");
+    }
+    if (quoteDiscountAmountValue > serviceTotal && serviceTotal > 0) {
+      issues.quote.push("Discount cannot be greater than the quote total.");
+    }
+    if (quoteDiscountAmountValue > 0 && !draft.quoteDiscountReason) {
+      issues.quote.push("Select a reason for the discount.");
+    }
+    if (
+      quoteDiscountAmountValue > 0 &&
+      draft.quoteDiscountReason === "other" &&
+      !draft.quoteDiscountOtherReason.trim()
+    ) {
+      issues.quote.push("Enter the custom reason for the discount.");
     }
     if (draft.quoteApprovalStatus === "signed" && !draft.customerSignatureName.trim()) {
       issues.quote.push("Enter the customer signature name for signed approval.");
@@ -626,7 +1308,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     }
 
     return issues;
-  }, [completedServiceCount, draft, job, paymentAmount, paymentStatus, services.length]);
+  }, [completedServiceCount, draft, job, paymentAmount, paymentStatus, preInspectionPhotoCounts, services.length]);
 
   const currentStageIndex = useMemo(
     () => STAGES.findIndex((stage) => stage.key === draft.currentStage),
@@ -634,14 +1316,107 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
   );
 
   const activeStage = STAGES[currentStageIndex] ?? STAGES[0];
-
+  const activeStageIssues = stageIssues[activeStage.key];
+  const stageAdvanceBlocked = activeStageIssues.length > 0;
+  const blockedSectionKeys = useMemo<FlowSectionKey[]>(() => {
+    switch (activeStage.key) {
+      case "dispatch": {
+        const keys: FlowSectionKey[] = [];
+        if (!job?.service_location_name && !job?.service_address) keys.push("dispatch-location");
+        if (!job?.customer?.phone) keys.push("dispatch-customer");
+        return keys;
+      }
+      case "arrival":
+        return ["arrival-status"];
+      case "complaint": {
+        const keys: FlowSectionKey[] = [];
+        if (!draft.complaintSummary.trim()) keys.push("complaint-summary");
+        if (services.length === 0) keys.push("complaint-services");
+        return keys;
+      }
+      case "preinspection": {
+        const keys: FlowSectionKey[] = [];
+        if (!draft.mileage.trim()) keys.push("preinspection-mileage");
+        if (!draft.vinConfirmed && !job?.vehicle?.vin) keys.push("preinspection-vin");
+        if (
+          preInspectionPhotoCounts.corner < 4 ||
+          preInspectionPhotoCounts.interior < 2 ||
+          preInspectionPhotoCounts.vin < 1
+        ) {
+          keys.push("preinspection-photos");
+        }
+        return keys;
+      }
+      case "inspection":
+        return ["inspection-type-summary"];
+      case "quote": {
+        const keys: FlowSectionKey[] = [];
+        if (services.length === 0) keys.push("quote-services");
+        if (
+          (quoteDiscountAmountValue > serviceTotal && serviceTotal > 0) ||
+          (quoteDiscountAmountValue > 0 && !draft.quoteDiscountReason) ||
+          (quoteDiscountAmountValue > 0 &&
+            draft.quoteDiscountReason === "other" &&
+            !draft.quoteDiscountOtherReason.trim())
+        ) {
+          keys.push("quote-discount");
+        }
+        if (draft.quoteApprovalStatus === "signed" && !draft.customerSignatureName.trim()) {
+          keys.push("quote-signature");
+        }
+        return keys;
+      }
+      case "work":
+        return services.length > 0 && completedServiceCount < services.length ? ["work-services"] : [];
+      case "payment":
+        return !paymentAmount.trim() || paymentStatus !== "paid" ? ["payment-details"] : [];
+      case "closeout": {
+        const keys: FlowSectionKey[] = [];
+        if (!draft.postWorkSummary.trim()) keys.push("closeout-summary");
+        if (!draft.receiptSent || !draft.receiptStored) keys.push("closeout-receipt");
+        return keys;
+      }
+      default:
+        return [];
+    }
+  }, [
+    activeStage.key,
+    completedServiceCount,
+    draft.complaintSummary,
+    draft.postWorkSummary,
+    draft.quoteDiscountOtherReason,
+    draft.quoteDiscountReason,
+    draft.quoteApprovalStatus,
+    draft.receiptSent,
+    draft.receiptStored,
+    draft.vinConfirmed,
+    job?.customer?.phone,
+    job?.service_address,
+    job?.service_location_name,
+    job?.vehicle?.vin,
+    paymentAmount,
+    paymentStatus,
+    preInspectionPhotoCounts.corner,
+    preInspectionPhotoCounts.interior,
+    preInspectionPhotoCounts.vin,
+    quoteDiscountAmountValue,
+    services.length,
+    serviceTotal,
+  ]);
+  const isSectionHighlighted = useCallback(
+    (sectionKey: FlowSectionKey) =>
+      showValidationHighlights && stageAdvanceBlocked && blockedSectionKeys.includes(sectionKey),
+    [blockedSectionKeys, showValidationHighlights, stageAdvanceBlocked],
+  );
   const advanceStage = useCallback(async () => {
-    const activeIssues = stageIssues[activeStage.key];
-    if (activeIssues.length > 0) {
-      setFeedback("error", activeIssues[0]);
+    if (stageAdvanceBlocked) {
+      setFeedback("error", activeStageIssues[0]);
+      setShowValidationHighlights(true);
+      setShowIncompleteDialog(true);
       return;
     }
 
+    setShowValidationHighlights(false);
     setActionBusy(`advance-${activeStage.key}`);
     try {
       if (activeStage.key === "dispatch") {
@@ -660,6 +1435,47 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
           p_intake_state: targetState,
           p_status: "in_progress",
         });
+      }
+
+      if (activeStage.key === "inspection") {
+        const inspectionId = await ensureInspectionId();
+        const { error } = await supabase
+          .from("inspections")
+          .update({
+            customer_id: job?.customer_id ?? null,
+            vehicle_id: job?.vehicle_id ?? null,
+            tech_name: getCustomerName(job),
+            notes: draft.inspectionSummary.trim() || null,
+            tire_data: draft.tireData,
+            brakes: draft.brakes,
+            maintenance: draft.maintenance,
+            undercar: draft.undercar,
+            inspection_summary: {
+              inspection_type: draft.inspectionType,
+              staged_flow: true,
+              current_mileage: draft.mileage.trim() || null,
+              vin_confirmed: draft.vinConfirmed || Boolean(job?.vehicle?.vin),
+              complaint_summary: draft.complaintSummary.trim() || null,
+              complaint_details: draft.complaintDetails.trim() || null,
+              quote_notes: draft.quoteNotes.trim() || null,
+              quote_discount_amount: quoteDiscountAmountValue || null,
+              quote_discount_reason: draft.quoteDiscountReason || null,
+              quote_discount_other_reason:
+                draft.quoteDiscountReason === "other"
+                  ? draft.quoteDiscountOtherReason.trim() || null
+                  : null,
+              quote_subtotal: serviceTotal,
+              service_total: quoteNetTotal,
+              quote_total_after_discount: quoteNetTotal,
+              completed_service_count: completedServiceCount,
+              total_service_count: services.length,
+            },
+          })
+          .eq("id", inspectionId);
+
+        if (error) {
+          throw error;
+        }
       }
 
       if (activeStage.key === "work") {
@@ -691,11 +1507,441 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
     } finally {
       setActionBusy(null);
     }
-  }, [activeStage, currentStageIndex, draft, jobId, loadJobData, persistDraft, setFeedback, stageIssues]);
+  }, [
+    activeStage,
+    activeStageIssues,
+    completedServiceCount,
+    currentStageIndex,
+    draft,
+    ensureInspectionId,
+    job,
+    jobId,
+    loadJobData,
+    persistDraft,
+    quoteDiscountAmountValue,
+    quoteNetTotal,
+    serviceTotal,
+    services.length,
+    setFeedback,
+    stageAdvanceBlocked,
+  ]);
+
+  useEffect(() => {
+    if (!stageAdvanceBlocked) {
+      setShowIncompleteDialog(false);
+      setShowValidationHighlights(false);
+    }
+  }, [stageAdvanceBlocked]);
+
+  useEffect(() => {
+    setShowAllStagesMobile(false);
+  }, [draft.currentStage]);
 
   const goToStage = useCallback((stageKey: StageKey) => {
     updateDraft({ currentStage: stageKey });
   }, [updateDraft]);
+
+  const handleSaveInspectionStage = useCallback(async () => {
+    if (!job) {
+      setFeedback("error", "The job details have not loaded yet.");
+      return;
+    }
+
+    if (!draft.inspectionType) {
+      setFeedback("error", "Choose mini or full inspection first.");
+      return;
+    }
+
+    setActionBusy("save-inspection");
+    try {
+      const inspectionId = await ensureInspectionId();
+      const payload = {
+        customer_id: job.customer_id ?? null,
+        vehicle_id: job.vehicle_id ?? null,
+        tech_name: getCustomerName(job),
+        notes: draft.inspectionSummary.trim() || null,
+        tire_data: draft.tireData,
+        brakes: draft.brakes,
+        maintenance: draft.maintenance,
+        undercar: draft.undercar,
+        inspection_summary: {
+          inspection_type: draft.inspectionType,
+          staged_flow: true,
+          current_mileage: draft.mileage.trim() || null,
+          vin_confirmed: draft.vinConfirmed || Boolean(job.vehicle?.vin),
+          complaint_summary: draft.complaintSummary.trim() || null,
+          complaint_details: draft.complaintDetails.trim() || null,
+          quote_notes: draft.quoteNotes.trim() || null,
+          quote_discount_amount: quoteDiscountAmountValue || null,
+          quote_discount_reason: draft.quoteDiscountReason || null,
+          quote_discount_other_reason:
+            draft.quoteDiscountReason === "other"
+              ? draft.quoteDiscountOtherReason.trim() || null
+              : null,
+          quote_subtotal: serviceTotal,
+          service_total: quoteNetTotal,
+          quote_total_after_discount: quoteNetTotal,
+          completed_service_count: completedServiceCount,
+          total_service_count: services.length,
+        },
+      };
+
+      const { error } = await supabase.from("inspections").update(payload).eq("id", inspectionId);
+      if (error) {
+        throw error;
+      }
+
+      setFeedback("success", "Inspection details saved into the staged technician flow.");
+      await loadJobData(true);
+    } catch (error) {
+      setFeedback("error", getErrorMessage(error));
+    } finally {
+      setActionBusy(null);
+    }
+  }, [
+    completedServiceCount,
+    draft,
+    ensureInspectionId,
+    job,
+    loadJobData,
+    quoteDiscountAmountValue,
+    quoteNetTotal,
+    serviceTotal,
+    services.length,
+    setFeedback,
+  ]);
+
+  const handlePreInspectionPhotoUpload = useCallback(
+    async (slotKey: string, file: File) => {
+      const slot = PRE_INSPECTION_PHOTO_SLOTS.find((entry) => entry.key === slotKey);
+      if (!slot) {
+        return;
+      }
+
+      setActionBusy(`photo-${slotKey}`);
+      try {
+        const inspectionId = await ensureInspectionId();
+        const existing = preInspectionPhotos[slotKey];
+        const filePath = `${inspectionId}/pre-service/${slot.label.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}-${file.name}`;
+        let nextPhotoRowId = existing?.photoRowId ?? null;
+
+        const { error: uploadError } = await supabase.storage
+          .from("inspection-photos")
+          .upload(filePath, file, {
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+          .from("inspection-photos")
+          .createSignedUrl(filePath, 60 * 60);
+
+        if (signedUrlError) {
+          throw signedUrlError;
+        }
+
+        const payload = {
+          inspection_id: inspectionId,
+          photo_stage: "pre_service",
+          shot_label: slot.label,
+          file_name: file.name,
+          file_url: filePath,
+          note: existing?.note || null,
+        };
+
+        if (existing?.photoRowId) {
+          const { error } = await supabase
+            .from("inspection_photos")
+            .update(payload)
+            .eq("id", existing.photoRowId);
+          if (error) {
+            throw error;
+          }
+        } else {
+          const { data, error } = await supabase
+            .from("inspection_photos")
+            .insert(payload)
+            .select("id")
+            .single();
+          if (error) {
+            throw error;
+          }
+          nextPhotoRowId = data.id;
+        }
+
+        const nextPhotos = {
+          ...preInspectionPhotos,
+          [slotKey]: {
+            ...existing,
+            shotKey: slot.key,
+            label: slot.label,
+            note: existing?.note || "",
+            preview: signedUrlData.signedUrl,
+            fileName: file.name,
+            fileUrl: filePath,
+            photoRowId: nextPhotoRowId,
+          },
+        };
+
+        syncPreInspectionPhotos(nextPhotos);
+        setFeedback("success", `${slot.label} uploaded.`);
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [ensureInspectionId, preInspectionPhotos, setFeedback, syncPreInspectionPhotos],
+  );
+
+  const handlePreInspectionPhotoNoteChange = useCallback(
+    async (slotKey: string, note: string) => {
+      const current = preInspectionPhotos[slotKey];
+      if (!current) {
+        return;
+      }
+
+      const nextPhotos = {
+        ...preInspectionPhotos,
+        [slotKey]: {
+          ...current,
+          note,
+        },
+      };
+
+      syncPreInspectionPhotos(nextPhotos);
+
+      if (!current.photoRowId) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from("inspection_photos")
+          .update({ note })
+          .eq("id", current.photoRowId);
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      }
+    },
+    [preInspectionPhotos, setFeedback, syncPreInspectionPhotos],
+  );
+
+  const handleDeletePreInspectionPhoto = useCallback(
+    async (slotKey: string) => {
+      const current = preInspectionPhotos[slotKey];
+      if (!current) {
+        return;
+      }
+
+      setActionBusy(`delete-photo-${slotKey}`);
+      try {
+        if (current.fileUrl) {
+          const { error: storageError } = await supabase.storage
+            .from("inspection-photos")
+            .remove([current.fileUrl]);
+          if (storageError) {
+            throw storageError;
+          }
+        }
+
+        if (current.photoRowId) {
+          const { error } = await supabase
+            .from("inspection_photos")
+            .delete()
+            .eq("id", current.photoRowId);
+          if (error) {
+            throw error;
+          }
+        }
+
+        const nextPhotos = {
+          ...preInspectionPhotos,
+          [slotKey]: {
+            ...createEmptyPreInspectionPhotos()[slotKey],
+          },
+        };
+
+        syncPreInspectionPhotos(nextPhotos);
+        setFeedback("success", "Photo removed.");
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [preInspectionPhotos, setFeedback, syncPreInspectionPhotos],
+  );
+
+  const handleRequiredItemPhotoUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length) {
+        return;
+      }
+
+      setActionBusy("required-item-photos");
+      try {
+        const inspectionId = await ensureInspectionId();
+        const uploadedPhotos: RequiredItemPhoto[] = [];
+
+        for (const file of Array.from(files)) {
+          const filePath = `${inspectionId}/inspection-required/${Date.now()}-${file.name}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("inspection-photos")
+            .upload(filePath, file);
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+            .from("inspection-photos")
+            .createSignedUrl(filePath, 60 * 60);
+
+          if (signedUrlError) {
+            throw signedUrlError;
+          }
+
+          const { data, error } = await supabase
+            .from("inspection_photos")
+            .insert({
+              inspection_id: inspectionId,
+              photo_stage: "inspection_required",
+              shot_label: "Required finding photo",
+              file_name: file.name,
+              file_url: filePath,
+              note: null,
+            })
+            .select("id")
+            .single();
+
+          if (error) {
+            throw error;
+          }
+
+          uploadedPhotos.push({
+            id: data.id,
+            label: "Required finding photo",
+            note: "",
+            preview: signedUrlData.signedUrl,
+            fileName: file.name,
+            fileUrl: filePath,
+            photoRowId: data.id,
+          });
+        }
+
+        setRequiredItemPhotos((current) => [...current, ...uploadedPhotos]);
+        setFeedback("success", `${uploadedPhotos.length} required-item photo${uploadedPhotos.length === 1 ? "" : "s"} uploaded.`);
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [ensureInspectionId, setFeedback],
+  );
+
+  const handleRequiredItemPhotoNoteChange = useCallback(
+    async (photoRowId: string, note: string) => {
+      setRequiredItemPhotos((current) =>
+        current.map((photo) => (photo.photoRowId === photoRowId ? { ...photo, note } : photo)),
+      );
+
+      try {
+        const { error } = await supabase
+          .from("inspection_photos")
+          .update({ note })
+          .eq("id", photoRowId);
+        if (error) {
+          throw error;
+        }
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      }
+    },
+    [setFeedback],
+  );
+
+  const handleDeleteRequiredItemPhoto = useCallback(
+    async (photo: RequiredItemPhoto) => {
+      if (!photo.photoRowId) {
+        return;
+      }
+
+      setActionBusy(`delete-required-photo-${photo.photoRowId}`);
+      try {
+        const { error } = await supabase
+          .from("inspection_photos")
+          .delete()
+          .eq("id", photo.photoRowId);
+        if (error) {
+          throw error;
+        }
+
+        setRequiredItemPhotos((current) => current.filter((item) => item.photoRowId !== photo.photoRowId));
+        setFeedback("success", "Required-item photo removed.");
+      } catch (error) {
+        setFeedback("error", getErrorMessage(error));
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [setFeedback],
+  );
+
+  const updateTireField = useCallback(
+    (position: string, field: keyof TireInspectionEntry, value: string) => {
+      const nextTireData = {
+        ...draft.tireData,
+        [position]: {
+          ...draft.tireData[position],
+          [field]: value,
+        },
+      };
+      updateDraft({ tireData: nextTireData });
+    },
+    [draft.tireData, updateDraft],
+  );
+
+  const updateBrakeField = useCallback(
+    (field: keyof BrakeInspectionState, value: string) => {
+      updateDraft({
+        brakes: {
+          ...draft.brakes,
+          [field]: value,
+        },
+      });
+    },
+    [draft.brakes, updateDraft],
+  );
+
+  const updateChecklistField = useCallback(
+    (
+      section: "maintenance" | "undercar",
+      item: string,
+      field: keyof ChecklistItemState,
+      value: string,
+    ) => {
+      const source = draft[section];
+      updateDraft({
+        [section]: {
+          ...source,
+          [item]: {
+            ...source[item],
+            [field]: value,
+          },
+        },
+      } as Pick<TechFlowDraft, "maintenance" | "undercar">);
+    },
+    [draft, updateDraft],
+  );
 
   const handleAddCatalogService = useCallback(async () => {
     if (!selectedCatalogServiceId) {
@@ -779,10 +2025,26 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
   const handleDeleteService = useCallback(async (serviceId: string) => {
     setActionBusy(`delete-${serviceId}`);
     try {
-      const { error } = await supabase.from("job_services").delete().eq("id", serviceId);
-      if (error) {
-        throw error;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Your session is no longer valid. Please sign in again.");
       }
+
+      const response = await fetch(`/api/internal/tech/job-services/${serviceId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not remove that service line.");
+      }
+
       setFeedback("success", "Service line removed from the quote.");
       await loadJobData(true);
     } catch (error) {
@@ -880,7 +2142,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
               <SummaryInfoCard icon={MapPin} label="Location" value={job ? formatJobLocation(job) : "Location pending"} />
               <SummaryInfoCard icon={CalendarClock} label="Appointment" value={job ? formatAppointment(job) : "Scheduling pending"} />
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <div className={cn("rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700", isSectionHighlighted("inspection-type-summary") && "border-red-300 bg-red-50 ring-2 ring-red-400")}>
               <div className="font-semibold text-slate-900">Requested work</div>
               <div className="mt-2">{job?.service_description || job?.service_type || "No requested work listed yet."}</div>
               {job?.notes ? (
@@ -915,7 +2177,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       case "complaint":
         return (
           <div className="space-y-6">
-            <div className="space-y-2">
+            <div className={cn("space-y-2 rounded-2xl", isSectionHighlighted("complaint-summary") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
               <Label htmlFor="complaint-summary">Customer complaint summary</Label>
               <Textarea
                 id="complaint-summary"
@@ -937,7 +2199,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
-              <Card className="rounded-2xl border border-slate-200 bg-slate-50 shadow-none">
+              <Card className={cn("rounded-2xl border border-slate-200 bg-slate-50 shadow-none", isSectionHighlighted("complaint-services") && "border-red-300 bg-red-50 ring-2 ring-red-400")}>
                 <CardHeader>
                   <CardTitle>Planned services</CardTitle>
                   <CardDescription>These lines will become the working quote and completion checklist.</CardDescription>
@@ -1042,11 +2304,11 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
         return (
           <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
+              <div className={cn("space-y-2 rounded-2xl", isSectionHighlighted("preinspection-mileage") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
                 <Label htmlFor="mileage">Current mileage</Label>
                 <Input id="mileage" inputMode="numeric" value={draft.mileage} onChange={(event) => updateDraft({ mileage: event.target.value })} placeholder="Enter odometer reading" />
               </div>
-              <div className="space-y-2">
+              <div className={cn("space-y-2 rounded-2xl", isSectionHighlighted("preinspection-vin") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
                 <Label htmlFor="vin-confirmed">VIN confirmation</Label>
                 <Button
                   type="button"
@@ -1059,34 +2321,113 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <PhotoCountField
-                label="Corner photos"
-                help="Need 4 total"
-                value={draft.cornerPhotoCount}
-                onChange={(value) => updateDraft({ cornerPhotoCount: value })}
-              />
-              <PhotoCountField
-                label="Interior photos"
-                help="Need 2 minimum"
-                value={draft.interiorPhotoCount}
-                onChange={(value) => updateDraft({ interiorPhotoCount: value })}
-              />
-              <PhotoCountField
-                label="VIN photos"
-                help="Need 1"
-                value={draft.vinPhotoCount}
-                onChange={(value) => updateDraft({ vinPhotoCount: value })}
-              />
+            <div className={cn("grid gap-3 rounded-2xl md:grid-cols-3", isSectionHighlighted("preinspection-photos") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
+              <SummaryInfoCard icon={Camera} label="Corner photos" value={`${preInspectionPhotoCounts.corner} / 4`} />
+              <SummaryInfoCard icon={Camera} label="Interior photos" value={`${preInspectionPhotoCounts.interior} / 2`} />
+              <SummaryInfoCard icon={ShieldCheck} label="VIN photos" value={`${preInspectionPhotoCounts.vin} / 1`} />
             </div>
 
-            <div className="rounded-2xl border border-lime-200 bg-lime-50 p-4 text-sm text-lime-900">
-              Use the fallback inspection workspace when you need the current live photo capture flow.
-              <div className="mt-3">
-                <Button asChild variant="outline" className="min-h-11 border-lime-300 bg-white">
-                  <Link href={`/tech/jobs/${jobId}/inspection`}>Open legacy photo / inspection workspace</Link>
-                </Button>
-              </div>
+            <div className={cn("grid gap-4 rounded-2xl md:grid-cols-2 xl:grid-cols-3", isSectionHighlighted("preinspection-photos") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
+              {PRE_INSPECTION_PHOTO_SLOTS.map((slot) => {
+                const photo = preInspectionPhotos[slot.key];
+                return (
+                  <Card key={slot.key} className="rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-base">{slot.label}</CardTitle>
+                      <CardDescription>
+                        {slot.category === "corner"
+                          ? "Required vehicle corner documentation."
+                          : slot.category === "interior"
+                            ? "Required interior condition photo."
+                            : "Required VIN confirmation photo."}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="relative flex min-h-52 flex-col items-center justify-center rounded-2xl border border-dashed bg-white p-4 text-center">
+                        {photo?.preview ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="absolute top-3 right-3 z-10 rounded-full bg-white/90 text-red-700 shadow-sm hover:bg-white"
+                              disabled={actionBusy === `delete-photo-${slot.key}`}
+                              onClick={() => void handleDeletePreInspectionPhoto(slot.key)}
+                            >
+                              {actionBusy === `delete-photo-${slot.key}` ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                            </Button>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={photo.preview} alt={slot.label} className="h-44 w-full rounded-2xl object-cover" />
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mb-3 h-8 w-8 text-slate-500" />
+                            <div className="font-medium text-slate-900">Add {slot.label}</div>
+                            <div className="text-sm text-slate-600">Capture on-site or upload from device.</div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="cursor-pointer rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-800 shadow-sm">
+                          Take Photo
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                void handlePreInspectionPhotoUpload(slot.key, file);
+                              }
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+
+                        <label className="cursor-pointer rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-800 shadow-sm">
+                          Upload Existing
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                void handlePreInspectionPhotoUpload(slot.key, file);
+                              }
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`pre-photo-note-${slot.key}`}>Photo note</Label>
+                        <Textarea
+                          id={`pre-photo-note-${slot.key}`}
+                          value={photo?.note || ""}
+                          onChange={(event) => void handlePreInspectionPhotoNoteChange(slot.key, event.target.value)}
+                          placeholder="Optional condition note before service"
+                          className="bg-white"
+                        />
+                      </div>
+
+                      {actionBusy === `photo-${slot.key}` ? (
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Uploading...
+                        </div>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         );
@@ -1111,26 +2452,294 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
                 Full paid inspection
               </Button>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              {draft.inspectionType === "mini"
-                ? "Mini inspection keeps the visit lighter, brings tire information back in, and avoids deeper steering detail."
-                : draft.inspectionType === "full"
-                  ? "Full inspection is the deeper billable inspection with expanded findings and recommendations."
-                  : "Pick the inspection type so the tech knows how deep to go."}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="inspection-summary">Inspection findings summary</Label>
-              <Textarea
-                id="inspection-summary"
-                value={draft.inspectionSummary}
-                onChange={(event) => updateDraft({ inspectionSummary: event.target.value })}
-                placeholder="Summarize the major findings, tire/brake observations, and what should make it into the quote."
-                className="min-h-28"
-              />
-            </div>
-            <Button asChild variant="outline" className="min-h-11">
-              <Link href={`/tech/jobs/${jobId}/inspection`}>Open legacy inspection details</Link>
-            </Button>
+            {draft.inspectionType ? (
+              <>
+                <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold text-slate-900">Tire inspection</div>
+                      <div className="text-sm text-slate-600">
+                        {draft.inspectionType === "mini"
+                          ? "Mini inspections still capture tire pressures, tread, and quick recommendations."
+                          : "Full inspections include the complete tire condition review for every corner."}
+                      </div>
+                    </div>
+                    <Badge className="rounded-full bg-white text-slate-900">{draft.inspectionType === "mini" ? "Mini flow" : "Full flow"}</Badge>
+                  </div>
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {TIRE_POSITIONS.map((position) => (
+                      <Card key={position} className="rounded-2xl border border-slate-200 bg-white shadow-none">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base">{position}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>PSI In</Label>
+                              <Input
+                                value={draft.tireData[position]?.psiIn ?? ""}
+                                onChange={(event) => updateTireField(position, "psiIn", event.target.value)}
+                                inputMode="decimal"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>PSI Out</Label>
+                              <Input
+                                value={draft.tireData[position]?.psiOut ?? ""}
+                                onChange={(event) => updateTireField(position, "psiOut", event.target.value)}
+                                inputMode="decimal"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Tread Outer (32nds)</Label>
+                              <Input
+                                value={draft.tireData[position]?.treadOuter ?? ""}
+                                onChange={(event) => updateTireField(position, "treadOuter", event.target.value)}
+                                inputMode="decimal"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Tread Inner (32nds)</Label>
+                              <Input
+                                value={draft.tireData[position]?.treadInner ?? ""}
+                                onChange={(event) => updateTireField(position, "treadInner", event.target.value)}
+                                inputMode="decimal"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Condition</Label>
+                            <ConditionPillRow
+                              value={draft.tireData[position]?.status ?? ""}
+                              onChange={(value) => updateTireField(position, "status", value)}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Recommendation</Label>
+                            <Textarea
+                              value={draft.tireData[position]?.recommendation ?? ""}
+                              onChange={(event) => updateTireField(position, "recommendation", event.target.value)}
+                              placeholder="Rotation, replacement, alignment, or monitoring note"
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {draft.inspectionType === "full" ? (
+                  <Card className="rounded-3xl border border-slate-200 bg-slate-50 shadow-none">
+                    <CardHeader>
+                      <CardTitle>Brake inspection</CardTitle>
+                      <CardDescription>Full paid inspections keep the measured brake section in the new flow.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 md:grid-cols-4">
+                        {[
+                          ["LF Pad (mm)", "lfPad"],
+                          ["RF Pad (mm)", "rfPad"],
+                          ["LR Pad/Shoe (mm)", "lrPad"],
+                          ["RR Pad/Shoe (mm)", "rrPad"],
+                          ["LF Rotor/Drum", "lfRotor"],
+                          ["RF Rotor/Drum", "rfRotor"],
+                          ["LR Rotor/Drum", "lrRotor"],
+                          ["RR Rotor/Drum", "rrRotor"],
+                        ].map(([label, key]) => (
+                          <div key={key} className="space-y-2">
+                            <Label>{label}</Label>
+                            <Input
+                              value={draft.brakes[key as keyof BrakeInspectionState] as string}
+                              onChange={(event) => updateBrakeField(key as keyof BrakeInspectionState, event.target.value)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                        <div className="space-y-2">
+                          <Label>Brake condition</Label>
+                          <ConditionPillRow value={draft.brakes.status} onChange={(value) => updateBrakeField("status", value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Brake notes</Label>
+                          <Textarea
+                            value={draft.brakes.brakeNotes}
+                            onChange={(event) => updateBrakeField("brakeNotes", event.target.value)}
+                            placeholder="Measured values, rotor condition, and next-step recommendation"
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                <Card className="rounded-3xl border border-slate-200 bg-slate-50 shadow-none">
+                  <CardHeader>
+                    <CardTitle>Maintenance inspection</CardTitle>
+                    <CardDescription>
+                      {draft.inspectionType === "mini"
+                        ? "Mini inspection keeps only the lighter maintenance checks needed for quick services."
+                        : "Full inspection keeps the deeper maintenance recommendation list in the new staged flow."}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {activeMaintenanceItems.map((item) => (
+                      <ChecklistRow
+                        key={item}
+                        label={item}
+                        value={draft.maintenance[item]}
+                        onStatusChange={(value) => updateChecklistField("maintenance", item, "status", value)}
+                        onWhyChange={(value) => updateChecklistField("maintenance", item, "why", value)}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-3xl border border-slate-200 bg-slate-50 shadow-none">
+                  <CardHeader>
+                    <CardTitle>
+                      {draft.inspectionType === "mini"
+                        ? "Undercar and steering quick check"
+                        : "Steering, suspension, and undercar inspection"}
+                    </CardTitle>
+                    <CardDescription>
+                      {draft.inspectionType === "mini"
+                        ? "Mini inspection trims the deeper steering worksheet down to the essentials."
+                        : "Full inspection keeps the broader underside and steering-component review."}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {activeUndercarItems.map((item) => (
+                      <ChecklistRow
+                        key={item}
+                        label={item}
+                        value={draft.undercar[item]}
+                        onStatusChange={(value) => updateChecklistField("undercar", item, "status", value)}
+                        onWhyChange={(value) => updateChecklistField("undercar", item, "why", value)}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-3xl border border-slate-200 bg-slate-50 shadow-none">
+                  <CardHeader>
+                    <CardTitle>Required-item photos</CardTitle>
+                    <CardDescription>
+                      Add multiple photos for any maintenance or undercar item marked Required so the quote and customer report have visual support.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className={cn(
+                      "rounded-2xl border p-4 text-sm",
+                      requiredInspectionItems.length ? "border-red-200 bg-red-50 text-red-900" : "border-slate-200 bg-white text-slate-600",
+                    )}>
+                      <div className="font-semibold">
+                        {requiredInspectionItems.length ? "Current required findings" : "No required findings marked yet"}
+                      </div>
+                      <div className="mt-2">
+                        {requiredInspectionItems.length
+                          ? requiredInspectionItems.join(", ")
+                          : "When an inspection item is marked Required, add supporting photos here if the technician can capture them."}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-center">
+                      <div>
+                        <Upload className="mx-auto mb-3 h-8 w-8" />
+                        <div className="font-medium text-slate-900">Upload required-item photos</div>
+                        <div className="text-sm text-slate-600">Take or upload multiple photos of leaks, worn parts, damaged components, or anything marked Required.</div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="cursor-pointer rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-800 shadow-sm">
+                          Take Photos
+                          <input
+                            type="file"
+                            className="hidden"
+                            multiple
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(event) => void handleRequiredItemPhotoUpload(event.target.files)}
+                          />
+                        </label>
+
+                        <label className="cursor-pointer rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-medium text-slate-800 shadow-sm">
+                          Upload Existing
+                          <input
+                            type="file"
+                            className="hidden"
+                            multiple
+                            accept="image/*"
+                            onChange={(event) => void handleRequiredItemPhotoUpload(event.target.files)}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {actionBusy === "required-item-photos" ? (
+                      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                        Uploading required-item photos...
+                      </div>
+                    ) : null}
+
+                    {requiredItemPhotos.length ? (
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {requiredItemPhotos.map((photo) => (
+                          <Card key={photo.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                            {photo.preview ? (
+                              <img src={photo.preview} alt={photo.fileName || photo.label} className="h-48 w-full object-cover" />
+                            ) : (
+                              <div className="flex h-48 items-center justify-center bg-slate-100 text-slate-500">
+                                Photo preview unavailable
+                              </div>
+                            )}
+                            <CardContent className="space-y-3 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium text-slate-900">{photo.fileName || photo.label}</div>
+                                  <div className="text-xs text-slate-500">{photo.label}</div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  type="button"
+                                  disabled={actionBusy === `delete-required-photo-${photo.photoRowId}`}
+                                  onClick={() => void handleDeleteRequiredItemPhoto(photo)}
+                                >
+                                  {actionBusy === `delete-required-photo-${photo.photoRowId}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor={`required-photo-note-${photo.photoRowId}`}>What required item does this support?</Label>
+                                <Textarea
+                                  id={`required-photo-note-${photo.photoRowId}`}
+                                  value={photo.note}
+                                  onChange={(event) => void handleRequiredItemPhotoNoteChange(photo.photoRowId ?? "", event.target.value)}
+                                  placeholder="Example: Oil leak at valve cover, front pads near metal-to-metal, torn CV boot"
+                                  className="min-h-24"
+                                />
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-2">
+                  <Label htmlFor="inspection-summary">Inspection findings summary</Label>
+                  <Textarea
+                    id="inspection-summary"
+                    value={draft.inspectionSummary}
+                    onChange={(event) => updateDraft({ inspectionSummary: event.target.value })}
+                    placeholder="Summarize the major findings, tire/brake observations, and what should make it into the quote."
+                    className="min-h-28"
+                  />
+                </div>
+
+              </>
+            ) : null}
           </div>
         );
       case "quote":
@@ -1138,8 +2747,180 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
           <div className="space-y-5">
             <div className="grid gap-3 md:grid-cols-3">
               <SummaryInfoCard icon={Wrench} label="Service lines" value={`${services.length}`} />
-              <SummaryInfoCard icon={Receipt} label="Working total" value={formatCurrency(serviceTotal)} />
+              <SummaryInfoCard icon={Receipt} label="Quote subtotal" value={formatCurrency(serviceTotal)} />
               <SummaryInfoCard icon={FileSignature} label="Estimate" value={estimate?.estimate_number || estimate?.estimate_status || "Not created"} />
+            </div>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card className={cn("rounded-2xl border border-slate-200 bg-slate-50 shadow-none", isSectionHighlighted("quote-services") && "border-red-300 bg-red-50 ring-2 ring-red-400")}>
+                <CardHeader>
+                  <CardTitle>Quote services</CardTitle>
+                  <CardDescription>Review the live quote here before sending or marking approval.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {services.length ? (
+                    services.map((service) => (
+                      <div key={service.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="font-medium text-slate-900">{service.service_name}</div>
+                            <div className="text-sm text-slate-600">{service.service_description || "No description added."}</div>
+                            <div className="text-xs text-slate-500">
+                              Est. {formatCurrency(service.estimated_price)}{service.estimated_hours ? ` · ${service.estimated_hours} hr` : ""}
+                            </div>
+                            {service.notes ? <div className="text-xs text-slate-500">Note: {service.notes}</div> : null}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            type="button"
+                            disabled={actionBusy === `delete-${service.id}`}
+                            onClick={() => void handleDeleteService(service.id)}
+                          >
+                            {actionBusy === `delete-${service.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">
+                      No service lines are attached yet.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <Card className={cn("rounded-2xl border border-slate-200 bg-slate-50 shadow-none", isSectionHighlighted("quote-discount") && "border-red-300 bg-red-50 ring-2 ring-red-400")}>
+                  <CardHeader>
+                    <CardTitle>Discount</CardTitle>
+                    <CardDescription>Add a manual quote discount and document why it was approved.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="quote-discount-amount">Discount amount</Label>
+                      <Input
+                        id="quote-discount-amount"
+                        inputMode="decimal"
+                        value={draft.quoteDiscountAmount}
+                        onChange={(event) => updateDraft({ quoteDiscountAmount: event.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Discount reason</Label>
+                      <Select
+                        value={draft.quoteDiscountReason || "__none__"}
+                        onValueChange={(value) =>
+                          updateDraft({
+                            quoteDiscountReason: value === "__none__" ? "" : value,
+                            quoteDiscountOtherReason:
+                              value === "other" ? draft.quoteDiscountOtherReason : "",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-11 w-full">
+                          <SelectValue placeholder="Select a discount reason" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">No reason selected</SelectItem>
+                          {QUOTE_DISCOUNT_REASONS.map((reason) => (
+                            <SelectItem key={reason.value} value={reason.value}>
+                              {reason.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {draft.quoteDiscountReason === "other" ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="quote-discount-other-reason">Other reason</Label>
+                        <Textarea
+                          id="quote-discount-other-reason"
+                          value={draft.quoteDiscountOtherReason}
+                          onChange={(event) => updateDraft({ quoteDiscountOtherReason: event.target.value })}
+                          placeholder="Enter the approved custom reason for this discount."
+                        />
+                      </div>
+                    ) : null}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Subtotal</span>
+                        <span className="font-medium text-slate-900">{formatCurrency(serviceTotal)}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span>Discount</span>
+                        <span className="font-medium text-slate-900">-{formatCurrency(quoteDiscountAmountValue)}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
+                        <span className="font-medium text-slate-900">Quote total</span>
+                        <span className="font-semibold text-slate-900">{formatCurrency(quoteNetTotal)}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border border-slate-200 bg-slate-50 shadow-none">
+                  <CardHeader>
+                    <CardTitle>Add catalog service</CardTitle>
+                    <CardDescription>Add approved or newly discovered work into the quote before sending it.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Select service</Label>
+                      <Select value={selectedCatalogServiceId} onValueChange={setSelectedCatalogServiceId}>
+                        <SelectTrigger className="h-11 w-full">
+                          <SelectValue placeholder="Choose from service catalog" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {serviceCatalog.map((service) => (
+                            <SelectItem key={service.id} value={service.id}>
+                              {service.service_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="quote-added-reason">Reason for added service</Label>
+                      <Textarea
+                        id="quote-added-reason"
+                        value={draft.addedServiceReason}
+                        onChange={(event) => updateDraft({ addedServiceReason: event.target.value })}
+                        placeholder="Why is this service being added or adjusted on the quote?"
+                      />
+                    </div>
+                    <Button type="button" className="min-h-11 w-full" disabled={actionBusy === "add-catalog-service"} onClick={() => void handleAddCatalogService()}>
+                      {actionBusy === "add-catalog-service" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                      Add catalog service
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-2xl border border-slate-200 bg-slate-50 shadow-none">
+                  <CardHeader>
+                    <CardTitle>Add custom service</CardTitle>
+                    <CardDescription>Use this when the quote needs a line item that is not in the catalog yet.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="quote-custom-service-name">Service name</Label>
+                      <Input id="quote-custom-service-name" value={customServiceName} onChange={(event) => setCustomServiceName(event.target.value)} placeholder="Example: Cabin air filter replacement" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="quote-custom-service-description">Description</Label>
+                      <Textarea id="quote-custom-service-description" value={customServiceDescription} onChange={(event) => setCustomServiceDescription(event.target.value)} placeholder="Add parts, labor, or diagnostic context." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="quote-custom-service-price">Estimated price</Label>
+                      <Input id="quote-custom-service-price" inputMode="decimal" value={customServicePrice} onChange={(event) => setCustomServicePrice(event.target.value)} placeholder="0.00" />
+                    </div>
+                    <Button type="button" className="min-h-11 w-full" disabled={actionBusy === "add-custom-service"} onClick={() => void handleAddCustomService()}>
+                      {actionBusy === "add-custom-service" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                      Add custom service
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="quote-notes">Quote notes</Label>
@@ -1170,7 +2951,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
               ))}
             </div>
             {draft.quoteApprovalStatus === "signed" ? (
-              <div className="space-y-2">
+              <div className={cn("space-y-2 rounded-2xl", isSectionHighlighted("quote-signature") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
                 <Label htmlFor="signature-name">Customer signature name</Label>
                 <Input id="signature-name" value={draft.customerSignatureName} onChange={(event) => updateDraft({ customerSignatureName: event.target.value })} placeholder="Enter the approving customer name" />
               </div>
@@ -1183,7 +2964,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               Approved and in-scope services should be checked off as the technician finishes them.
             </div>
-            <div className="space-y-3">
+            <div className={cn("space-y-3 rounded-2xl", isSectionHighlighted("work-services") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
               {services.length ? (
                 services.map((service) => (
                   <div key={service.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1219,7 +3000,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       case "payment":
         return (
           <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={cn("grid gap-4 rounded-2xl md:grid-cols-2", isSectionHighlighted("payment-details") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
               <div className="space-y-2">
                 <Label>Payment method</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -1249,7 +3030,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-amount">Payment amount</Label>
-                <Input id="payment-amount" inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder={serviceTotal ? String(serviceTotal.toFixed(2)) : "0.00"} />
+                <Input id="payment-amount" inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder={quoteNetTotal ? String(quoteNetTotal.toFixed(2)) : "0.00"} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="payment-reference">Reference number</Label>
@@ -1269,7 +3050,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
       case "closeout":
         return (
           <div className="space-y-5">
-            <div className="space-y-2">
+            <div className={cn("space-y-2 rounded-2xl", isSectionHighlighted("closeout-summary") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
               <Label htmlFor="post-work-summary">Post-work summary</Label>
               <Textarea
                 id="post-work-summary"
@@ -1279,7 +3060,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
                 className="min-h-28"
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className={cn("grid gap-3 rounded-2xl sm:grid-cols-2", isSectionHighlighted("closeout-receipt") && "border border-red-300 bg-red-50 p-4 ring-2 ring-red-400")}>
               <Button
                 type="button"
                 variant={draft.receiptSent ? "default" : "outline"}
@@ -1333,6 +3114,33 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
 
   return (
     <div className="otg-portal-dark min-h-screen bg-slate-50 p-4 sm:p-6">
+      {showIncompleteDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-slate-100 p-2 text-slate-700">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-slate-900">Form Not Completed</h2>
+              </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">Missing items</div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {activeStageIssues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button type="button" className="min-h-11" onClick={() => setShowIncompleteDialog(false)}>
+                Review highlighted area
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="mx-auto max-w-7xl space-y-6">
         <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
           <CardContent className="space-y-5 p-5 sm:p-6">
@@ -1375,9 +3183,6 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button asChild variant="outline">
-                <Link href={`/tech/jobs/${jobId}/inspection`}>Legacy inspection workspace</Link>
-              </Button>
               <Button variant="outline" onClick={() => void loadJobData(true)}>
                 Refresh job data
               </Button>
@@ -1390,45 +3195,48 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
             <CardContent className="space-y-4 p-5">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Visit stages</h2>
-                <p className="text-sm text-slate-600">Move through the job the same way the service visit actually happens.</p>
+                <p className="hidden text-sm text-slate-600 md:block">Move through the job the same way the service visit actually happens.</p>
               </div>
-              <div className="space-y-3">
-                {STAGES.map((stage, index) => {
-                  const issues = stageIssues[stage.key];
-                  const isActive = draft.currentStage === stage.key;
-                  const isComplete = index < currentStageIndex && issues.length === 0;
-
-                  return (
-                    <button
-                      key={stage.key}
-                      type="button"
-                      onClick={() => goToStage(stage.key)}
-                      className={cn(
-                        "w-full rounded-2xl border px-4 py-3 text-left transition",
-                        isActive
-                          ? "border-slate-900 bg-slate-900 text-white shadow-md"
-                          : "border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">
-                            Stage {index + 1}
-                          </div>
-                          <div className="mt-1 font-semibold">{stage.title}</div>
-                          <div className={cn("mt-1 text-sm", isActive ? "text-white/80" : "text-slate-600")}>
-                            {stage.description}
-                          </div>
-                        </div>
-                        {isComplete ? (
-                          <Check className="mt-1 h-4 w-4 shrink-0" />
-                        ) : issues.length > 0 ? (
-                          <AlertCircle className={cn("mt-1 h-4 w-4 shrink-0", isActive ? "text-amber-200" : "text-amber-600")} />
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="md:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between"
+                  onClick={() => setShowAllStagesMobile((current) => !current)}
+                >
+                  {showAllStagesMobile ? "Show current stage only" : "View all stages"}
+                  <span className="text-xs text-slate-500">
+                    Stage {currentStageIndex + 1} / {STAGES.length}
+                  </span>
+                </Button>
+              </div>
+              <div className="space-y-3 md:hidden">
+                {(showAllStagesMobile ? STAGES : [activeStage]).map((stage) => (
+                  <StageNavButton
+                    key={stage.key}
+                    stage={stage}
+                    index={STAGES.findIndex((entry) => entry.key === stage.key)}
+                    issues={stageIssues[stage.key]}
+                    isActive={draft.currentStage === stage.key}
+                    currentStageIndex={currentStageIndex}
+                    onClick={() => goToStage(stage.key)}
+                    showDescription={false}
+                  />
+                ))}
+              </div>
+              <div className="hidden space-y-3 md:block">
+                {STAGES.map((stage) => (
+                  <StageNavButton
+                    key={stage.key}
+                    stage={stage}
+                    index={STAGES.findIndex((entry) => entry.key === stage.key)}
+                    issues={stageIssues[stage.key]}
+                    isActive={draft.currentStage === stage.key}
+                    currentStageIndex={currentStageIndex}
+                    onClick={() => goToStage(stage.key)}
+                    showDescription
+                  />
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -1454,17 +3262,17 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <CardTitle className="text-xl">{activeStage.title}</CardTitle>
-                    <CardDescription className="mt-1">{activeStage.description}</CardDescription>
+                    <CardDescription className="mt-1 hidden sm:block">{activeStage.description}</CardDescription>
                   </div>
                   <Badge className="rounded-full bg-slate-100 text-slate-900">
                     {currentStageIndex + 1} / {STAGES.length}
                   </Badge>
                 </div>
-                {stageIssues[activeStage.key].length ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {showValidationHighlights && stageAdvanceBlocked ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
                     <div className="font-semibold">Before continuing:</div>
                     <ul className="mt-2 list-disc space-y-1 pl-5">
-                      {stageIssues[activeStage.key].map((issue) => (
+                      {activeStageIssues.map((issue) => (
                         <li key={issue}>{issue}</li>
                       ))}
                     </ul>
@@ -1502,7 +3310,7 @@ export default function TechnicianJobFlowPage({ jobId }: { jobId: string }) {
             <Card className="rounded-3xl border border-slate-200 bg-white shadow-md">
               <CardContent className="grid gap-4 p-5 sm:grid-cols-3">
                 <SummaryInfoCard icon={ClipboardCheck} label="Completed services" value={`${completedServiceCount} / ${services.length || 0}`} />
-                <SummaryInfoCard icon={Receipt} label="Quote total" value={formatCurrency(serviceTotal)} />
+                <SummaryInfoCard icon={Receipt} label="Quote total" value={formatCurrency(quoteNetTotal)} />
                 <SummaryInfoCard icon={CreditCard} label="Latest payment" value={payment ? `${formatCurrency(payment.amount)} · ${payment.payment_status}` : "No payment recorded"} />
               </CardContent>
             </Card>
@@ -1533,28 +3341,111 @@ function SummaryInfoCard({
   );
 }
 
-function PhotoCountField({
-  label,
-  help,
+function StageNavButton({
+  stage,
+  index,
+  issues,
+  isActive,
+  currentStageIndex,
+  onClick,
+  showDescription,
+}: {
+  stage: (typeof STAGES)[number];
+  index: number;
+  issues: string[];
+  isActive: boolean;
+  currentStageIndex: number;
+  onClick: () => void;
+  showDescription: boolean;
+}) {
+  const isComplete = index < currentStageIndex && issues.length === 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full rounded-2xl border px-4 py-3 text-left transition",
+        isActive
+          ? "border-slate-900 bg-slate-900 text-white shadow-md"
+          : "border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">
+            Stage {index + 1}
+          </div>
+          <div className="mt-1 font-semibold">{stage.title}</div>
+          {showDescription ? (
+            <div className={cn("mt-1 text-sm", isActive ? "text-white/80" : "text-slate-600")}>
+              {stage.description}
+            </div>
+          ) : null}
+        </div>
+        {isComplete ? (
+          <Check className="mt-1 h-4 w-4 shrink-0" />
+        ) : issues.length > 0 ? (
+          <AlertCircle className={cn("mt-1 h-4 w-4 shrink-0", isActive ? "text-amber-200" : "text-amber-600")} />
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function ConditionPillRow({
   value,
   onChange,
 }: {
+  value: ConditionValue;
+  onChange: (value: ConditionValue) => void;
+}) {
+  const options: Array<{ value: ConditionValue; label: string }> = [
+    { value: "", label: "N/A" },
+    { value: "ok", label: "OK" },
+    { value: "sug", label: "Suggested" },
+    { value: "req", label: "Required" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {options.map((option) => (
+        <Button
+          key={option.label}
+          type="button"
+          variant={value === option.value ? "default" : "outline"}
+          className={cn(
+            "min-h-10",
+            value === "" && option.value === "" && "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-100",
+          )}
+          onClick={() => onChange(option.value === "" ? "" : value === option.value ? "" : option.value)}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function ChecklistRow({
+  label,
+  value,
+  onStatusChange,
+  onWhyChange,
+}: {
   label: string;
-  help: string;
-  value: number;
-  onChange: (value: number) => void;
+  value: ChecklistItemState;
+  onStatusChange: (value: ConditionValue) => void;
+  onWhyChange: (value: string) => void;
 }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div>
-        <div className="font-medium text-slate-900">{label}</div>
-        <div className="text-xs text-slate-500">{help}</div>
-      </div>
+    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1.1fr_320px_1fr]">
+      <div className="flex items-center font-medium text-slate-900">{label}</div>
+      <ConditionPillRow value={value?.status ?? ""} onChange={onStatusChange} />
       <Input
-        inputMode="numeric"
-        value={String(value)}
-        onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))}
-        className="h-11 bg-white"
+        value={value?.why ?? ""}
+        onChange={(event) => onWhyChange(event.target.value)}
+        placeholder="Why this item was N/A, should be watched, or needs service"
       />
     </div>
   );

@@ -964,38 +964,6 @@ export default function CustomerAccountPage() {
             ) : null}
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">
-              Delete Account
-            </div>
-            <p className="mt-3 text-sm text-red-900">
-              Your account is held for 2 business days before permanent deletion.
-            </p>
-            {customer?.account_closure_request_status === "requested" ? (
-              <p className="mt-3 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-900">
-                Your account is in the 2-business-day deletion hold period.
-              </p>
-            ) : null}
-            <div className="mt-4 space-y-2">
-              <label className="otg-label text-red-900">Reason for closure (optional)</label>
-              <textarea
-                value={closureRequestNote}
-                onChange={(event) => setClosureRequestNote(event.target.value)}
-                rows={3}
-                className="otg-input min-h-24"
-                placeholder="Optional note for staff reviewing the request"
-                disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleRequestAccountClosure()}
-              disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
-              className="otg-btn mt-4 bg-red-700 text-white hover:bg-red-800 disabled:opacity-50 sm:w-auto"
-            >
-              {submittingClosureRequest ? "Deleting..." : "Delete Account"}
-            </button>
-          </div>
         </div>
 
         <div id="customer-account-vehicles" className="otg-card scroll-mt-6 p-4 sm:p-6">
@@ -1511,7 +1479,7 @@ export default function CustomerAccountPage() {
                             handleAddressDraftChange(index, "city", event.target.value)
                           }
                           className="otg-input"
-                          placeholder="Pocatello"
+                          placeholder="City"
                         />
                       </div>
 
@@ -1533,7 +1501,7 @@ export default function CustomerAccountPage() {
                             handleAddressDraftChange(index, "zip", event.target.value)
                           }
                           className="otg-input"
-                          placeholder="83202"
+                          placeholder="Zipcode"
                         />
                       </div>
 
@@ -1611,6 +1579,41 @@ export default function CustomerAccountPage() {
               {addressMessage}
             </div>
           ) : null}
+        </div>
+
+        <div className="otg-card p-4 sm:p-6">
+          <div className="rounded-[24px] border border-red-200 bg-red-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">
+              Delete Account
+            </div>
+            <p className="mt-3 text-sm text-red-900">
+              Your account is held for 2 business days before permanent deletion.
+            </p>
+            {customer?.account_closure_request_status === "requested" ? (
+              <p className="mt-3 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-red-900">
+                Your account is in the 2-business-day deletion hold period.
+              </p>
+            ) : null}
+            <div className="mt-4 space-y-2">
+              <label className="otg-label text-red-900">Reason for closure (optional)</label>
+              <textarea
+                value={closureRequestNote}
+                onChange={(event) => setClosureRequestNote(event.target.value)}
+                rows={3}
+                className="otg-input min-h-24"
+                placeholder="Optional note for staff reviewing the request"
+                disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleRequestAccountClosure()}
+              disabled={submittingClosureRequest || customer?.account_closure_request_status === "requested"}
+              className="otg-btn mt-4 bg-red-700 text-white hover:bg-red-800 disabled:opacity-50 sm:w-auto"
+            >
+              {submittingClosureRequest ? "Deleting..." : "Delete Account"}
+            </button>
+          </div>
         </div>
       </div>
     </CustomerPortalShell>
