@@ -7,6 +7,48 @@ type QuoteDecisionPayload = {
   note?: string;
 };
 
+type CustomerIdRow = {
+  id: string;
+};
+
+type OwnedEstimateRow = {
+  id: string;
+  job_id: string | null;
+  customer_id: string | null;
+  vehicle_id: string | null;
+  estimate_status: string | null;
+  estimate_number: string | null;
+  subtotal: number | null;
+  tax_total: number | null;
+  total_amount: number | null;
+  notes: string | null;
+  approved_at: string | null;
+  declined_at: string | null;
+  customer_signature_name: string | null;
+  customer_signed_at: string | null;
+  customer_signature_notes: string | null;
+  customer_authorized_total: number | null;
+};
+
+type EstimateLineItemRow = {
+  id: string;
+  line_type?: string | null;
+  description?: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  taxable?: boolean | null;
+  sort_order?: number | null;
+  notes?: string | null;
+  created_at?: string | null;
+};
+
+type EstimateDecisionRow = {
+  estimate_line_item_id: string;
+  decision: "approved" | "declined" | null;
+  note: string | null;
+  decided_at: string | null;
+};
+
 function getClients(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
@@ -41,8 +83,8 @@ function getClients(req: Request) {
 async function getOwnedEstimateContext(
   accessToken: string,
   estimateId: string,
-  supabaseAuth: ReturnType<typeof createClient>,
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAuth: any,
+  supabaseAdmin: any,
 ) {
   const {
     data: { user },
@@ -63,7 +105,9 @@ async function getOwnedEstimateContext(
     return { error: NextResponse.json({ error: customerError.message }, { status: 500 }) };
   }
 
-  if (!customerRow?.id) {
+  const customer = (customerRow as CustomerIdRow | null) ?? null;
+
+  if (!customer?.id) {
     return { error: NextResponse.json({ error: "Customer account is not linked yet." }, { status: 403 }) };
   }
 
@@ -80,11 +124,13 @@ async function getOwnedEstimateContext(
     return { error: NextResponse.json({ error: estimateError.message }, { status: 500 }) };
   }
 
-  if (!estimate) {
+  const ownedEstimate = (estimate as OwnedEstimateRow | null) ?? null;
+
+  if (!ownedEstimate) {
     return { error: NextResponse.json({ error: "Quote not found." }, { status: 404 }) };
   }
 
-  return { user, customerId: customerRow.id, estimate };
+  return { user, customerId: customer.id, estimate: ownedEstimate };
 }
 
 export async function GET(
@@ -121,6 +167,8 @@ export async function GET(
     return NextResponse.json({ error: lineItemsError.message }, { status: 500 });
   }
 
+  const estimateLineItems = (lineItems as EstimateLineItemRow[] | null) ?? [];
+
   const { data: decisionRows, error: decisionsError } = await clients.supabaseAdmin
     .from("estimate_line_item_customer_decisions")
     .select("estimate_line_item_id, decision, note, decided_at")
@@ -131,13 +179,15 @@ export async function GET(
     return NextResponse.json({ error: decisionsError.message }, { status: 500 });
   }
 
+  const customerDecisions = (decisionRows as EstimateDecisionRow[] | null) ?? [];
+
   const decisionMap = new Map(
-    (decisionRows ?? []).map((row) => [row.estimate_line_item_id, row]),
+    customerDecisions.map((row) => [row.estimate_line_item_id, row]),
   );
 
   return NextResponse.json({
     estimate,
-    lineItems: (lineItems ?? []).map((item) => ({
+    lineItems: estimateLineItems.map((item) => ({
       ...item,
       decision: decisionMap.get(item.id)?.decision ?? null,
       customerNote: decisionMap.get(item.id)?.note ?? "",
@@ -193,7 +243,8 @@ export async function PATCH(
     return NextResponse.json({ error: lineItemsError.message }, { status: 500 });
   }
 
-  const lineItemIds = (lineItems ?? []).map((item) => item.id);
+  const estimateLineItems = (lineItems as EstimateLineItemRow[] | null) ?? [];
+  const lineItemIds = estimateLineItems.map((item) => item.id);
   const requestIds = [...new Set(lineDecisions.map((item) => item.lineItemId))];
 
   if (
@@ -219,7 +270,7 @@ export async function PATCH(
   );
 
   const authorizedTotal = Number(
-    (lineItems ?? [])
+    estimateLineItems
       .reduce((sum, item) => {
         if (!approvedIds.has(item.id)) {
           return sum;

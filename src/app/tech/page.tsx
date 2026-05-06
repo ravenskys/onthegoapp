@@ -264,7 +264,7 @@ type RgbColor = [number, number, number];
 
 type ConditionSelectProps = {
   value: InspectionStatus;
-  onChange: (value: RecommendationStatus) => void;
+  onChange: (value: InspectionStatus) => void;
 };
 
 type SectionHeaderProps = {
@@ -484,7 +484,7 @@ function StatusPill({ value }: StatusPillProps) {
 
 function ConditionSelect({ value, onChange }: ConditionSelectProps) {
   return (
-    <Select value={value || ""} onValueChange={onChange}>
+    <Select value={value || ""} onValueChange={(nextValue) => onChange(nextValue as InspectionStatus)}>
       <SelectTrigger className="h-12 w-full px-4 text-base">
         <SelectValue placeholder="Select status" />
       </SelectTrigger>
@@ -542,7 +542,7 @@ function QuickConditionButtons({
   onChange,
 }: {
   value: InspectionStatus;
-  onChange: (value: RecommendationStatus) => void;
+  onChange: (value: InspectionStatus) => void;
 }) {
   const options: {
     value: Exclude<InspectionStatus, "" | null | undefined>;
@@ -723,7 +723,7 @@ export function TechnicianWorkspacePage({
     setVehicle((prev) => ({ ...prev, [key]: normalizeVehicleFieldValue(key, value) }));
   };
 
-  const updateTire = (tire: TirePosition, key: TireFieldKey, value: string) => {
+  const updateTire = (tire: TirePosition, key: TireFieldKey, value: TireEntry[TireFieldKey]) => {
     setTireData((prev) => ({
       ...prev,
       [tire]: {
@@ -746,11 +746,19 @@ export function TechnicianWorkspacePage({
     });
   };
 
-  const updateMaintenance = (item: MaintenanceItem, key: ChecklistFieldKey, value: string) => {
+  const updateMaintenance = (
+    item: MaintenanceItem,
+    key: ChecklistFieldKey,
+    value: ChecklistEntry[ChecklistFieldKey]
+  ) => {
     setMaintenance((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
-  const updateUndercar = (item: UndercarItem, key: ChecklistFieldKey, value: string) => {
+  const updateUndercar = (
+    item: UndercarItem,
+    key: ChecklistFieldKey,
+    value: ChecklistEntry[ChecklistFieldKey]
+  ) => {
     setUndercar((prev) => ({ ...prev, [item]: { ...prev[item], [key]: value } }));
   };
 
